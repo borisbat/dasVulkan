@@ -28,6 +28,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SCCACHE_GHA_ENABLED: "true"
+      # daspkg's cmake_build runs `cmake --build --parallel` with NO job count.
+      # With the default Unix Makefiles generator that lowers to `make -j` =
+      # unlimited, so all ~55 template-heavy ManagedStructureAnnotation TUs
+      # compile at once and OOM the runner (exit 143). Cap the parallel level.
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
+      MAKEFLAGS: "-j2"
     defaults:
       run:
         shell: bash
