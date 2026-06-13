@@ -13,6 +13,14 @@ require daslib/strings_boost
 
 // OB / CB / GEN_HEADER are re-exported from vk_emit
 
+//! C scalar type -> daslang scalar type (for boost field declarations)
+let DAS_SCALAR_MAP : table<string; string> <- {
+    "int8_t" => "int8", "uint8_t" => "uint8", "int16_t" => "int16", "uint16_t" => "uint16",
+    "int32_t" => "int", "uint32_t" => "uint", "int" => "int",
+    "int64_t" => "int64", "uint64_t" => "uint64",
+    "float" => "float", "double" => "double", "size_t" => "uint64", "char" => "int8"
+}
+
 // ===== ctors: sType-filling constructors over the RAW Vk structs =====
 // daslang has no #if, so the boost can only reference types registered on every
 // platform -- emit only for non-platform-guarded structs (protect == "").
@@ -169,10 +177,259 @@ def private emit_handles_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
     to_log(LOG_INFO, "boost: {length(owners)} handle wrappers -> vulkan_handles.das\n")
 }
 
+// ===== vk_view: idiomatic boost structs with array<T> fields + transient C view =====
+
+enum FieldKind {
+    erase           //! sType / count member -- not a boost field; vk_view derives it
+    next_ptr        //! pNext -> boost `next : void?`
+    scalar          //! scalar / enum / flags / nested-POD / fixed-array -- direct copy
+    boost_handle    //! handle by value -> boost handle type
+    str             //! const char* -> string
+    arr_scalar      //! count+ptr of scalar/enum -> array<T>
+    arr_handle      //! count+ptr of handle -> array<BoostHandle>
+    hard            //! unmappable -> skip the whole struct
+}
+
+struct BoostField {
+    kind : FieldKind
+    name : string           //! das-safe boost field name
+    raw_name : string       //! original C member name (the raw struct field)
+    boost_type : string     //! the boost field's das type
+    elem_vktype : string    //! for arrays: the raw element type (VkSemaphore / uint32_t)
+    elem_boost : string     //! for arrays: the boost element type
+    count_member : string   //! for arrays: the raw count member name
+    is_handle_elem : bool
+}
+
+//! names of members that are the count for some array member (len=thatName)
+def private count_members_of(s : VkStructDef) : table<string> {
+    var counts : table<string>
+    for (m in s.members) {
+        continue if (empty(m.len))
+        // simple identifier len that names another member
+        for (other in s.members) {
+            if (other.name == m.len) {
+                counts |> insert(m.len)
+            }
+        }
+    }
+    return <- counts
+}
+
+def private elem_is_handle(em : EmitModel; tn : string) : bool {
+    return key_exists(em.handle_names, tn)
+}
+
+//! map a struct member to a boost field; FieldKind.hard signals "skip the whole struct"
+def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m : VkMember; counts : table<string>) : BoostField {
+    var bf = BoostField(name = das_safe_name(m.name), raw_name = m.name)
+    let tn = m.type_name
+    if (m.name == "sType" && !empty(m.stype_value)) {
+        bf.kind = FieldKind.erase
+        return <- bf
+    }
+    if (m.name == "pNext") {
+        // only plain `const void* pNext` becomes the `next` escape; typed self-pointers
+        // (VkBaseInStructure/VkBaseOutStructure) are meta-structs -> skip
+        if (tn == "void") {
+            bf.kind = FieldKind.next_ptr
+            bf.name = "next"
+        } else {
+            bf.kind = FieldKind.hard
+        }
+        return <- bf
+    }
+    if (key_exists(counts, m.name)) {
+        bf.kind = FieldKind.erase
+        return <- bf
+    }
+    // function pointers, fixed-arrays, multi-pointers -> hard
+    if (key_exists(reg.func_pointers, tn)) {
+        bf.kind = FieldKind.hard
+        return <- bf
+    }
+    if (length(m.arr_dims) > 0) {
+        bf.kind = FieldKind.hard      // inline fixed-array members: defer
+        return <- bf
+    }
+    // arrays: a len that names a count member
+    let has_count = !empty(m.len) && key_exists(counts, m.len)
+    if (has_count && m.num_ptrs == 1 && tn != "void" && tn != "char") {
+        bf.count_member = m.len
+        if (elem_is_handle(em, tn)) {
+            bf.kind = FieldKind.arr_handle
+            bf.elem_boost = boost_name(tn)
+            bf.boost_type = "array<{bf.elem_boost}>"
+            bf.elem_vktype = tn               // raw handle das type (e.g. VkSemaphore)
+            bf.is_handle_elem = true
+        } else {
+            let ds = DAS_SCALAR_MAP?[tn] ?? ""
+            if (!empty(ds)) {
+                bf.kind = FieldKind.arr_scalar
+                bf.boost_type = "array<{ds}>"
+                bf.elem_vktype = ds           // scratch holds the same das scalar
+            } else {
+                bf.kind = FieldKind.hard      // array of struct / enum / flags -> defer
+            }
+        }
+        return <- bf
+    }
+    // string
+    if (tn == "char" && m.num_ptrs == 1) {
+        bf.kind = FieldKind.str
+        bf.boost_type = "string"
+        return <- bf
+    }
+    // any remaining pointer -> hard (single struct ptr, void*, string arrays, scalar ptr)
+    if (m.num_ptrs >= 1) {
+        bf.kind = FieldKind.hard
+        return <- bf
+    }
+    // by-value handle
+    if (elem_is_handle(em, tn)) {
+        bf.kind = FieldKind.boost_handle
+        bf.boost_type = boost_name(tn)
+        return <- bf
+    }
+    // by-value scalar / enum / flags / nested POD struct / base type -> direct copy (raw type kept)
+    bf.kind = FieldKind.scalar
+    bf.boost_type = scalar_field_type(reg, em, m)
+    return <- bf
+}
+
+//! the das type of a by-value scalar/enum/flags/nested field, as the boost struct should declare it
+def private scalar_field_type(reg : VkRegistry; em : EmitModel; m : VkMember) : string {
+    let tn = m.type_name
+    let direct = DAS_SCALAR_MAP?[tn] ?? ""
+    if (!empty(direct)) {
+        return direct
+    }
+    let fi = em.flags_lookup?[tn] ?? FlagsInfo()
+    if (fi.kind != FlagsKind.not_flags) {
+        return fi.canonical          // the bitfield alias
+    }
+    let bt = reg.base_types?[tn] ?? ""
+    let via_base = DAS_SCALAR_MAP?[bt] ?? ""
+    if (!empty(via_base)) {
+        return via_base
+    }
+    return tn                          // enum / nested struct / VkBool32-style typedef
+}
+
+struct ViewStruct {
+    s_index : int
+    boost : string
+    fields : array<BoostField>
+}
+
+def public derive_views(reg : VkRegistry; em : EmitModel; var skip_log : array<string>) : array<ViewStruct> {
+    var views : array<ViewStruct>
+    for (s, idx in reg.structs, range(length(reg.structs))) {
+        continue if (!empty(s.alias))
+        continue if (!key_exists(em.struct_emit, s.name))
+        continue if (!empty(s.protect))
+        continue if (s.is_union)            // unions: defer
+        let counts = count_members_of(s)
+        var vs = ViewStruct(s_index = idx, boost = boost_name(s.name))
+        var hard = false
+        for (m in s.members) {
+            var bf <- classify_field(reg, em, s, m, counts)
+            if (bf.kind == FieldKind.hard) {
+                hard = true
+                skip_log |> push("{s.name}: member {m.name} ({m.type_name} x{m.num_ptrs}) not mappable")
+                break
+            }
+            vs.fields |> emplace(bf)
+        }
+        continue if (hard)
+        views |> emplace(vs)
+    }
+    return <- views
+}
+
+def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : string; views : array<ViewStruct>) {
+    fopen("{out_dir}/vulkan_structs.das", "wb") $(f) {
+        panic("can't write vulkan_structs.das") if (f == null)
+        fprint(f, GEN_HEADER)
+        fprint(f, "options gen2\noptions indenting = 4\n\nmodule vulkan_structs\n\n")
+        fprint(f, "require vulkan public\nrequire vulkan/vulkan_ctors public\nrequire vulkan/vulkan_handles public\nrequire vulkan/vulkan_runtime public\n\n")
+        for (vs in views) {
+            let s & = unsafe(reg.structs[vs.s_index])
+            // boost struct
+            fprint(f, "struct {vs.boost} \{\n")
+            for (bf in vs.fields) {
+                if (bf.kind == FieldKind.erase) {
+                    continue
+                }
+                if (bf.kind == FieldKind.next_ptr) {
+                    fprint(f, "    next : void?\n")
+                } else {
+                    fprint(f, "    {bf.name} : {bf.boost_type}\n")
+                }
+            }
+            // scratch arrays for the array fields
+            for (bf in vs.fields) {
+                if (bf.kind == FieldKind.arr_scalar || bf.kind == FieldKind.arr_handle) {
+                    fprint(f, "    _vk_view_{bf.name} : array<{bf.elem_vktype}>\n")
+                }
+            }
+            fprint(f, "\}\n")
+            // vk_view_create_unsafe
+            fprint(f, "def vk_view_create_unsafe(var b : {vs.boost}) : {s.name} \{\n")
+            fprint(f, "    var vk = {s.name}()\n")
+            // raw struct das field names are das_safe_name'd (same as the boost field name);
+            // count members likewise.
+            for (bf in vs.fields) {
+                let cm = das_safe_name(bf.count_member)
+                if (bf.kind == FieldKind.scalar) {
+                    fprint(f, "    vk.{bf.name} = b.{bf.name}\n")
+                } elif (bf.kind == FieldKind.boost_handle) {
+                    fprint(f, "    vk.{bf.name} = boost_value_to_vk(b.{bf.name})\n")
+                } elif (bf.kind == FieldKind.str) {
+                    fprint(f, "    vk.{bf.name} = b.{bf.name}\n")
+                } elif (bf.kind == FieldKind.next_ptr) {
+                    fprint(f, "    vk.pNext = b.next\n")
+                } elif (bf.kind == FieldKind.arr_scalar) {
+                    fprint(f, "    b._vk_view_{bf.name} := b.{bf.name}\n")
+                    fprint(f, "    vk.{cm} = uint(length(b.{bf.name}))\n")
+                    fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
+                } elif (bf.kind == FieldKind.arr_handle) {
+                    fprint(f, "    b._vk_view_{bf.name} <- [for (h in b.{bf.name}); boost_value_to_vk(h)]\n")
+                    fprint(f, "    vk.{cm} = uint(length(b.{bf.name}))\n")
+                    fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
+                }
+            }
+            fprint(f, "    return <- vk\n")
+            fprint(f, "\}\n")
+            // vk_view_destroy: free the scratch arrays
+            fprint(f, "def vk_view_destroy(var b : {vs.boost}) \{\n")
+            var any_scratch = false
+            for (bf in vs.fields) {
+                if (bf.kind == FieldKind.arr_handle) {
+                    fprint(f, "    unsafe \{ delete b._vk_view_{bf.name} \}\n")    // array of handle pointers
+                    any_scratch = true
+                } elif (bf.kind == FieldKind.arr_scalar) {
+                    fprint(f, "    delete b._vk_view_{bf.name}\n")
+                    any_scratch = true
+                }
+            }
+            if (!any_scratch) {
+                fprint(f, "    pass\n")
+            }
+            fprint(f, "\}\n\n")
+        }
+    }
+    to_log(LOG_INFO, "boost: {length(views)} vk_view structs -> vulkan_structs.das\n")
+}
+
 // ===== orchestrator =====
 
 def public emit_boost(reg : VkRegistry; var em : EmitModel; out_dir : string) {
+    var skip_log : array<string>
     emit_ctors(reg, em, out_dir)
     let owners <- derive_owners(reg, em)
     emit_handles_boost(reg, em, out_dir, owners)
+    let views <- derive_views(reg, em, skip_log)
+    emit_structs_boost(reg, em, out_dir, views)
+    to_log(LOG_INFO, "boost: {length(skip_log)} structs skipped (composite/unmappable members)\n")
 }
