@@ -121,12 +121,17 @@ jobs:
         run: vulkaninfo --summary | grep -iE "deviceName|llvmpipe|apiVersion"
 
       - name: "Run integration tests (offscreen, lavapipe)"
-        working-directory: ${{ github.workspace }}/daslang-src
-        # VK_DRIVER_FILES (lavapipe ICD) is inherited from the discovery step. MUST
-        # NOT run under sudo -- the loader ignores VK_DRIVER_FILES for elevated procs.
+        # Run from the dasVulkan repo root so scene_helpers' cwd-relative shader
+        # path (examples/shaders/*.spv) resolves; the daslang binary and dastest
+        # entry point are referenced by absolute path. VK_DRIVER_FILES (lavapipe
+        # ICD) is inherited from the discovery step. MUST NOT run under sudo --
+        # the loader ignores VK_DRIVER_FILES for elevated procs.
+        working-directory: ${{ github.workspace }}/dasVulkan
         run: |
           set -eux
-          ${BIN_DIR}/daslang -load_module "${GITHUB_WORKSPACE}/dasVulkan" dastest/dastest.das -- \
+          "${GITHUB_WORKSPACE}/daslang-src/${BIN_DIR}/daslang" \
+            -load_module "${GITHUB_WORKSPACE}/dasVulkan" \
+            "${GITHUB_WORKSPACE}/daslang-src/dastest/dastest.das" -- \
             --test "${GITHUB_WORKSPACE}/dasVulkan/tests/integration" \
             --timeout 600 \
             --isolated-mode \
