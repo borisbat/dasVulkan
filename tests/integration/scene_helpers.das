@@ -218,3 +218,125 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
     let p = (y * TRI_W + x) * 4
     return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
 }
+
+//! same compute square, but the descriptor layout / pool / update all go through the
+//! BOOST path. The storage-buffer binding has descriptorCount = 1 with no immutable
+//! samplers -- the independent-count case the erasure model got wrong (would yield 0,
+//! so the shader would not see the buffer and out[i] would not equal i*i).
+def public run_compute_boost(n : int) : array<uint> {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var values : array<uint>
+    values |> resize(n)
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+
+    let buf_size = uint64(n * 4)
+    var bci : BufferCreateInfo
+    bci.size = buf_size
+    bci.usage.storage_buffer = true
+    var inscope buffer <- create_buffer(device, bci)
+    var req : VkMemoryRequirements
+    vkGetBufferMemoryRequirements(dev, boost_value_to_vk(buffer), req)
+    var want : VkMemoryPropertyFlags
+    want.host_visible = true
+    want.host_coherent = true
+    var mai : MemoryAllocateInfo
+    mai.allocationSize = req.size
+    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
+    var inscope memory <- allocate_memory(device, mai)
+    vk_check(vkBindBufferMemory(dev, boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
+
+    // descriptor set layout + pool via BOOST (descriptorCount = 1, no samplers)
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.STORAGE_BUFFER
+    b0.descriptorCount = 1u
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psize : DescriptorPoolSize
+    psize.type_ = VkDescriptorType.STORAGE_BUFFER
+    psize.descriptorCount = 1u
+    dpci.pPoolSizes |> push(psize)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    // bind the buffer through BOOST update_descriptor_sets (descriptorCount = 1, only pBufferInfo)
+    var write : WriteDescriptorSet
+    write.dstSet = vk_value_to_boost(raw_set)
+    write.dstBinding = 0u
+    write.descriptorType = VkDescriptorType.STORAGE_BUFFER
+    write.descriptorCount = 1u
+    var binfo : DescriptorBufferInfo
+    binfo.buffer = weak_copy(buffer)
+    binfo.range_ = buf_size
+    write.pBufferInfo |> push(binfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    // compute pipeline (raw: compute pipelines are batch-created)
+    var code <- load_spirv("square.comp.spv")
+    var inscope shader <- create_shader_module(device, code)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    var stage = VkPipelineShaderStageCreateInfo()
+    stage.stage.compute = true
+    stage.module_ = boost_value_to_vk(shader)
+    stage.pName = "main"
+    var cpci = VkComputePipelineCreateInfo()
+    cpci.stage = stage
+    cpci.layout = boost_value_to_vk(pipe_layout)
+    var pipeline : VkPipeline
+    unsafe {
+        vk_check(vkCreateComputePipelines(dev, null, 1u, addr(cpci), null, addr(pipeline)), null)
+    }
+
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        vkCmdBindPipeline(boost_value_to_vk(cmd), VkPipelineBindPoint.COMPUTE, pipeline)
+        unsafe {
+            vkCmdBindDescriptorSets(boost_value_to_vk(cmd), VkPipelineBindPoint.COMPUTE, boost_value_to_vk(pipe_layout), 0u, 1u, addr(raw_set), 0u, null)
+        }
+        cmd_dispatch(cmd, uint(n / 64), 1u, 1u)
+    }
+
+    var mapped : void? = null
+    var mf : VkMemoryMapFlags
+    unsafe {
+        vk_check(vkMapMemory(dev, boost_value_to_vk(memory), 0ul, buf_size, mf, addr(mapped)), null)
+        memcpy(reinterpret<void?>(addr(values[0])), mapped, n * 4)
+    }
+    vkUnmapMemory(dev, boost_value_to_vk(memory))
+    vkDestroyPipeline(dev, pipeline, null)
+    return <- values
+}
+
+def private pool_info(queue_family : uint) : CommandPoolCreateInfo {
+    var ci : CommandPoolCreateInfo
+    ci.queueFamilyIndex = queue_family
+    return ci
+}

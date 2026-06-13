@@ -9,6 +9,7 @@ require vulkan public
 require vulkan/vulkan_ctors public
 require vulkan/vulkan_handles public
 require vulkan/vulkan_runtime public
+require math
 
 struct Offset2D {
     x : int
@@ -175,8 +176,8 @@ def vk_view_create_unsafe(var b : DeviceQueueCreateInfo) : VkDeviceQueueCreateIn
     vk.flags = b.flags
     vk.queueFamilyIndex = b.queueFamilyIndex
     b._vk_view_pQueuePriorities := b.pQueuePriorities
-    vk.queueCount = uint(length(b.pQueuePriorities))
     vk.pQueuePriorities = array_addr(b._vk_view_pQueuePriorities)
+    vk.queueCount = uint(length(b.pQueuePriorities))
     return <- vk
 }
 def vk_view_destroy(var b : DeviceQueueCreateInfo) {
@@ -388,6 +389,7 @@ struct WriteDescriptorSet {
     dstSet : DescriptorSet
     dstBinding : uint
     dstArrayElement : uint
+    descriptorCount : uint
     descriptorType : VkDescriptorType
     pImageInfo : array<DescriptorImageInfo>
     pBufferInfo : array<DescriptorBufferInfo>
@@ -407,17 +409,15 @@ def vk_view_create_unsafe(var b : WriteDescriptorSet) : VkWriteDescriptorSet {
     for (vki in range(length(b.pImageInfo))) {
         b._vk_view_pImageInfo[vki] = vk_view_create_unsafe(b.pImageInfo[vki])
     }
-    vk.descriptorCount = uint(length(b.pImageInfo))
     vk.pImageInfo = array_addr(b._vk_view_pImageInfo)
     b._vk_view_pBufferInfo |> resize(length(b.pBufferInfo))
     for (vki in range(length(b.pBufferInfo))) {
         b._vk_view_pBufferInfo[vki] = vk_view_create_unsafe(b.pBufferInfo[vki])
     }
-    vk.descriptorCount = uint(length(b.pBufferInfo))
     vk.pBufferInfo = array_addr(b._vk_view_pBufferInfo)
     b._vk_view_pTexelBufferView <- [for (h in b.pTexelBufferView); boost_value_to_vk(h)]
-    vk.descriptorCount = uint(length(b.pTexelBufferView))
     vk.pTexelBufferView = array_addr(b._vk_view_pTexelBufferView)
+    vk.descriptorCount = b.descriptorCount != 0u ? b.descriptorCount : max(max(uint(length(b.pImageInfo)), uint(length(b.pBufferInfo))), uint(length(b.pTexelBufferView)))
     return <- vk
 }
 def vk_view_destroy(var b : WriteDescriptorSet) {
@@ -478,6 +478,7 @@ struct BufferCreateInfo {
     size : uint64
     usage : VkBufferUsageFlags
     sharingMode : VkSharingMode
+    queueFamilyIndexCount : uint
     pQueueFamilyIndices : array<uint>
     _vk_view_pQueueFamilyIndices : array<uint>
 }
@@ -489,8 +490,8 @@ def vk_view_create_unsafe(var b : BufferCreateInfo) : VkBufferCreateInfo {
     vk.usage = b.usage
     vk.sharingMode = b.sharingMode
     b._vk_view_pQueueFamilyIndices := b.pQueueFamilyIndices
-    vk.queueFamilyIndexCount = uint(length(b.pQueueFamilyIndices))
     vk.pQueueFamilyIndices = array_addr(b._vk_view_pQueueFamilyIndices)
+    vk.queueFamilyIndexCount = b.queueFamilyIndexCount != 0u ? b.queueFamilyIndexCount : uint(length(b.pQueueFamilyIndices))
     return <- vk
 }
 def vk_view_destroy(var b : BufferCreateInfo) {
@@ -655,6 +656,7 @@ struct ImageCreateInfo {
     tiling : VkImageTiling
     usage : VkImageUsageFlags
     sharingMode : VkSharingMode
+    queueFamilyIndexCount : uint
     pQueueFamilyIndices : array<uint>
     initialLayout : VkImageLayout
     _vk_view_pQueueFamilyIndices : array<uint>
@@ -673,9 +675,9 @@ def vk_view_create_unsafe(var b : ImageCreateInfo) : VkImageCreateInfo {
     vk.usage = b.usage
     vk.sharingMode = b.sharingMode
     b._vk_view_pQueueFamilyIndices := b.pQueueFamilyIndices
-    vk.queueFamilyIndexCount = uint(length(b.pQueueFamilyIndices))
     vk.pQueueFamilyIndices = array_addr(b._vk_view_pQueueFamilyIndices)
     vk.initialLayout = b.initialLayout
+    vk.queueFamilyIndexCount = b.queueFamilyIndexCount != 0u ? b.queueFamilyIndexCount : uint(length(b.pQueueFamilyIndices))
     return <- vk
 }
 def vk_view_destroy(var b : ImageCreateInfo) {
@@ -796,8 +798,8 @@ def vk_view_create_unsafe(var b : SparseBufferMemoryBindInfo) : VkSparseBufferMe
     for (vki in range(length(b.pBinds))) {
         b._vk_view_pBinds[vki] = vk_view_create_unsafe(b.pBinds[vki])
     }
-    vk.bindCount = uint(length(b.pBinds))
     vk.pBinds = array_addr(b._vk_view_pBinds)
+    vk.bindCount = uint(length(b.pBinds))
     return <- vk
 }
 def vk_view_destroy(var b : SparseBufferMemoryBindInfo) {
@@ -819,8 +821,8 @@ def vk_view_create_unsafe(var b : SparseImageOpaqueMemoryBindInfo) : VkSparseIma
     for (vki in range(length(b.pBinds))) {
         b._vk_view_pBinds[vki] = vk_view_create_unsafe(b.pBinds[vki])
     }
-    vk.bindCount = uint(length(b.pBinds))
     vk.pBinds = array_addr(b._vk_view_pBinds)
+    vk.bindCount = uint(length(b.pBinds))
     return <- vk
 }
 def vk_view_destroy(var b : SparseImageOpaqueMemoryBindInfo) {
@@ -842,8 +844,8 @@ def vk_view_create_unsafe(var b : SparseImageMemoryBindInfo) : VkSparseImageMemo
     for (vki in range(length(b.pBinds))) {
         b._vk_view_pBinds[vki] = vk_view_create_unsafe(b.pBinds[vki])
     }
-    vk.bindCount = uint(length(b.pBinds))
     vk.pBinds = array_addr(b._vk_view_pBinds)
+    vk.bindCount = uint(length(b.pBinds))
     return <- vk
 }
 def vk_view_destroy(var b : SparseImageMemoryBindInfo) {
@@ -870,29 +872,29 @@ def vk_view_create_unsafe(var b : BindSparseInfo) : VkBindSparseInfo {
     var vk = VkBindSparseInfo()
     vk.pNext = b.next
     b._vk_view_pWaitSemaphores <- [for (h in b.pWaitSemaphores); boost_value_to_vk(h)]
-    vk.waitSemaphoreCount = uint(length(b.pWaitSemaphores))
     vk.pWaitSemaphores = array_addr(b._vk_view_pWaitSemaphores)
     b._vk_view_pBufferBinds |> resize(length(b.pBufferBinds))
     for (vki in range(length(b.pBufferBinds))) {
         b._vk_view_pBufferBinds[vki] = vk_view_create_unsafe(b.pBufferBinds[vki])
     }
-    vk.bufferBindCount = uint(length(b.pBufferBinds))
     vk.pBufferBinds = array_addr(b._vk_view_pBufferBinds)
     b._vk_view_pImageOpaqueBinds |> resize(length(b.pImageOpaqueBinds))
     for (vki in range(length(b.pImageOpaqueBinds))) {
         b._vk_view_pImageOpaqueBinds[vki] = vk_view_create_unsafe(b.pImageOpaqueBinds[vki])
     }
-    vk.imageOpaqueBindCount = uint(length(b.pImageOpaqueBinds))
     vk.pImageOpaqueBinds = array_addr(b._vk_view_pImageOpaqueBinds)
     b._vk_view_pImageBinds |> resize(length(b.pImageBinds))
     for (vki in range(length(b.pImageBinds))) {
         b._vk_view_pImageBinds[vki] = vk_view_create_unsafe(b.pImageBinds[vki])
     }
-    vk.imageBindCount = uint(length(b.pImageBinds))
     vk.pImageBinds = array_addr(b._vk_view_pImageBinds)
     b._vk_view_pSignalSemaphores <- [for (h in b.pSignalSemaphores); boost_value_to_vk(h)]
-    vk.signalSemaphoreCount = uint(length(b.pSignalSemaphores))
     vk.pSignalSemaphores = array_addr(b._vk_view_pSignalSemaphores)
+    vk.waitSemaphoreCount = uint(length(b.pWaitSemaphores))
+    vk.bufferBindCount = uint(length(b.pBufferBinds))
+    vk.imageOpaqueBindCount = uint(length(b.pImageOpaqueBinds))
+    vk.imageBindCount = uint(length(b.pImageBinds))
+    vk.signalSemaphoreCount = uint(length(b.pSignalSemaphores))
     return <- vk
 }
 def vk_view_destroy(var b : BindSparseInfo) {
@@ -1048,8 +1050,8 @@ def vk_view_create_unsafe(var b : CopyMemoryToImageIndirectInfoKHR) : VkCopyMemo
     for (vki in range(length(b.pImageSubresources))) {
         b._vk_view_pImageSubresources[vki] = vk_view_create_unsafe(b.pImageSubresources[vki])
     }
-    vk.copyCount = uint(length(b.pImageSubresources))
     vk.pImageSubresources = array_addr(b._vk_view_pImageSubresources)
+    vk.copyCount = uint(length(b.pImageSubresources))
     return <- vk
 }
 def vk_view_destroy(var b : CopyMemoryToImageIndirectInfoKHR) {
@@ -1082,6 +1084,7 @@ def vk_view_destroy(var b : ImageResolve) {
 struct DescriptorSetLayoutBinding {
     binding : uint
     descriptorType : VkDescriptorType
+    descriptorCount : uint
     stageFlags : VkShaderStageFlags
     pImmutableSamplers : array<Sampler>
     _vk_view_pImmutableSamplers : array<VkSampler>
@@ -1092,8 +1095,8 @@ def vk_view_create_unsafe(var b : DescriptorSetLayoutBinding) : VkDescriptorSetL
     vk.descriptorType = b.descriptorType
     vk.stageFlags = b.stageFlags
     b._vk_view_pImmutableSamplers <- [for (h in b.pImmutableSamplers); boost_value_to_vk(h)]
-    vk.descriptorCount = uint(length(b.pImmutableSamplers))
     vk.pImmutableSamplers = array_addr(b._vk_view_pImmutableSamplers)
+    vk.descriptorCount = b.descriptorCount != 0u ? b.descriptorCount : uint(length(b.pImmutableSamplers))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorSetLayoutBinding) {
@@ -1114,8 +1117,8 @@ def vk_view_create_unsafe(var b : DescriptorSetLayoutCreateInfo) : VkDescriptorS
     for (vki in range(length(b.pBindings))) {
         b._vk_view_pBindings[vki] = vk_view_create_unsafe(b.pBindings[vki])
     }
-    vk.bindingCount = uint(length(b.pBindings))
     vk.pBindings = array_addr(b._vk_view_pBindings)
+    vk.bindingCount = uint(length(b.pBindings))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorSetLayoutCreateInfo) {
@@ -1155,8 +1158,8 @@ def vk_view_create_unsafe(var b : DescriptorPoolCreateInfo) : VkDescriptorPoolCr
     for (vki in range(length(b.pPoolSizes))) {
         b._vk_view_pPoolSizes[vki] = vk_view_create_unsafe(b.pPoolSizes[vki])
     }
-    vk.poolSizeCount = uint(length(b.pPoolSizes))
     vk.pPoolSizes = array_addr(b._vk_view_pPoolSizes)
+    vk.poolSizeCount = uint(length(b.pPoolSizes))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorPoolCreateInfo) {
@@ -1177,8 +1180,8 @@ def vk_view_create_unsafe(var b : DescriptorSetAllocateInfo) : VkDescriptorSetAl
     vk.pNext = b.next
     vk.descriptorPool = boost_value_to_vk(b.descriptorPool)
     b._vk_view_pSetLayouts <- [for (h in b.pSetLayouts); boost_value_to_vk(h)]
-    vk.descriptorSetCount = uint(length(b.pSetLayouts))
     vk.pSetLayouts = array_addr(b._vk_view_pSetLayouts)
+    vk.descriptorSetCount = uint(length(b.pSetLayouts))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorSetAllocateInfo) {
@@ -1305,14 +1308,14 @@ def vk_view_create_unsafe(var b : PipelineVertexInputStateCreateInfo) : VkPipeli
     for (vki in range(length(b.pVertexBindingDescriptions))) {
         b._vk_view_pVertexBindingDescriptions[vki] = vk_view_create_unsafe(b.pVertexBindingDescriptions[vki])
     }
-    vk.vertexBindingDescriptionCount = uint(length(b.pVertexBindingDescriptions))
     vk.pVertexBindingDescriptions = array_addr(b._vk_view_pVertexBindingDescriptions)
     b._vk_view_pVertexAttributeDescriptions |> resize(length(b.pVertexAttributeDescriptions))
     for (vki in range(length(b.pVertexAttributeDescriptions))) {
         b._vk_view_pVertexAttributeDescriptions[vki] = vk_view_create_unsafe(b.pVertexAttributeDescriptions[vki])
     }
-    vk.vertexAttributeDescriptionCount = uint(length(b.pVertexAttributeDescriptions))
     vk.pVertexAttributeDescriptions = array_addr(b._vk_view_pVertexAttributeDescriptions)
+    vk.vertexBindingDescriptionCount = uint(length(b.pVertexBindingDescriptions))
+    vk.vertexAttributeDescriptionCount = uint(length(b.pVertexAttributeDescriptions))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineVertexInputStateCreateInfo) {
@@ -1363,7 +1366,9 @@ def vk_view_destroy(var b : PipelineTessellationStateCreateInfo) {
 struct PipelineViewportStateCreateInfo {
     next : void?
     flags : VkPipelineViewportStateCreateFlags
+    viewportCount : uint
     pViewports : array<Viewport>
+    scissorCount : uint
     pScissors : array<Rect2D>
     _vk_view_pViewports : array<VkViewport>
     _vk_view_pScissors : array<VkRect2D>
@@ -1376,14 +1381,14 @@ def vk_view_create_unsafe(var b : PipelineViewportStateCreateInfo) : VkPipelineV
     for (vki in range(length(b.pViewports))) {
         b._vk_view_pViewports[vki] = vk_view_create_unsafe(b.pViewports[vki])
     }
-    vk.viewportCount = uint(length(b.pViewports))
     vk.pViewports = array_addr(b._vk_view_pViewports)
     b._vk_view_pScissors |> resize(length(b.pScissors))
     for (vki in range(length(b.pScissors))) {
         b._vk_view_pScissors[vki] = vk_view_create_unsafe(b.pScissors[vki])
     }
-    vk.scissorCount = uint(length(b.pScissors))
     vk.pScissors = array_addr(b._vk_view_pScissors)
+    vk.viewportCount = b.viewportCount != 0u ? b.viewportCount : uint(length(b.pViewports))
+    vk.scissorCount = b.scissorCount != 0u ? b.scissorCount : uint(length(b.pScissors))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineViewportStateCreateInfo) {
@@ -1531,6 +1536,7 @@ def vk_view_destroy(var b : PushConstantRange) {
 
 struct PipelineBinaryHandlesInfoKHR {
     next : void?
+    pipelineBinaryCount : uint
     pPipelineBinaries : array<PipelineBinaryKHR>
     _vk_view_pPipelineBinaries : array<VkPipelineBinaryKHR>
 }
@@ -1538,8 +1544,8 @@ def vk_view_create_unsafe(var b : PipelineBinaryHandlesInfoKHR) : VkPipelineBina
     var vk = VkPipelineBinaryHandlesInfoKHR()
     vk.pNext = b.next
     b._vk_view_pPipelineBinaries <- [for (h in b.pPipelineBinaries); boost_value_to_vk(h)]
-    vk.pipelineBinaryCount = uint(length(b.pPipelineBinaries))
     vk.pPipelineBinaries = array_addr(b._vk_view_pPipelineBinaries)
+    vk.pipelineBinaryCount = b.pipelineBinaryCount != 0u ? b.pipelineBinaryCount : uint(length(b.pPipelineBinaries))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineBinaryHandlesInfoKHR) {
@@ -1555,8 +1561,8 @@ def vk_view_create_unsafe(var b : PipelineBinaryInfoKHR) : VkPipelineBinaryInfoK
     var vk = VkPipelineBinaryInfoKHR()
     vk.pNext = b.next
     b._vk_view_pPipelineBinaries <- [for (h in b.pPipelineBinaries); boost_value_to_vk(h)]
-    vk.binaryCount = uint(length(b.pPipelineBinaries))
     vk.pPipelineBinaries = array_addr(b._vk_view_pPipelineBinaries)
+    vk.binaryCount = uint(length(b.pPipelineBinaries))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineBinaryInfoKHR) {
@@ -1616,14 +1622,14 @@ def vk_view_create_unsafe(var b : PipelineLayoutCreateInfo) : VkPipelineLayoutCr
     vk.pNext = b.next
     vk.flags = b.flags
     b._vk_view_pSetLayouts <- [for (h in b.pSetLayouts); boost_value_to_vk(h)]
-    vk.setLayoutCount = uint(length(b.pSetLayouts))
     vk.pSetLayouts = array_addr(b._vk_view_pSetLayouts)
     b._vk_view_pPushConstantRanges |> resize(length(b.pPushConstantRanges))
     for (vki in range(length(b.pPushConstantRanges))) {
         b._vk_view_pPushConstantRanges[vki] = vk_view_create_unsafe(b.pPushConstantRanges[vki])
     }
-    vk.pushConstantRangeCount = uint(length(b.pPushConstantRanges))
     vk.pPushConstantRanges = array_addr(b._vk_view_pPushConstantRanges)
+    vk.setLayoutCount = uint(length(b.pSetLayouts))
+    vk.pushConstantRangeCount = uint(length(b.pPushConstantRanges))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineLayoutCreateInfo) {
@@ -2038,6 +2044,7 @@ struct FramebufferCreateInfo {
     next : void?
     flags : VkFramebufferCreateFlags
     renderPass : RenderPass
+    attachmentCount : uint
     pAttachments : array<ImageView>
     width : uint
     height : uint
@@ -2050,11 +2057,11 @@ def vk_view_create_unsafe(var b : FramebufferCreateInfo) : VkFramebufferCreateIn
     vk.flags = b.flags
     vk.renderPass = boost_value_to_vk(b.renderPass)
     b._vk_view_pAttachments <- [for (h in b.pAttachments); boost_value_to_vk(h)]
-    vk.attachmentCount = uint(length(b.pAttachments))
     vk.pAttachments = array_addr(b._vk_view_pAttachments)
     vk.width = b.width
     vk.height = b.height
     vk.layers = b.layers
+    vk.attachmentCount = b.attachmentCount != 0u ? b.attachmentCount : uint(length(b.pAttachments))
     return <- vk
 }
 def vk_view_destroy(var b : FramebufferCreateInfo) {
@@ -2370,6 +2377,7 @@ struct SwapchainCreateInfoKHR {
     imageArrayLayers : uint
     imageUsage : VkImageUsageFlags
     imageSharingMode : VkSharingMode
+    queueFamilyIndexCount : uint
     pQueueFamilyIndices : array<uint>
     preTransform : VkSurfaceTransformFlagsKHR
     compositeAlpha : VkCompositeAlphaFlagsKHR
@@ -2391,13 +2399,13 @@ def vk_view_create_unsafe(var b : SwapchainCreateInfoKHR) : VkSwapchainCreateInf
     vk.imageUsage = b.imageUsage
     vk.imageSharingMode = b.imageSharingMode
     b._vk_view_pQueueFamilyIndices := b.pQueueFamilyIndices
-    vk.queueFamilyIndexCount = uint(length(b.pQueueFamilyIndices))
     vk.pQueueFamilyIndices = array_addr(b._vk_view_pQueueFamilyIndices)
     vk.preTransform = b.preTransform
     vk.compositeAlpha = b.compositeAlpha
     vk.presentMode = b.presentMode
     vk.clipped = b.clipped
     vk.oldSwapchain = boost_value_to_vk(b.oldSwapchain)
+    vk.queueFamilyIndexCount = b.queueFamilyIndexCount != 0u ? b.queueFamilyIndexCount : uint(length(b.pQueueFamilyIndices))
     return <- vk
 }
 def vk_view_destroy(var b : SwapchainCreateInfoKHR) {
@@ -3010,7 +3018,6 @@ def vk_view_create_unsafe(var b : GeneratedCommandsInfoNV) : VkGeneratedCommands
     for (vki in range(length(b.pStreams))) {
         b._vk_view_pStreams[vki] = vk_view_create_unsafe(b.pStreams[vki])
     }
-    vk.streamCount = uint(length(b.pStreams))
     vk.pStreams = array_addr(b._vk_view_pStreams)
     vk.sequencesCount = b.sequencesCount
     vk.preprocessBuffer = boost_value_to_vk(b.preprocessBuffer)
@@ -3020,6 +3027,7 @@ def vk_view_create_unsafe(var b : GeneratedCommandsInfoNV) : VkGeneratedCommands
     vk.sequencesCountOffset = b.sequencesCountOffset
     vk.sequencesIndexBuffer = boost_value_to_vk(b.sequencesIndexBuffer)
     vk.sequencesIndexOffset = b.sequencesIndexOffset
+    vk.streamCount = uint(length(b.pStreams))
     return <- vk
 }
 def vk_view_destroy(var b : GeneratedCommandsInfoNV) {
@@ -3253,6 +3261,7 @@ def vk_view_destroy(var b : ConformanceVersion) {
 
 struct PresentRegionsKHR {
     next : void?
+    swapchainCount : uint
     pRegions : array<PresentRegionKHR>
     _vk_view_pRegions : array<VkPresentRegionKHR>
 }
@@ -3263,8 +3272,8 @@ def vk_view_create_unsafe(var b : PresentRegionsKHR) : VkPresentRegionsKHR {
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.swapchainCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.swapchainCount = b.swapchainCount != 0u ? b.swapchainCount : uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : PresentRegionsKHR) {
@@ -3275,6 +3284,7 @@ def vk_view_destroy(var b : PresentRegionsKHR) {
 }
 
 struct PresentRegionKHR {
+    rectangleCount : uint
     pRectangles : array<RectLayerKHR>
     _vk_view_pRectangles : array<VkRectLayerKHR>
 }
@@ -3284,8 +3294,8 @@ def vk_view_create_unsafe(var b : PresentRegionKHR) : VkPresentRegionKHR {
     for (vki in range(length(b.pRectangles))) {
         b._vk_view_pRectangles[vki] = vk_view_create_unsafe(b.pRectangles[vki])
     }
-    vk.rectangleCount = uint(length(b.pRectangles))
     vk.pRectangles = array_addr(b._vk_view_pRectangles)
+    vk.rectangleCount = b.rectangleCount != 0u ? b.rectangleCount : uint(length(b.pRectangles))
     return <- vk
 }
 def vk_view_destroy(var b : PresentRegionKHR) {
@@ -3702,14 +3712,14 @@ def vk_view_create_unsafe(var b : RenderPassMultiviewCreateInfo) : VkRenderPassM
     var vk = VkRenderPassMultiviewCreateInfo()
     vk.pNext = b.next
     b._vk_view_pViewMasks := b.pViewMasks
-    vk.subpassCount = uint(length(b.pViewMasks))
     vk.pViewMasks = array_addr(b._vk_view_pViewMasks)
     b._vk_view_pViewOffsets := b.pViewOffsets
-    vk.dependencyCount = uint(length(b.pViewOffsets))
     vk.pViewOffsets = array_addr(b._vk_view_pViewOffsets)
     b._vk_view_pCorrelationMasks := b.pCorrelationMasks
-    vk.correlationMaskCount = uint(length(b.pCorrelationMasks))
     vk.pCorrelationMasks = array_addr(b._vk_view_pCorrelationMasks)
+    vk.subpassCount = uint(length(b.pViewMasks))
+    vk.dependencyCount = uint(length(b.pViewOffsets))
+    vk.correlationMaskCount = uint(length(b.pCorrelationMasks))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassMultiviewCreateInfo) {
@@ -3851,8 +3861,8 @@ def vk_view_create_unsafe(var b : BindBufferMemoryDeviceGroupInfo) : VkBindBuffe
     var vk = VkBindBufferMemoryDeviceGroupInfo()
     vk.pNext = b.next
     b._vk_view_pDeviceIndices := b.pDeviceIndices
-    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
     vk.pDeviceIndices = array_addr(b._vk_view_pDeviceIndices)
+    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
     return <- vk
 }
 def vk_view_destroy(var b : BindBufferMemoryDeviceGroupInfo) {
@@ -3888,14 +3898,14 @@ def vk_view_create_unsafe(var b : BindImageMemoryDeviceGroupInfo) : VkBindImageM
     var vk = VkBindImageMemoryDeviceGroupInfo()
     vk.pNext = b.next
     b._vk_view_pDeviceIndices := b.pDeviceIndices
-    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
     vk.pDeviceIndices = array_addr(b._vk_view_pDeviceIndices)
     b._vk_view_pSplitInstanceBindRegions |> resize(length(b.pSplitInstanceBindRegions))
     for (vki in range(length(b.pSplitInstanceBindRegions))) {
         b._vk_view_pSplitInstanceBindRegions[vki] = vk_view_create_unsafe(b.pSplitInstanceBindRegions[vki])
     }
-    vk.splitInstanceBindRegionCount = uint(length(b.pSplitInstanceBindRegions))
     vk.pSplitInstanceBindRegions = array_addr(b._vk_view_pSplitInstanceBindRegions)
+    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
+    vk.splitInstanceBindRegionCount = uint(length(b.pSplitInstanceBindRegions))
     return <- vk
 }
 def vk_view_destroy(var b : BindImageMemoryDeviceGroupInfo) {
@@ -3920,8 +3930,8 @@ def vk_view_create_unsafe(var b : DeviceGroupRenderPassBeginInfo) : VkDeviceGrou
     for (vki in range(length(b.pDeviceRenderAreas))) {
         b._vk_view_pDeviceRenderAreas[vki] = vk_view_create_unsafe(b.pDeviceRenderAreas[vki])
     }
-    vk.deviceRenderAreaCount = uint(length(b.pDeviceRenderAreas))
     vk.pDeviceRenderAreas = array_addr(b._vk_view_pDeviceRenderAreas)
+    vk.deviceRenderAreaCount = uint(length(b.pDeviceRenderAreas))
     return <- vk
 }
 def vk_view_destroy(var b : DeviceGroupRenderPassBeginInfo) {
@@ -3958,14 +3968,14 @@ def vk_view_create_unsafe(var b : DeviceGroupSubmitInfo) : VkDeviceGroupSubmitIn
     var vk = VkDeviceGroupSubmitInfo()
     vk.pNext = b.next
     b._vk_view_pWaitSemaphoreDeviceIndices := b.pWaitSemaphoreDeviceIndices
-    vk.waitSemaphoreCount = uint(length(b.pWaitSemaphoreDeviceIndices))
     vk.pWaitSemaphoreDeviceIndices = array_addr(b._vk_view_pWaitSemaphoreDeviceIndices)
     b._vk_view_pCommandBufferDeviceMasks := b.pCommandBufferDeviceMasks
-    vk.commandBufferCount = uint(length(b.pCommandBufferDeviceMasks))
     vk.pCommandBufferDeviceMasks = array_addr(b._vk_view_pCommandBufferDeviceMasks)
     b._vk_view_pSignalSemaphoreDeviceIndices := b.pSignalSemaphoreDeviceIndices
-    vk.signalSemaphoreCount = uint(length(b.pSignalSemaphoreDeviceIndices))
     vk.pSignalSemaphoreDeviceIndices = array_addr(b._vk_view_pSignalSemaphoreDeviceIndices)
+    vk.waitSemaphoreCount = uint(length(b.pWaitSemaphoreDeviceIndices))
+    vk.commandBufferCount = uint(length(b.pCommandBufferDeviceMasks))
+    vk.signalSemaphoreCount = uint(length(b.pSignalSemaphoreDeviceIndices))
     return <- vk
 }
 def vk_view_destroy(var b : DeviceGroupSubmitInfo) {
@@ -4052,9 +4062,9 @@ def vk_view_create_unsafe(var b : DeviceGroupPresentInfoKHR) : VkDeviceGroupPres
     var vk = VkDeviceGroupPresentInfoKHR()
     vk.pNext = b.next
     b._vk_view_pDeviceMasks := b.pDeviceMasks
-    vk.swapchainCount = uint(length(b.pDeviceMasks))
     vk.pDeviceMasks = array_addr(b._vk_view_pDeviceMasks)
     vk.mode = b.mode
+    vk.swapchainCount = uint(length(b.pDeviceMasks))
     return <- vk
 }
 def vk_view_destroy(var b : DeviceGroupPresentInfoKHR) {
@@ -4070,8 +4080,8 @@ def vk_view_create_unsafe(var b : DeviceGroupDeviceCreateInfo) : VkDeviceGroupDe
     var vk = VkDeviceGroupDeviceCreateInfo()
     vk.pNext = b.next
     b._vk_view_pPhysicalDevices <- [for (h in b.pPhysicalDevices); boost_value_to_vk(h)]
-    vk.physicalDeviceCount = uint(length(b.pPhysicalDevices))
     vk.pPhysicalDevices = array_addr(b._vk_view_pPhysicalDevices)
+    vk.physicalDeviceCount = uint(length(b.pPhysicalDevices))
     return <- vk
 }
 def vk_view_destroy(var b : DeviceGroupDeviceCreateInfo) {
@@ -4133,13 +4143,13 @@ def vk_view_create_unsafe(var b : DescriptorUpdateTemplateCreateInfo) : VkDescri
     for (vki in range(length(b.pDescriptorUpdateEntries))) {
         b._vk_view_pDescriptorUpdateEntries[vki] = vk_view_create_unsafe(b.pDescriptorUpdateEntries[vki])
     }
-    vk.descriptorUpdateEntryCount = uint(length(b.pDescriptorUpdateEntries))
     vk.pDescriptorUpdateEntries = array_addr(b._vk_view_pDescriptorUpdateEntries)
     vk.templateType = b.templateType
     vk.descriptorSetLayout = boost_value_to_vk(b.descriptorSetLayout)
     vk.pipelineBindPoint = b.pipelineBindPoint
     vk.pipelineLayout = boost_value_to_vk(b.pipelineLayout)
     vk.set = b.set
+    vk.descriptorUpdateEntryCount = uint(length(b.pDescriptorUpdateEntries))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorUpdateTemplateCreateInfo) {
@@ -4179,6 +4189,7 @@ def vk_view_destroy(var b : PhysicalDevicePresentIdFeaturesKHR) {
 
 struct PresentIdKHR {
     next : void?
+    swapchainCount : uint
     pPresentIds : array<uint64>
     _vk_view_pPresentIds : array<uint64>
 }
@@ -4186,8 +4197,8 @@ def vk_view_create_unsafe(var b : PresentIdKHR) : VkPresentIdKHR {
     var vk = VkPresentIdKHR()
     vk.pNext = b.next
     b._vk_view_pPresentIds := b.pPresentIds
-    vk.swapchainCount = uint(length(b.pPresentIds))
     vk.pPresentIds = array_addr(b._vk_view_pPresentIds)
+    vk.swapchainCount = b.swapchainCount != 0u ? b.swapchainCount : uint(length(b.pPresentIds))
     return <- vk
 }
 def vk_view_destroy(var b : PresentIdKHR) {
@@ -4210,6 +4221,7 @@ def vk_view_destroy(var b : PhysicalDevicePresentId2FeaturesKHR) {
 
 struct PresentId2KHR {
     next : void?
+    swapchainCount : uint
     pPresentIds : array<uint64>
     _vk_view_pPresentIds : array<uint64>
 }
@@ -4217,8 +4229,8 @@ def vk_view_create_unsafe(var b : PresentId2KHR) : VkPresentId2KHR {
     var vk = VkPresentId2KHR()
     vk.pNext = b.next
     b._vk_view_pPresentIds := b.pPresentIds
-    vk.swapchainCount = uint(length(b.pPresentIds))
     vk.pPresentIds = array_addr(b._vk_view_pPresentIds)
+    vk.swapchainCount = b.swapchainCount != 0u ? b.swapchainCount : uint(length(b.pPresentIds))
     return <- vk
 }
 def vk_view_destroy(var b : PresentId2KHR) {
@@ -4369,8 +4381,8 @@ def vk_view_create_unsafe(var b : PastPresentationTimingPropertiesEXT) : VkPastP
     for (vki in range(length(b.pPresentationTimings))) {
         b._vk_view_pPresentationTimings[vki] = vk_view_create_unsafe(b.pPresentationTimings[vki])
     }
-    vk.presentationTimingCount = uint(length(b.pPresentationTimings))
     vk.pPresentationTimings = array_addr(b._vk_view_pPresentationTimings)
+    vk.presentationTimingCount = uint(length(b.pPresentationTimings))
     return <- vk
 }
 def vk_view_destroy(var b : PastPresentationTimingPropertiesEXT) {
@@ -4399,11 +4411,11 @@ def vk_view_create_unsafe(var b : PastPresentationTimingEXT) : VkPastPresentatio
     for (vki in range(length(b.pPresentStages))) {
         b._vk_view_pPresentStages[vki] = vk_view_create_unsafe(b.pPresentStages[vki])
     }
-    vk.presentStageCount = uint(length(b.pPresentStages))
     vk.pPresentStages = array_addr(b._vk_view_pPresentStages)
     vk.timeDomain = b.timeDomain
     vk.timeDomainId = b.timeDomainId
     vk.reportComplete = b.reportComplete
+    vk.presentStageCount = uint(length(b.pPresentStages))
     return <- vk
 }
 def vk_view_destroy(var b : PastPresentationTimingEXT) {
@@ -4415,6 +4427,7 @@ def vk_view_destroy(var b : PastPresentationTimingEXT) {
 
 struct PresentTimingsInfoEXT {
     next : void?
+    swapchainCount : uint
     pTimingInfos : array<PresentTimingInfoEXT>
     _vk_view_pTimingInfos : array<VkPresentTimingInfoEXT>
 }
@@ -4425,8 +4438,8 @@ def vk_view_create_unsafe(var b : PresentTimingsInfoEXT) : VkPresentTimingsInfoE
     for (vki in range(length(b.pTimingInfos))) {
         b._vk_view_pTimingInfos[vki] = vk_view_create_unsafe(b.pTimingInfos[vki])
     }
-    vk.swapchainCount = uint(length(b.pTimingInfos))
     vk.pTimingInfos = array_addr(b._vk_view_pTimingInfos)
+    vk.swapchainCount = b.swapchainCount != 0u ? b.swapchainCount : uint(length(b.pTimingInfos))
     return <- vk
 }
 def vk_view_destroy(var b : PresentTimingsInfoEXT) {
@@ -4566,6 +4579,7 @@ def vk_view_destroy(var b : PastPresentationTimingGOOGLE) {
 
 struct PresentTimesInfoGOOGLE {
     next : void?
+    swapchainCount : uint
     pTimes : array<PresentTimeGOOGLE>
     _vk_view_pTimes : array<VkPresentTimeGOOGLE>
 }
@@ -4576,8 +4590,8 @@ def vk_view_create_unsafe(var b : PresentTimesInfoGOOGLE) : VkPresentTimesInfoGO
     for (vki in range(length(b.pTimes))) {
         b._vk_view_pTimes[vki] = vk_view_create_unsafe(b.pTimes[vki])
     }
-    vk.swapchainCount = uint(length(b.pTimes))
     vk.pTimes = array_addr(b._vk_view_pTimes)
+    vk.swapchainCount = b.swapchainCount != 0u ? b.swapchainCount : uint(length(b.pTimes))
     return <- vk
 }
 def vk_view_destroy(var b : PresentTimesInfoGOOGLE) {
@@ -4618,6 +4632,7 @@ def vk_view_destroy(var b : ViewportWScalingNV) {
 struct PipelineViewportWScalingStateCreateInfoNV {
     next : void?
     viewportWScalingEnable : uint
+    viewportCount : uint
     pViewportWScalings : array<ViewportWScalingNV>
     _vk_view_pViewportWScalings : array<VkViewportWScalingNV>
 }
@@ -4629,8 +4644,8 @@ def vk_view_create_unsafe(var b : PipelineViewportWScalingStateCreateInfoNV) : V
     for (vki in range(length(b.pViewportWScalings))) {
         b._vk_view_pViewportWScalings[vki] = vk_view_create_unsafe(b.pViewportWScalings[vki])
     }
-    vk.viewportCount = uint(length(b.pViewportWScalings))
     vk.pViewportWScalings = array_addr(b._vk_view_pViewportWScalings)
+    vk.viewportCount = b.viewportCount != 0u ? b.viewportCount : uint(length(b.pViewportWScalings))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineViewportWScalingStateCreateInfoNV) {
@@ -4672,8 +4687,8 @@ def vk_view_create_unsafe(var b : PipelineViewportSwizzleStateCreateInfoNV) : Vk
     for (vki in range(length(b.pViewportSwizzles))) {
         b._vk_view_pViewportSwizzles[vki] = vk_view_create_unsafe(b.pViewportSwizzles[vki])
     }
-    vk.viewportCount = uint(length(b.pViewportSwizzles))
     vk.pViewportSwizzles = array_addr(b._vk_view_pViewportSwizzles)
+    vk.viewportCount = uint(length(b.pViewportSwizzles))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineViewportSwizzleStateCreateInfoNV) {
@@ -4701,6 +4716,7 @@ struct PipelineDiscardRectangleStateCreateInfoEXT {
     next : void?
     flags : VkPipelineDiscardRectangleStateCreateFlagsEXT
     discardRectangleMode : VkDiscardRectangleModeEXT
+    discardRectangleCount : uint
     pDiscardRectangles : array<Rect2D>
     _vk_view_pDiscardRectangles : array<VkRect2D>
 }
@@ -4713,8 +4729,8 @@ def vk_view_create_unsafe(var b : PipelineDiscardRectangleStateCreateInfoEXT) : 
     for (vki in range(length(b.pDiscardRectangles))) {
         b._vk_view_pDiscardRectangles[vki] = vk_view_create_unsafe(b.pDiscardRectangles[vki])
     }
-    vk.discardRectangleCount = uint(length(b.pDiscardRectangles))
     vk.pDiscardRectangles = array_addr(b._vk_view_pDiscardRectangles)
+    vk.discardRectangleCount = b.discardRectangleCount != 0u ? b.discardRectangleCount : uint(length(b.pDiscardRectangles))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineDiscardRectangleStateCreateInfoEXT) {
@@ -4766,8 +4782,8 @@ def vk_view_create_unsafe(var b : RenderPassInputAttachmentAspectCreateInfo) : V
     for (vki in range(length(b.pAspectReferences))) {
         b._vk_view_pAspectReferences[vki] = vk_view_create_unsafe(b.pAspectReferences[vki])
     }
-    vk.aspectReferenceCount = uint(length(b.pAspectReferences))
     vk.pAspectReferences = array_addr(b._vk_view_pAspectReferences)
+    vk.aspectReferenceCount = uint(length(b.pAspectReferences))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassInputAttachmentAspectCreateInfo) {
@@ -5387,8 +5403,8 @@ def vk_view_create_unsafe(var b : SampleLocationsInfoEXT) : VkSampleLocationsInf
     for (vki in range(length(b.pSampleLocations))) {
         b._vk_view_pSampleLocations[vki] = vk_view_create_unsafe(b.pSampleLocations[vki])
     }
-    vk.sampleLocationsCount = uint(length(b.pSampleLocations))
     vk.pSampleLocations = array_addr(b._vk_view_pSampleLocations)
+    vk.sampleLocationsCount = uint(length(b.pSampleLocations))
     return <- vk
 }
 def vk_view_destroy(var b : SampleLocationsInfoEXT) {
@@ -5440,14 +5456,14 @@ def vk_view_create_unsafe(var b : RenderPassSampleLocationsBeginInfoEXT) : VkRen
     for (vki in range(length(b.pAttachmentInitialSampleLocations))) {
         b._vk_view_pAttachmentInitialSampleLocations[vki] = vk_view_create_unsafe(b.pAttachmentInitialSampleLocations[vki])
     }
-    vk.attachmentInitialSampleLocationsCount = uint(length(b.pAttachmentInitialSampleLocations))
     vk.pAttachmentInitialSampleLocations = array_addr(b._vk_view_pAttachmentInitialSampleLocations)
     b._vk_view_pPostSubpassSampleLocations |> resize(length(b.pPostSubpassSampleLocations))
     for (vki in range(length(b.pPostSubpassSampleLocations))) {
         b._vk_view_pPostSubpassSampleLocations[vki] = vk_view_create_unsafe(b.pPostSubpassSampleLocations[vki])
     }
-    vk.postSubpassSampleLocationsCount = uint(length(b.pPostSubpassSampleLocations))
     vk.pPostSubpassSampleLocations = array_addr(b._vk_view_pPostSubpassSampleLocations)
+    vk.attachmentInitialSampleLocationsCount = uint(length(b.pAttachmentInitialSampleLocations))
+    vk.postSubpassSampleLocationsCount = uint(length(b.pPostSubpassSampleLocations))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassSampleLocationsBeginInfoEXT) {
@@ -5632,6 +5648,7 @@ struct PipelineCoverageModulationStateCreateInfoNV {
     flags : VkPipelineCoverageModulationStateCreateFlagsNV
     coverageModulationMode : VkCoverageModulationModeNV
     coverageModulationTableEnable : uint
+    coverageModulationTableCount : uint
     pCoverageModulationTable : array<float>
     _vk_view_pCoverageModulationTable : array<float>
 }
@@ -5642,8 +5659,8 @@ def vk_view_create_unsafe(var b : PipelineCoverageModulationStateCreateInfoNV) :
     vk.coverageModulationMode = b.coverageModulationMode
     vk.coverageModulationTableEnable = b.coverageModulationTableEnable
     b._vk_view_pCoverageModulationTable := b.pCoverageModulationTable
-    vk.coverageModulationTableCount = uint(length(b.pCoverageModulationTable))
     vk.pCoverageModulationTable = array_addr(b._vk_view_pCoverageModulationTable)
+    vk.coverageModulationTableCount = b.coverageModulationTableCount != 0u ? b.coverageModulationTableCount : uint(length(b.pCoverageModulationTable))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineCoverageModulationStateCreateInfoNV) {
@@ -6427,8 +6444,8 @@ def vk_view_create_unsafe(var b : DescriptorSetVariableDescriptorCountAllocateIn
     var vk = VkDescriptorSetVariableDescriptorCountAllocateInfo()
     vk.pNext = b.next
     b._vk_view_pDescriptorCounts := b.pDescriptorCounts
-    vk.descriptorSetCount = uint(length(b.pDescriptorCounts))
     vk.pDescriptorCounts = array_addr(b._vk_view_pDescriptorCounts)
+    vk.descriptorSetCount = uint(length(b.pDescriptorCounts))
     return <- vk
 }
 def vk_view_destroy(var b : DescriptorSetVariableDescriptorCountAllocateInfo) {
@@ -6597,7 +6614,9 @@ def vk_view_destroy(var b : SemaphoreTypeCreateInfo) {
 
 struct TimelineSemaphoreSubmitInfo {
     next : void?
+    waitSemaphoreValueCount : uint
     pWaitSemaphoreValues : array<uint64>
+    signalSemaphoreValueCount : uint
     pSignalSemaphoreValues : array<uint64>
     _vk_view_pWaitSemaphoreValues : array<uint64>
     _vk_view_pSignalSemaphoreValues : array<uint64>
@@ -6606,11 +6625,11 @@ def vk_view_create_unsafe(var b : TimelineSemaphoreSubmitInfo) : VkTimelineSemap
     var vk = VkTimelineSemaphoreSubmitInfo()
     vk.pNext = b.next
     b._vk_view_pWaitSemaphoreValues := b.pWaitSemaphoreValues
-    vk.waitSemaphoreValueCount = uint(length(b.pWaitSemaphoreValues))
     vk.pWaitSemaphoreValues = array_addr(b._vk_view_pWaitSemaphoreValues)
     b._vk_view_pSignalSemaphoreValues := b.pSignalSemaphoreValues
-    vk.signalSemaphoreValueCount = uint(length(b.pSignalSemaphoreValues))
     vk.pSignalSemaphoreValues = array_addr(b._vk_view_pSignalSemaphoreValues)
+    vk.waitSemaphoreValueCount = b.waitSemaphoreValueCount != 0u ? b.waitSemaphoreValueCount : uint(length(b.pWaitSemaphoreValues))
+    vk.signalSemaphoreValueCount = b.signalSemaphoreValueCount != 0u ? b.signalSemaphoreValueCount : uint(length(b.pSignalSemaphoreValues))
     return <- vk
 }
 def vk_view_destroy(var b : TimelineSemaphoreSubmitInfo) {
@@ -6631,11 +6650,10 @@ def vk_view_create_unsafe(var b : SemaphoreWaitInfo) : VkSemaphoreWaitInfo {
     vk.pNext = b.next
     vk.flags = b.flags
     b._vk_view_pSemaphores <- [for (h in b.pSemaphores); boost_value_to_vk(h)]
-    vk.semaphoreCount = uint(length(b.pSemaphores))
     vk.pSemaphores = array_addr(b._vk_view_pSemaphores)
     b._vk_view_pValues := b.pValues
-    vk.semaphoreCount = uint(length(b.pValues))
     vk.pValues = array_addr(b._vk_view_pValues)
+    vk.semaphoreCount = uint(length(b.pSemaphores))
     return <- vk
 }
 def vk_view_destroy(var b : SemaphoreWaitInfo) {
@@ -6685,8 +6703,8 @@ def vk_view_create_unsafe(var b : PipelineVertexInputDivisorStateCreateInfo) : V
     for (vki in range(length(b.pVertexBindingDivisors))) {
         b._vk_view_pVertexBindingDivisors[vki] = vk_view_create_unsafe(b.pVertexBindingDivisors[vki])
     }
-    vk.vertexBindingDivisorCount = uint(length(b.pVertexBindingDivisors))
     vk.pVertexBindingDivisors = array_addr(b._vk_view_pVertexBindingDivisors)
+    vk.vertexBindingDivisorCount = uint(length(b.pVertexBindingDivisors))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineVertexInputDivisorStateCreateInfo) {
@@ -7086,6 +7104,7 @@ def vk_view_destroy(var b : PhysicalDeviceExclusiveScissorFeaturesNV) {
 
 struct PipelineViewportExclusiveScissorStateCreateInfoNV {
     next : void?
+    exclusiveScissorCount : uint
     pExclusiveScissors : array<Rect2D>
     _vk_view_pExclusiveScissors : array<VkRect2D>
 }
@@ -7096,8 +7115,8 @@ def vk_view_create_unsafe(var b : PipelineViewportExclusiveScissorStateCreateInf
     for (vki in range(length(b.pExclusiveScissors))) {
         b._vk_view_pExclusiveScissors[vki] = vk_view_create_unsafe(b.pExclusiveScissors[vki])
     }
-    vk.exclusiveScissorCount = uint(length(b.pExclusiveScissors))
     vk.pExclusiveScissors = array_addr(b._vk_view_pExclusiveScissors)
+    vk.exclusiveScissorCount = b.exclusiveScissorCount != 0u ? b.exclusiveScissorCount : uint(length(b.pExclusiveScissors))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineViewportExclusiveScissorStateCreateInfoNV) {
@@ -7331,8 +7350,8 @@ def vk_view_create_unsafe(var b : CoarseSampleOrderCustomNV) : VkCoarseSampleOrd
     for (vki in range(length(b.pSampleLocations))) {
         b._vk_view_pSampleLocations[vki] = vk_view_create_unsafe(b.pSampleLocations[vki])
     }
-    vk.sampleLocationCount = uint(length(b.pSampleLocations))
     vk.pSampleLocations = array_addr(b._vk_view_pSampleLocations)
+    vk.sampleLocationCount = uint(length(b.pSampleLocations))
     return <- vk
 }
 def vk_view_destroy(var b : CoarseSampleOrderCustomNV) {
@@ -7356,8 +7375,8 @@ def vk_view_create_unsafe(var b : PipelineViewportCoarseSampleOrderStateCreateIn
     for (vki in range(length(b.pCustomSampleOrders))) {
         b._vk_view_pCustomSampleOrders[vki] = vk_view_create_unsafe(b.pCustomSampleOrders[vki])
     }
-    vk.customSampleOrderCount = uint(length(b.pCustomSampleOrders))
     vk.pCustomSampleOrders = array_addr(b._vk_view_pCustomSampleOrders)
+    vk.customSampleOrderCount = uint(length(b.pCustomSampleOrders))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineViewportCoarseSampleOrderStateCreateInfoNV) {
@@ -7558,8 +7577,8 @@ def vk_view_create_unsafe(var b : BindAccelerationStructureMemoryInfoNV) : VkBin
     vk.memory = boost_value_to_vk(b.memory)
     vk.memoryOffset = b.memoryOffset
     b._vk_view_pDeviceIndices := b.pDeviceIndices
-    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
     vk.pDeviceIndices = array_addr(b._vk_view_pDeviceIndices)
+    vk.deviceIndexCount = uint(length(b.pDeviceIndices))
     return <- vk
 }
 def vk_view_destroy(var b : BindAccelerationStructureMemoryInfoNV) {
@@ -7575,8 +7594,8 @@ def vk_view_create_unsafe(var b : WriteDescriptorSetAccelerationStructureKHR) : 
     var vk = VkWriteDescriptorSetAccelerationStructureKHR()
     vk.pNext = b.next
     b._vk_view_pAccelerationStructures <- [for (h in b.pAccelerationStructures); boost_value_to_vk(h)]
-    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     vk.pAccelerationStructures = array_addr(b._vk_view_pAccelerationStructures)
+    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     return <- vk
 }
 def vk_view_destroy(var b : WriteDescriptorSetAccelerationStructureKHR) {
@@ -7592,8 +7611,8 @@ def vk_view_create_unsafe(var b : WriteDescriptorSetAccelerationStructureNV) : V
     var vk = VkWriteDescriptorSetAccelerationStructureNV()
     vk.pNext = b.next
     b._vk_view_pAccelerationStructures <- [for (h in b.pAccelerationStructures); boost_value_to_vk(h)]
-    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     vk.pAccelerationStructures = array_addr(b._vk_view_pAccelerationStructures)
+    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     return <- vk
 }
 def vk_view_destroy(var b : WriteDescriptorSetAccelerationStructureNV) {
@@ -7846,6 +7865,7 @@ def vk_view_destroy(var b : PhysicalDeviceRayTracingMaintenance1FeaturesKHR) {
 
 struct DrmFormatModifierPropertiesListEXT {
     next : void?
+    drmFormatModifierCount : uint
     pDrmFormatModifierProperties : array<DrmFormatModifierPropertiesEXT>
     _vk_view_pDrmFormatModifierProperties : array<VkDrmFormatModifierPropertiesEXT>
 }
@@ -7856,8 +7876,8 @@ def vk_view_create_unsafe(var b : DrmFormatModifierPropertiesListEXT) : VkDrmFor
     for (vki in range(length(b.pDrmFormatModifierProperties))) {
         b._vk_view_pDrmFormatModifierProperties[vki] = vk_view_create_unsafe(b.pDrmFormatModifierProperties[vki])
     }
-    vk.drmFormatModifierCount = uint(length(b.pDrmFormatModifierProperties))
     vk.pDrmFormatModifierProperties = array_addr(b._vk_view_pDrmFormatModifierProperties)
+    vk.drmFormatModifierCount = b.drmFormatModifierCount != 0u ? b.drmFormatModifierCount : uint(length(b.pDrmFormatModifierProperties))
     return <- vk
 }
 def vk_view_destroy(var b : DrmFormatModifierPropertiesListEXT) {
@@ -7887,6 +7907,7 @@ struct PhysicalDeviceImageDrmFormatModifierInfoEXT {
     next : void?
     drmFormatModifier : uint64
     sharingMode : VkSharingMode
+    queueFamilyIndexCount : uint
     pQueueFamilyIndices : array<uint>
     _vk_view_pQueueFamilyIndices : array<uint>
 }
@@ -7896,8 +7917,8 @@ def vk_view_create_unsafe(var b : PhysicalDeviceImageDrmFormatModifierInfoEXT) :
     vk.drmFormatModifier = b.drmFormatModifier
     vk.sharingMode = b.sharingMode
     b._vk_view_pQueueFamilyIndices := b.pQueueFamilyIndices
-    vk.queueFamilyIndexCount = uint(length(b.pQueueFamilyIndices))
     vk.pQueueFamilyIndices = array_addr(b._vk_view_pQueueFamilyIndices)
+    vk.queueFamilyIndexCount = b.queueFamilyIndexCount != 0u ? b.queueFamilyIndexCount : uint(length(b.pQueueFamilyIndices))
     return <- vk
 }
 def vk_view_destroy(var b : PhysicalDeviceImageDrmFormatModifierInfoEXT) {
@@ -7913,8 +7934,8 @@ def vk_view_create_unsafe(var b : ImageDrmFormatModifierListCreateInfoEXT) : VkI
     var vk = VkImageDrmFormatModifierListCreateInfoEXT()
     vk.pNext = b.next
     b._vk_view_pDrmFormatModifiers := b.pDrmFormatModifiers
-    vk.drmFormatModifierCount = uint(length(b.pDrmFormatModifiers))
     vk.pDrmFormatModifiers = array_addr(b._vk_view_pDrmFormatModifiers)
+    vk.drmFormatModifierCount = uint(length(b.pDrmFormatModifiers))
     return <- vk
 }
 def vk_view_destroy(var b : ImageDrmFormatModifierListCreateInfoEXT) {
@@ -7935,8 +7956,8 @@ def vk_view_create_unsafe(var b : ImageDrmFormatModifierExplicitCreateInfoEXT) :
     for (vki in range(length(b.pPlaneLayouts))) {
         b._vk_view_pPlaneLayouts[vki] = vk_view_create_unsafe(b.pPlaneLayouts[vki])
     }
-    vk.drmFormatModifierPlaneCount = uint(length(b.pPlaneLayouts))
     vk.pPlaneLayouts = array_addr(b._vk_view_pPlaneLayouts)
+    vk.drmFormatModifierPlaneCount = uint(length(b.pPlaneLayouts))
     return <- vk
 }
 def vk_view_destroy(var b : ImageDrmFormatModifierExplicitCreateInfoEXT) {
@@ -8112,8 +8133,8 @@ def vk_view_create_unsafe(var b : RenderPassFragmentDensityMapOffsetEndInfoEXT) 
     for (vki in range(length(b.pFragmentDensityOffsets))) {
         b._vk_view_pFragmentDensityOffsets[vki] = vk_view_create_unsafe(b.pFragmentDensityOffsets[vki])
     }
-    vk.fragmentDensityOffsetCount = uint(length(b.pFragmentDensityOffsets))
     vk.pFragmentDensityOffsets = array_addr(b._vk_view_pFragmentDensityOffsets)
+    vk.fragmentDensityOffsetCount = uint(length(b.pFragmentDensityOffsets))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassFragmentDensityMapOffsetEndInfoEXT) {
@@ -8368,8 +8389,8 @@ def vk_view_create_unsafe(var b : RenderPassAttachmentBeginInfo) : VkRenderPassA
     var vk = VkRenderPassAttachmentBeginInfo()
     vk.pNext = b.next
     b._vk_view_pAttachments <- [for (h in b.pAttachments); boost_value_to_vk(h)]
-    vk.attachmentCount = uint(length(b.pAttachments))
     vk.pAttachments = array_addr(b._vk_view_pAttachments)
+    vk.attachmentCount = uint(length(b.pAttachments))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassAttachmentBeginInfo) {
@@ -8565,8 +8586,8 @@ def vk_view_create_unsafe(var b : QueryPoolPerformanceCreateInfoKHR) : VkQueryPo
     vk.pNext = b.next
     vk.queueFamilyIndex = b.queueFamilyIndex
     b._vk_view_pCounterIndices := b.pCounterIndices
-    vk.counterIndexCount = uint(length(b.pCounterIndices))
     vk.pCounterIndices = array_addr(b._vk_view_pCounterIndices)
+    vk.counterIndexCount = uint(length(b.pCounterIndices))
     return <- vk
 }
 def vk_view_destroy(var b : QueryPoolPerformanceCreateInfoKHR) {
@@ -9922,8 +9943,8 @@ def vk_view_create_unsafe(var b : PipelineLibraryCreateInfoKHR) : VkPipelineLibr
     var vk = VkPipelineLibraryCreateInfoKHR()
     vk.pNext = b.next
     b._vk_view_pLibraries <- [for (h in b.pLibraries); boost_value_to_vk(h)]
-    vk.libraryCount = uint(length(b.pLibraries))
     vk.pLibraries = array_addr(b._vk_view_pLibraries)
+    vk.libraryCount = uint(length(b.pLibraries))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineLibraryCreateInfoKHR) {
@@ -10219,8 +10240,8 @@ def vk_view_create_unsafe(var b : WriteDescriptorSetPartitionedAccelerationStruc
     var vk = VkWriteDescriptorSetPartitionedAccelerationStructureNV()
     vk.pNext = b.next
     b._vk_view_pAccelerationStructures := b.pAccelerationStructures
-    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     vk.pAccelerationStructures = array_addr(b._vk_view_pAccelerationStructures)
+    vk.accelerationStructureCount = uint(length(b.pAccelerationStructures))
     return <- vk
 }
 def vk_view_destroy(var b : WriteDescriptorSetPartitionedAccelerationStructureNV) {
@@ -10559,8 +10580,8 @@ def vk_view_create_unsafe(var b : CopyBufferInfo2) : VkCopyBufferInfo2 {
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyBufferInfo2) {
@@ -10590,8 +10611,8 @@ def vk_view_create_unsafe(var b : CopyImageInfo2) : VkCopyImageInfo2 {
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyImageInfo2) {
@@ -10619,8 +10640,8 @@ def vk_view_create_unsafe(var b : CopyBufferToImageInfo2) : VkCopyBufferToImageI
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyBufferToImageInfo2) {
@@ -10648,8 +10669,8 @@ def vk_view_create_unsafe(var b : CopyImageToBufferInfo2) : VkCopyImageToBufferI
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyImageToBufferInfo2) {
@@ -10679,8 +10700,8 @@ def vk_view_create_unsafe(var b : ResolveImageInfo2) : VkResolveImageInfo2 {
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : ResolveImageInfo2) {
@@ -11065,8 +11086,8 @@ def vk_view_create_unsafe(var b : GeneratedCommandsShaderInfoEXT) : VkGeneratedC
     var vk = VkGeneratedCommandsShaderInfoEXT()
     vk.pNext = b.next
     b._vk_view_pShaders <- [for (h in b.pShaders); boost_value_to_vk(h)]
-    vk.shaderCount = uint(length(b.pShaders))
     vk.pShaders = array_addr(b._vk_view_pShaders)
+    vk.shaderCount = uint(length(b.pShaders))
     return <- vk
 }
 def vk_view_destroy(var b : GeneratedCommandsShaderInfoEXT) {
@@ -11118,8 +11139,8 @@ def vk_view_create_unsafe(var b : IndirectExecutionSetShaderLayoutInfoEXT) : VkI
     var vk = VkIndirectExecutionSetShaderLayoutInfoEXT()
     vk.pNext = b.next
     b._vk_view_pSetLayouts <- [for (h in b.pSetLayouts); boost_value_to_vk(h)]
-    vk.setLayoutCount = uint(length(b.pSetLayouts))
     vk.pSetLayouts = array_addr(b._vk_view_pSetLayouts)
+    vk.setLayoutCount = uint(length(b.pSetLayouts))
     return <- vk
 }
 def vk_view_destroy(var b : IndirectExecutionSetShaderLayoutInfoEXT) {
@@ -11140,21 +11161,20 @@ def vk_view_create_unsafe(var b : IndirectExecutionSetShaderInfoEXT) : VkIndirec
     var vk = VkIndirectExecutionSetShaderInfoEXT()
     vk.pNext = b.next
     b._vk_view_pInitialShaders <- [for (h in b.pInitialShaders); boost_value_to_vk(h)]
-    vk.shaderCount = uint(length(b.pInitialShaders))
     vk.pInitialShaders = array_addr(b._vk_view_pInitialShaders)
     b._vk_view_pSetLayoutInfos |> resize(length(b.pSetLayoutInfos))
     for (vki in range(length(b.pSetLayoutInfos))) {
         b._vk_view_pSetLayoutInfos[vki] = vk_view_create_unsafe(b.pSetLayoutInfos[vki])
     }
-    vk.shaderCount = uint(length(b.pSetLayoutInfos))
     vk.pSetLayoutInfos = array_addr(b._vk_view_pSetLayoutInfos)
     vk.maxShaderCount = b.maxShaderCount
     b._vk_view_pPushConstantRanges |> resize(length(b.pPushConstantRanges))
     for (vki in range(length(b.pPushConstantRanges))) {
         b._vk_view_pPushConstantRanges[vki] = vk_view_create_unsafe(b.pPushConstantRanges[vki])
     }
-    vk.pushConstantRangeCount = uint(length(b.pPushConstantRanges))
     vk.pPushConstantRanges = array_addr(b._vk_view_pPushConstantRanges)
+    vk.shaderCount = uint(length(b.pInitialShaders))
+    vk.pushConstantRangeCount = uint(length(b.pPushConstantRanges))
     return <- vk
 }
 def vk_view_destroy(var b : IndirectExecutionSetShaderInfoEXT) {
@@ -11269,8 +11289,8 @@ def vk_view_create_unsafe(var b : IndirectCommandsLayoutCreateInfoEXT) : VkIndir
     for (vki in range(length(b.pTokens))) {
         b._vk_view_pTokens[vki] = vk_view_create_unsafe(b.pTokens[vki])
     }
-    vk.tokenCount = uint(length(b.pTokens))
     vk.pTokens = array_addr(b._vk_view_pTokens)
+    vk.tokenCount = uint(length(b.pTokens))
     return <- vk
 }
 def vk_view_destroy(var b : IndirectCommandsLayoutCreateInfoEXT) {
@@ -11529,8 +11549,8 @@ def vk_view_create_unsafe(var b : PipelineColorWriteCreateInfoEXT) : VkPipelineC
     var vk = VkPipelineColorWriteCreateInfoEXT()
     vk.pNext = b.next
     b._vk_view_pColorWriteEnables := b.pColorWriteEnables
-    vk.attachmentCount = uint(length(b.pColorWriteEnables))
     vk.pColorWriteEnables = array_addr(b._vk_view_pColorWriteEnables)
+    vk.attachmentCount = uint(length(b.pColorWriteEnables))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineColorWriteCreateInfoEXT) {
@@ -11653,20 +11673,20 @@ def vk_view_create_unsafe(var b : DependencyInfo) : VkDependencyInfo {
     for (vki in range(length(b.pMemoryBarriers))) {
         b._vk_view_pMemoryBarriers[vki] = vk_view_create_unsafe(b.pMemoryBarriers[vki])
     }
-    vk.memoryBarrierCount = uint(length(b.pMemoryBarriers))
     vk.pMemoryBarriers = array_addr(b._vk_view_pMemoryBarriers)
     b._vk_view_pBufferMemoryBarriers |> resize(length(b.pBufferMemoryBarriers))
     for (vki in range(length(b.pBufferMemoryBarriers))) {
         b._vk_view_pBufferMemoryBarriers[vki] = vk_view_create_unsafe(b.pBufferMemoryBarriers[vki])
     }
-    vk.bufferMemoryBarrierCount = uint(length(b.pBufferMemoryBarriers))
     vk.pBufferMemoryBarriers = array_addr(b._vk_view_pBufferMemoryBarriers)
     b._vk_view_pImageMemoryBarriers |> resize(length(b.pImageMemoryBarriers))
     for (vki in range(length(b.pImageMemoryBarriers))) {
         b._vk_view_pImageMemoryBarriers[vki] = vk_view_create_unsafe(b.pImageMemoryBarriers[vki])
     }
-    vk.imageMemoryBarrierCount = uint(length(b.pImageMemoryBarriers))
     vk.pImageMemoryBarriers = array_addr(b._vk_view_pImageMemoryBarriers)
+    vk.memoryBarrierCount = uint(length(b.pMemoryBarriers))
+    vk.bufferMemoryBarrierCount = uint(length(b.pBufferMemoryBarriers))
+    vk.imageMemoryBarrierCount = uint(length(b.pImageMemoryBarriers))
     return <- vk
 }
 def vk_view_destroy(var b : DependencyInfo) {
@@ -11738,20 +11758,20 @@ def vk_view_create_unsafe(var b : SubmitInfo2) : VkSubmitInfo2 {
     for (vki in range(length(b.pWaitSemaphoreInfos))) {
         b._vk_view_pWaitSemaphoreInfos[vki] = vk_view_create_unsafe(b.pWaitSemaphoreInfos[vki])
     }
-    vk.waitSemaphoreInfoCount = uint(length(b.pWaitSemaphoreInfos))
     vk.pWaitSemaphoreInfos = array_addr(b._vk_view_pWaitSemaphoreInfos)
     b._vk_view_pCommandBufferInfos |> resize(length(b.pCommandBufferInfos))
     for (vki in range(length(b.pCommandBufferInfos))) {
         b._vk_view_pCommandBufferInfos[vki] = vk_view_create_unsafe(b.pCommandBufferInfos[vki])
     }
-    vk.commandBufferInfoCount = uint(length(b.pCommandBufferInfos))
     vk.pCommandBufferInfos = array_addr(b._vk_view_pCommandBufferInfos)
     b._vk_view_pSignalSemaphoreInfos |> resize(length(b.pSignalSemaphoreInfos))
     for (vki in range(length(b.pSignalSemaphoreInfos))) {
         b._vk_view_pSignalSemaphoreInfos[vki] = vk_view_create_unsafe(b.pSignalSemaphoreInfos[vki])
     }
-    vk.signalSemaphoreInfoCount = uint(length(b.pSignalSemaphoreInfos))
     vk.pSignalSemaphoreInfos = array_addr(b._vk_view_pSignalSemaphoreInfos)
+    vk.waitSemaphoreInfoCount = uint(length(b.pWaitSemaphoreInfos))
+    vk.commandBufferInfoCount = uint(length(b.pCommandBufferInfos))
+    vk.signalSemaphoreInfoCount = uint(length(b.pSignalSemaphoreInfos))
     return <- vk
 }
 def vk_view_destroy(var b : SubmitInfo2) {
@@ -11849,8 +11869,8 @@ def vk_view_create_unsafe(var b : CopyImageToImageInfo) : VkCopyImageToImageInfo
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyImageToImageInfo) {
@@ -12068,8 +12088,8 @@ def vk_view_create_unsafe(var b : VideoProfileListInfoKHR) : VkVideoProfileListI
     for (vki in range(length(b.pProfiles))) {
         b._vk_view_pProfiles[vki] = vk_view_create_unsafe(b.pProfiles[vki])
     }
-    vk.profileCount = uint(length(b.pProfiles))
     vk.pProfiles = array_addr(b._vk_view_pProfiles)
+    vk.profileCount = uint(length(b.pProfiles))
     return <- vk
 }
 def vk_view_destroy(var b : VideoProfileListInfoKHR) {
@@ -12627,10 +12647,10 @@ def vk_view_create_unsafe(var b : VideoEncodeRateControlInfoKHR) : VkVideoEncode
     for (vki in range(length(b.pLayers))) {
         b._vk_view_pLayers[vki] = vk_view_create_unsafe(b.pLayers[vki])
     }
-    vk.layerCount = uint(length(b.pLayers))
     vk.pLayers = array_addr(b._vk_view_pLayers)
     vk.virtualBufferSizeInMs = b.virtualBufferSizeInMs
     vk.initialVirtualBufferSizeInMs = b.initialVirtualBufferSizeInMs
+    vk.layerCount = uint(length(b.pLayers))
     return <- vk
 }
 def vk_view_destroy(var b : VideoEncodeRateControlInfoKHR) {
@@ -13928,6 +13948,7 @@ def vk_view_destroy(var b : FormatProperties3) {
 
 struct DrmFormatModifierPropertiesList2EXT {
     next : void?
+    drmFormatModifierCount : uint
     pDrmFormatModifierProperties : array<DrmFormatModifierProperties2EXT>
     _vk_view_pDrmFormatModifierProperties : array<VkDrmFormatModifierProperties2EXT>
 }
@@ -13938,8 +13959,8 @@ def vk_view_create_unsafe(var b : DrmFormatModifierPropertiesList2EXT) : VkDrmFo
     for (vki in range(length(b.pDrmFormatModifierProperties))) {
         b._vk_view_pDrmFormatModifierProperties[vki] = vk_view_create_unsafe(b.pDrmFormatModifierProperties[vki])
     }
-    vk.drmFormatModifierCount = uint(length(b.pDrmFormatModifierProperties))
     vk.pDrmFormatModifierProperties = array_addr(b._vk_view_pDrmFormatModifierProperties)
+    vk.drmFormatModifierCount = b.drmFormatModifierCount != 0u ? b.drmFormatModifierCount : uint(length(b.pDrmFormatModifierProperties))
     return <- vk
 }
 def vk_view_destroy(var b : DrmFormatModifierPropertiesList2EXT) {
@@ -14366,8 +14387,8 @@ def vk_view_create_unsafe(var b : PipelineShaderStageModuleIdentifierCreateInfoE
     var vk = VkPipelineShaderStageModuleIdentifierCreateInfoEXT()
     vk.pNext = b.next
     b._vk_view_pIdentifier := b.pIdentifier
-    vk.identifierSize = uint(length(b.pIdentifier))
     vk.pIdentifier = array_addr(b._vk_view_pIdentifier)
+    vk.identifierSize = uint(length(b.pIdentifier))
     return <- vk
 }
 def vk_view_destroy(var b : PipelineShaderStageModuleIdentifierCreateInfoEXT) {
@@ -15104,8 +15125,8 @@ def vk_view_create_unsafe(var b : OpticalFlowExecuteInfoNV) : VkOpticalFlowExecu
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : OpticalFlowExecuteInfoNV) {
@@ -15299,8 +15320,8 @@ def vk_view_create_unsafe(var b : DecompressMemoryInfoEXT) : VkDecompressMemoryI
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : DecompressMemoryInfoEXT) {
@@ -15443,8 +15464,8 @@ def vk_view_create_unsafe(var b : SwapchainPresentFenceInfoKHR) : VkSwapchainPre
     var vk = VkSwapchainPresentFenceInfoKHR()
     vk.pNext = b.next
     b._vk_view_pFences <- [for (h in b.pFences); boost_value_to_vk(h)]
-    vk.swapchainCount = uint(length(b.pFences))
     vk.pFences = array_addr(b._vk_view_pFences)
+    vk.swapchainCount = uint(length(b.pFences))
     return <- vk
 }
 def vk_view_destroy(var b : SwapchainPresentFenceInfoKHR) {
@@ -15480,8 +15501,8 @@ def vk_view_create_unsafe(var b : ReleaseSwapchainImagesInfoKHR) : VkReleaseSwap
     vk.pNext = b.next
     vk.swapchain = boost_value_to_vk(b.swapchain)
     b._vk_view_pImageIndices := b.pImageIndices
-    vk.imageIndexCount = uint(length(b.pImageIndices))
     vk.pImageIndices = array_addr(b._vk_view_pImageIndices)
+    vk.imageIndexCount = uint(length(b.pImageIndices))
     return <- vk
 }
 def vk_view_destroy(var b : ReleaseSwapchainImagesInfoKHR) {
@@ -15670,8 +15691,8 @@ def vk_view_create_unsafe(var b : MultiviewPerViewRenderAreasRenderPassBeginInfo
     for (vki in range(length(b.pPerViewRenderAreas))) {
         b._vk_view_pPerViewRenderAreas[vki] = vk_view_create_unsafe(b.pPerViewRenderAreas[vki])
     }
-    vk.perViewRenderAreaCount = uint(length(b.pPerViewRenderAreas))
     vk.pPerViewRenderAreas = array_addr(b._vk_view_pPerViewRenderAreas)
+    vk.perViewRenderAreaCount = uint(length(b.pPerViewRenderAreas))
     return <- vk
 }
 def vk_view_destroy(var b : MultiviewPerViewRenderAreasRenderPassBeginInfoQCOM) {
@@ -15948,11 +15969,11 @@ def vk_view_create_unsafe(var b : BindDescriptorSetsInfo) : VkBindDescriptorSets
     vk.layout = boost_value_to_vk(b.layout)
     vk.firstSet = b.firstSet
     b._vk_view_pDescriptorSets <- [for (h in b.pDescriptorSets); boost_value_to_vk(h)]
-    vk.descriptorSetCount = uint(length(b.pDescriptorSets))
     vk.pDescriptorSets = array_addr(b._vk_view_pDescriptorSets)
     b._vk_view_pDynamicOffsets := b.pDynamicOffsets
-    vk.dynamicOffsetCount = uint(length(b.pDynamicOffsets))
     vk.pDynamicOffsets = array_addr(b._vk_view_pDynamicOffsets)
+    vk.descriptorSetCount = uint(length(b.pDescriptorSets))
+    vk.dynamicOffsetCount = uint(length(b.pDynamicOffsets))
     return <- vk
 }
 def vk_view_destroy(var b : BindDescriptorSetsInfo) {
@@ -15978,8 +15999,8 @@ def vk_view_create_unsafe(var b : PushDescriptorSetInfo) : VkPushDescriptorSetIn
     for (vki in range(length(b.pDescriptorWrites))) {
         b._vk_view_pDescriptorWrites[vki] = vk_view_create_unsafe(b.pDescriptorWrites[vki])
     }
-    vk.descriptorWriteCount = uint(length(b.pDescriptorWrites))
     vk.pDescriptorWrites = array_addr(b._vk_view_pDescriptorWrites)
+    vk.descriptorWriteCount = uint(length(b.pDescriptorWrites))
     return <- vk
 }
 def vk_view_destroy(var b : PushDescriptorSetInfo) {
@@ -16006,11 +16027,10 @@ def vk_view_create_unsafe(var b : SetDescriptorBufferOffsetsInfoEXT) : VkSetDesc
     vk.layout = boost_value_to_vk(b.layout)
     vk.firstSet = b.firstSet
     b._vk_view_pBufferIndices := b.pBufferIndices
-    vk.setCount = uint(length(b.pBufferIndices))
     vk.pBufferIndices = array_addr(b._vk_view_pBufferIndices)
     b._vk_view_pOffsets := b.pOffsets
-    vk.setCount = uint(length(b.pOffsets))
     vk.pOffsets = array_addr(b._vk_view_pOffsets)
+    vk.setCount = uint(length(b.pBufferIndices))
     return <- vk
 }
 def vk_view_destroy(var b : SetDescriptorBufferOffsetsInfoEXT) {
@@ -16262,6 +16282,7 @@ def vk_view_destroy(var b : SetLatencyMarkerInfoNV) {
 
 struct GetLatencyMarkerInfoNV {
     next : void?
+    timingCount : uint
     pTimings : array<LatencyTimingsFrameReportNV>
     _vk_view_pTimings : array<VkLatencyTimingsFrameReportNV>
 }
@@ -16272,8 +16293,8 @@ def vk_view_create_unsafe(var b : GetLatencyMarkerInfoNV) : VkGetLatencyMarkerIn
     for (vki in range(length(b.pTimings))) {
         b._vk_view_pTimings[vki] = vk_view_create_unsafe(b.pTimings[vki])
     }
-    vk.timingCount = uint(length(b.pTimings))
     vk.pTimings = array_addr(b._vk_view_pTimings)
+    vk.timingCount = b.timingCount != 0u ? b.timingCount : uint(length(b.pTimings))
     return <- vk
 }
 def vk_view_destroy(var b : GetLatencyMarkerInfoNV) {
@@ -16513,8 +16534,8 @@ def vk_view_create_unsafe(var b : RenderPassStripeBeginInfoARM) : VkRenderPassSt
     for (vki in range(length(b.pStripeInfos))) {
         b._vk_view_pStripeInfos[vki] = vk_view_create_unsafe(b.pStripeInfos[vki])
     }
-    vk.stripeInfoCount = uint(length(b.pStripeInfos))
     vk.pStripeInfos = array_addr(b._vk_view_pStripeInfos)
+    vk.stripeInfoCount = uint(length(b.pStripeInfos))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassStripeBeginInfoARM) {
@@ -16536,8 +16557,8 @@ def vk_view_create_unsafe(var b : RenderPassStripeSubmitInfoARM) : VkRenderPassS
     for (vki in range(length(b.pStripeSemaphoreInfos))) {
         b._vk_view_pStripeSemaphoreInfos[vki] = vk_view_create_unsafe(b.pStripeSemaphoreInfos[vki])
     }
-    vk.stripeSemaphoreInfoCount = uint(length(b.pStripeSemaphoreInfos))
     vk.pStripeSemaphoreInfos = array_addr(b._vk_view_pStripeSemaphoreInfos)
+    vk.stripeSemaphoreInfoCount = uint(length(b.pStripeSemaphoreInfos))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassStripeSubmitInfoARM) {
@@ -16635,6 +16656,7 @@ def vk_view_destroy(var b : PhysicalDeviceDynamicRenderingLocalReadFeatures) {
 
 struct RenderingAttachmentLocationInfo {
     next : void?
+    colorAttachmentCount : uint
     pColorAttachmentLocations : array<uint>
     _vk_view_pColorAttachmentLocations : array<uint>
 }
@@ -16642,8 +16664,8 @@ def vk_view_create_unsafe(var b : RenderingAttachmentLocationInfo) : VkRendering
     var vk = VkRenderingAttachmentLocationInfo()
     vk.pNext = b.next
     b._vk_view_pColorAttachmentLocations := b.pColorAttachmentLocations
-    vk.colorAttachmentCount = uint(length(b.pColorAttachmentLocations))
     vk.pColorAttachmentLocations = array_addr(b._vk_view_pColorAttachmentLocations)
+    vk.colorAttachmentCount = b.colorAttachmentCount != 0u ? b.colorAttachmentCount : uint(length(b.pColorAttachmentLocations))
     return <- vk
 }
 def vk_view_destroy(var b : RenderingAttachmentLocationInfo) {
@@ -17366,12 +17388,11 @@ def vk_view_create_unsafe(var b : TensorDescriptionARM) : VkTensorDescriptionARM
     vk.tiling = b.tiling
     vk.format = b.format
     b._vk_view_pDimensions := b.pDimensions
-    vk.dimensionCount = uint(length(b.pDimensions))
     vk.pDimensions = array_addr(b._vk_view_pDimensions)
     b._vk_view_pStrides := b.pStrides
-    vk.dimensionCount = uint(length(b.pStrides))
     vk.pStrides = array_addr(b._vk_view_pStrides)
     vk.usage = b.usage
+    vk.dimensionCount = uint(length(b.pDimensions))
     return <- vk
 }
 def vk_view_destroy(var b : TensorDescriptionARM) {
@@ -17438,8 +17459,8 @@ def vk_view_create_unsafe(var b : WriteDescriptorSetTensorARM) : VkWriteDescript
     var vk = VkWriteDescriptorSetTensorARM()
     vk.pNext = b.next
     b._vk_view_pTensorViews <- [for (h in b.pTensorViews); boost_value_to_vk(h)]
-    vk.tensorViewCount = uint(length(b.pTensorViews))
     vk.pTensorViews = array_addr(b._vk_view_pTensorViews)
+    vk.tensorViewCount = uint(length(b.pTensorViews))
     return <- vk
 }
 def vk_view_destroy(var b : WriteDescriptorSetTensorARM) {
@@ -17538,8 +17559,8 @@ def vk_view_create_unsafe(var b : TensorDependencyInfoARM) : VkTensorDependencyI
     for (vki in range(length(b.pTensorMemoryBarriers))) {
         b._vk_view_pTensorMemoryBarriers[vki] = vk_view_create_unsafe(b.pTensorMemoryBarriers[vki])
     }
-    vk.tensorMemoryBarrierCount = uint(length(b.pTensorMemoryBarriers))
     vk.pTensorMemoryBarriers = array_addr(b._vk_view_pTensorMemoryBarriers)
+    vk.tensorMemoryBarrierCount = uint(length(b.pTensorMemoryBarriers))
     return <- vk
 }
 def vk_view_destroy(var b : TensorDependencyInfoARM) {
@@ -17589,8 +17610,8 @@ def vk_view_create_unsafe(var b : CopyTensorInfoARM) : VkCopyTensorInfoARM {
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyTensorInfoARM) {
@@ -17602,6 +17623,7 @@ def vk_view_destroy(var b : CopyTensorInfoARM) {
 
 struct TensorCopyARM {
     next : void?
+    dimensionCount : uint
     pSrcOffset : array<uint64>
     pDstOffset : array<uint64>
     pExtent : array<uint64>
@@ -17613,14 +17635,12 @@ def vk_view_create_unsafe(var b : TensorCopyARM) : VkTensorCopyARM {
     var vk = VkTensorCopyARM()
     vk.pNext = b.next
     b._vk_view_pSrcOffset := b.pSrcOffset
-    vk.dimensionCount = uint(length(b.pSrcOffset))
     vk.pSrcOffset = array_addr(b._vk_view_pSrcOffset)
     b._vk_view_pDstOffset := b.pDstOffset
-    vk.dimensionCount = uint(length(b.pDstOffset))
     vk.pDstOffset = array_addr(b._vk_view_pDstOffset)
     b._vk_view_pExtent := b.pExtent
-    vk.dimensionCount = uint(length(b.pExtent))
     vk.pExtent = array_addr(b._vk_view_pExtent)
+    vk.dimensionCount = b.dimensionCount != 0u ? b.dimensionCount : max(max(uint(length(b.pSrcOffset)), uint(length(b.pDstOffset))), uint(length(b.pExtent)))
     return <- vk
 }
 def vk_view_destroy(var b : TensorCopyARM) {
@@ -17726,8 +17746,8 @@ def vk_view_create_unsafe(var b : FrameBoundaryTensorsARM) : VkFrameBoundaryTens
     var vk = VkFrameBoundaryTensorsARM()
     vk.pNext = b.next
     b._vk_view_pTensors <- [for (h in b.pTensors); boost_value_to_vk(h)]
-    vk.tensorCount = uint(length(b.pTensors))
     vk.pTensors = array_addr(b._vk_view_pTensors)
+    vk.tensorCount = uint(length(b.pTensors))
     return <- vk
 }
 def vk_view_destroy(var b : FrameBoundaryTensorsARM) {
@@ -17880,8 +17900,8 @@ def vk_view_create_unsafe(var b : DataGraphPipelineCreateInfoARM) : VkDataGraphP
     for (vki in range(length(b.pResourceInfos))) {
         b._vk_view_pResourceInfos[vki] = vk_view_create_unsafe(b.pResourceInfos[vki])
     }
-    vk.resourceInfoCount = uint(length(b.pResourceInfos))
     vk.pResourceInfos = array_addr(b._vk_view_pResourceInfos)
+    vk.resourceInfoCount = uint(length(b.pResourceInfos))
     return <- vk
 }
 def vk_view_destroy(var b : DataGraphPipelineCreateInfoARM) {
@@ -18002,8 +18022,8 @@ def vk_view_create_unsafe(var b : DataGraphPipelineIdentifierCreateInfoARM) : Vk
     var vk = VkDataGraphPipelineIdentifierCreateInfoARM()
     vk.pNext = b.next
     b._vk_view_pIdentifier := b.pIdentifier
-    vk.identifierSize = uint(length(b.pIdentifier))
     vk.pIdentifier = array_addr(b._vk_view_pIdentifier)
+    vk.identifierSize = uint(length(b.pIdentifier))
     return <- vk
 }
 def vk_view_destroy(var b : DataGraphPipelineIdentifierCreateInfoARM) {
@@ -18098,8 +18118,8 @@ def vk_view_create_unsafe(var b : DataGraphProcessingEngineCreateInfoARM) : VkDa
     for (vki in range(length(b.pProcessingEngines))) {
         b._vk_view_pProcessingEngines[vki] = vk_view_create_unsafe(b.pProcessingEngines[vki])
     }
-    vk.processingEngineCount = uint(length(b.pProcessingEngines))
     vk.pProcessingEngines = array_addr(b._vk_view_pProcessingEngines)
+    vk.processingEngineCount = uint(length(b.pProcessingEngines))
     return <- vk
 }
 def vk_view_destroy(var b : DataGraphProcessingEngineCreateInfoARM) {
@@ -18339,12 +18359,12 @@ def vk_view_create_unsafe(var b : RenderPassPerformanceCountersByRegionBeginInfo
     var vk = VkRenderPassPerformanceCountersByRegionBeginInfoARM()
     vk.pNext = b.next
     b._vk_view_pCounterAddresses := b.pCounterAddresses
-    vk.counterAddressCount = uint(length(b.pCounterAddresses))
     vk.pCounterAddresses = array_addr(b._vk_view_pCounterAddresses)
     vk.serializeRegions = b.serializeRegions
     b._vk_view_pCounterIndices := b.pCounterIndices
-    vk.counterIndexCount = uint(length(b.pCounterIndices))
     vk.pCounterIndices = array_addr(b._vk_view_pCounterIndices)
+    vk.counterAddressCount = uint(length(b.pCounterAddresses))
+    vk.counterIndexCount = uint(length(b.pCounterIndices))
     return <- vk
 }
 def vk_view_destroy(var b : RenderPassPerformanceCountersByRegionBeginInfoARM) {
@@ -18518,8 +18538,8 @@ def vk_view_create_unsafe(var b : ShaderDescriptorSetAndBindingMappingInfoEXT) :
     for (vki in range(length(b.pMappings))) {
         b._vk_view_pMappings[vki] = vk_view_create_unsafe(b.pMappings[vki])
     }
-    vk.mappingCount = uint(length(b.pMappings))
     vk.pMappings = array_addr(b._vk_view_pMappings)
+    vk.mappingCount = uint(length(b.pMappings))
     return <- vk
 }
 def vk_view_destroy(var b : ShaderDescriptorSetAndBindingMappingInfoEXT) {
@@ -18763,8 +18783,8 @@ def vk_view_create_unsafe(var b : CopyDeviceMemoryInfoKHR) : VkCopyDeviceMemoryI
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyDeviceMemoryInfoKHR) {
@@ -18816,8 +18836,8 @@ def vk_view_create_unsafe(var b : CopyDeviceMemoryImageInfoKHR) : VkCopyDeviceMe
     for (vki in range(length(b.pRegions))) {
         b._vk_view_pRegions[vki] = vk_view_create_unsafe(b.pRegions[vki])
     }
-    vk.regionCount = uint(length(b.pRegions))
     vk.pRegions = array_addr(b._vk_view_pRegions)
+    vk.regionCount = uint(length(b.pRegions))
     return <- vk
 }
 def vk_view_destroy(var b : CopyDeviceMemoryImageInfoKHR) {
@@ -18839,8 +18859,8 @@ def vk_view_create_unsafe(var b : MemoryRangeBarriersInfoKHR) : VkMemoryRangeBar
     for (vki in range(length(b.pMemoryRangeBarriers))) {
         b._vk_view_pMemoryRangeBarriers[vki] = vk_view_create_unsafe(b.pMemoryRangeBarriers[vki])
     }
-    vk.memoryRangeBarrierCount = uint(length(b.pMemoryRangeBarriers))
     vk.pMemoryRangeBarriers = array_addr(b._vk_view_pMemoryRangeBarriers)
+    vk.memoryRangeBarrierCount = uint(length(b.pMemoryRangeBarriers))
     return <- vk
 }
 def vk_view_destroy(var b : MemoryRangeBarriersInfoKHR) {
@@ -19202,8 +19222,8 @@ def vk_view_create_unsafe(var b : DataGraphPipelineSingleNodeCreateInfoARM) : Vk
     for (vki in range(length(b.pConnections))) {
         b._vk_view_pConnections[vki] = vk_view_create_unsafe(b.pConnections[vki])
     }
-    vk.connectionCount = uint(length(b.pConnections))
     vk.pConnections = array_addr(b._vk_view_pConnections)
+    vk.connectionCount = uint(length(b.pConnections))
     return <- vk
 }
 def vk_view_destroy(var b : DataGraphPipelineSingleNodeCreateInfoARM) {

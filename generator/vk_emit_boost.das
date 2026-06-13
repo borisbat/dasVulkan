@@ -188,6 +188,7 @@ enum FieldKind {
     arr_scalar      //! count+ptr of scalar/enum -> array<T>
     arr_handle      //! count+ptr of handle -> array<BoostHandle>
     arr_struct      //! count+ptr of mappable struct -> array<BoostStruct> (recursive vk_view)
+    count_independent //! count member whose arrays are ALL optional -> settable boost field
     hard            //! unmappable -> skip the whole struct
 }
 
@@ -200,6 +201,7 @@ struct BoostField {
     elem_boost : string     //! for arrays: the boost element type
     count_member : string   //! for arrays: the raw count member name
     is_handle_elem : bool
+    is_optional : bool      //! for arrays: optional="true" (may be empty -> null pointer)
 }
 
 //! names of members that are the count for some array member (len=thatName)
@@ -253,6 +255,7 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     }
     if (key_exists(counts, m.name)) {
         bf.kind = FieldKind.erase
+        bf.boost_type = scalar_field_type(reg, em, m)   // kept in case it is promoted to a settable count field
         return <- bf
     }
     // function pointers, fixed-arrays, multi-pointers -> hard
@@ -268,6 +271,10 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     let hasvkcount = !empty(m.len) && key_exists(counts, m.len)
     if (hasvkcount && m.num_ptrs == 1 && tn != "void" && tn != "char") {
         bf.count_member = m.len
+        // "optional" here means this array's length is NOT the authoritative count:
+        // optional="true" (may be null) or noautovalidity="true" (mutually-exclusive
+        // arrays / imageless framebuffer -- the count member is primary, not the length).
+        bf.is_optional = m.optional_attr == "true" || m.noautovalidity == "true"
         if (elem_is_handle(em, tn)) {
             bf.kind = FieldKind.arr_handle
             bf.elem_boost = boost_name(tn)
@@ -394,6 +401,7 @@ def public derive_views(reg : VkRegistry; em : EmitModel; var skip_log : array<s
             var bf <- classify_field(reg, em, s, m, counts, mappable)
             vs.fields |> emplace(bf)
         }
+        promote_independent_counts(vs)
         views |> emplace(vs)
     }
     // log the structs that didn't make it (with the first offending field)
@@ -408,12 +416,74 @@ def public derive_views(reg : VkRegistry; em : EmitModel; var skip_log : array<s
     return <- views
 }
 
+def private is_array_kind(k : FieldKind) : bool {
+    return k == FieldKind.arr_scalar || k == FieldKind.arr_handle || k == FieldKind.arr_struct
+}
+
+//! Promote count members whose referencing arrays are ALL optional to settable boost
+//! fields: such a count has independent meaning when its array is empty (descriptorCount
+//! of a non-sampler binding, viewportCount under dynamic state). Counts with at least one
+//! non-optional array stay erased (derived from that array's length).
+def private promote_independent_counts(var vs : ViewStruct) {
+    for (i in range(length(vs.fields))) {
+        continue if (vs.fields[i].kind != FieldKind.erase)
+        let cname = vs.fields[i].raw_name
+        var refs = 0
+        var all_opt = true
+        for (af in vs.fields) {
+            if (is_array_kind(af.kind) && af.count_member == cname) {
+                refs ++
+                all_opt = all_opt && af.is_optional
+            }
+        }
+        if (refs > 0 && all_opt) {
+            vs.fields[i].kind = FieldKind.count_independent
+        }
+    }
+}
+
+//! das-safe boost field names of the array fields counted by `raw_count`
+def private count_referencing_arrays(vs : ViewStruct; raw_count : string) : array<string> {
+    var out : array<string>
+    for (af in vs.fields) {
+        if (is_array_kind(af.kind) && af.count_member == raw_count) {
+            out |> push(af.name)
+        }
+    }
+    return <- out
+}
+
+//! the boost field name of the array that authoritatively sets a DERIVED count: the
+//! first non-optional referencing array, else the first referencing array ("" if none)
+def private count_authoritative_array(vs : ViewStruct; raw_count : string) : string {
+    var first = ""
+    for (af in vs.fields) {
+        if (is_array_kind(af.kind) && af.count_member == raw_count) {
+            if (empty(first)) {
+                first = af.name
+            }
+            return af.name if (!af.is_optional)
+        }
+    }
+    return first
+}
+
+//! uint expression for the largest length among `arrs` (fallback for an independent count)
+def private len_max_expr(arrs : array<string>) : string {
+    return "0u" if (empty(arrs))
+    var e = "uint(length(b.{arrs[0]}))"
+    for (i in range(1, length(arrs))) {
+        e = "max({e}, uint(length(b.{arrs[i]})))"
+    }
+    return e
+}
+
 def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : string; views : array<ViewStruct>) {
     fopen("{out_dir}/vulkan_structs.das", "wb") $(f) {
         panic("can't write vulkan_structs.das") if (f == null)
         fprint(f, GEN_HEADER)
         fprint(f, "options gen2\noptions indenting = 4\n\nmodule vulkan_structs\n\n")
-        fprint(f, "require vulkan public\nrequire vulkan/vulkan_ctors public\nrequire vulkan/vulkan_handles public\nrequire vulkan/vulkan_runtime public\n\n")
+        fprint(f, "require vulkan public\nrequire vulkan/vulkan_ctors public\nrequire vulkan/vulkan_handles public\nrequire vulkan/vulkan_runtime public\nrequire math\n\n")
         for (vs in views) {
             let s & = unsafe(reg.structs[vs.s_index])
             // boost struct
@@ -435,28 +505,25 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                 }
             }
             fprint(f, "\}\n")
-            // vk_view_create_unsafe
+            // vk_view_create_unsafe. Raw struct das field names are das_safe_name'd (same
+            // as the boost field name). Array pointers are set here (null when empty); counts
+            // are set afterwards so a shared/independent count sees every array's length.
             fprint(f, "def vk_view_create_unsafe(var b : {vs.boost}) : {s.name} \{\n")
             fprint(f, "    var vk = {s.name}()\n")
-            // raw struct das field names are das_safe_name'd (same as the boost field name);
-            // count members likewise.
             for (bf in vs.fields) {
-                let cm = das_safe_name(bf.count_member)
-                if (bf.kind == FieldKind.scalar) {
+                if (bf.kind == FieldKind.scalar || bf.kind == FieldKind.str) {
                     fprint(f, "    vk.{bf.name} = b.{bf.name}\n")
                 } elif (bf.kind == FieldKind.boost_handle) {
                     fprint(f, "    vk.{bf.name} = boost_value_to_vk(b.{bf.name})\n")
-                } elif (bf.kind == FieldKind.str) {
-                    fprint(f, "    vk.{bf.name} = b.{bf.name}\n")
                 } elif (bf.kind == FieldKind.next_ptr) {
                     fprint(f, "    vk.pNext = b.next\n")
                 } elif (bf.kind == FieldKind.arr_scalar) {
+                    // array_addr returns null for an empty array, so an optional empty array
+                    // becomes a null pointer (with its count left to the count pass below)
                     fprint(f, "    b._vk_view_{bf.name} := b.{bf.name}\n")
-                    fprint(f, "    vk.{cm} = uint(length(b.{bf.name}))\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
                 } elif (bf.kind == FieldKind.arr_handle) {
                     fprint(f, "    b._vk_view_{bf.name} <- [for (h in b.{bf.name}); boost_value_to_vk(h)]\n")
-                    fprint(f, "    vk.{cm} = uint(length(b.{bf.name}))\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
                 } elif (bf.kind == FieldKind.arr_struct) {
                     // recursively view each element in place (its sub-scratch lives in b.{bf.name}[i])
@@ -464,8 +531,21 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    for (vki in range(length(b.{bf.name}))) {OB}\n")
                     fprint(f, "        b._vk_view_{bf.name}[vki] = vk_view_create_unsafe(b.{bf.name}[vki])\n")
                     fprint(f, "    {CB}\n")
-                    fprint(f, "    vk.{cm} = uint(length(b.{bf.name}))\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
+                }
+            }
+            // counts: derived (authoritative array length) or independent (caller's value,
+            // falling back to the largest referencing-array length when left 0)
+            for (bf in vs.fields) {
+                let cm = das_safe_name(bf.raw_name)
+                if (bf.kind == FieldKind.count_independent) {
+                    let arrs <- count_referencing_arrays(vs, bf.raw_name)
+                    fprint(f, "    vk.{cm} = b.{bf.name} != 0u ? b.{bf.name} : {len_max_expr(arrs)}\n")
+                } elif (bf.kind == FieldKind.erase) {
+                    let auth = count_authoritative_array(vs, bf.raw_name)
+                    if (!empty(auth)) {
+                        fprint(f, "    vk.{cm} = uint(length(b.{auth}))\n")
+                    }
                 }
             }
             fprint(f, "    return <- vk\n")

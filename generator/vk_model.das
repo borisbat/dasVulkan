@@ -22,6 +22,7 @@ struct public VkMember {
     arr_dims : array<string>    //! fixed-array dims, outermost first; numeric text or VK_* constant name
     len : string                //! raw len= attribute
     optional_attr : string      //! raw optional= attribute
+    noautovalidity : string     //! raw noautovalidity= attribute (count not derivable from this array's length)
     stype_value : string        //! values= attribute (sType)
     bit_width : int             //! C bitfield width (:24), 0 if none
 }
@@ -208,6 +209,7 @@ def private parse_types(root : xml_node; var reg : VkRegistry) {
                     var mem = VkMember(
                         len = cs(m["len"] as string),
                         optional_attr = cs(m["optional"] as string),
+                        noautovalidity = cs(m["noautovalidity"] as string),
                         stype_value = cs(m["values"] as string)
                     )
                     parse_decl_into(m, mem)
