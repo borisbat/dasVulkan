@@ -1130,8 +1130,7 @@ def public emit_init(out_dir : string; ordered_calls : array<string>) {
 
 // ===== orchestrator =====
 
-def public emit_all(reg : VkRegistry; out_dir : string) {
-    var em <- build_emit_model(reg)
+def public emit_all(reg : VkRegistry; var em : EmitModel; out_dir : string) {
     var header_lines : array<string>
     var enum_init_fns : array<string>
     var struct_add_fns : array<string>

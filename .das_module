@@ -6,5 +6,10 @@ def initialize(project_path : string) {
     if (das_is_dll_build()) {
         register_dynamic_module("{project_path}/dasModuleVulkan.shared_module", "Module_dasVULKAN")
     }
-    register_native_path("vulkan", "vulkan_boost", "{project_path}/daslib/vulkan_boost.das")
+    let boost_paths = [
+        "vulkan_runtime", "vulkan_ctors", "vulkan_handles", "vulkan_structs", "vulkan_commands", "vulkan_boost"
+    ]
+    for (p in boost_paths) {
+        register_native_path("vulkan", "{p}", "{project_path}/daslib/{p}.das")
+    }
 }

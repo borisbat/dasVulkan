@@ -4,13 +4,18 @@ options indenting = 4
 require daslib/clargs
 require vk_model
 require vk_emit
+require vk_emit_boost
 
 [CommandLineArgs]
 struct Config {
     @clarg_doc = "path to vk.xml (default: vendor/Vulkan-Headers/registry/vk.xml)"
     xml : string
-    @clarg_doc = "output directory for generated sources (default: src)"
+    @clarg_doc = "output directory for generated C++ sources (default: src)"
     out : string
+    @clarg_doc = "output directory for generated boost daslang (default: daslib)"
+    boost_out : string
+    @clarg_doc = "skip C++ emission; regenerate only the boost daslang (fast boost iteration)"
+    no_cpp : bool
     @clarg_doc = "print registry statistics and exit"
     stats : bool
     @clarg_short = "?"
@@ -80,6 +85,11 @@ def main() : int {
         return 0
     }
     let out_dir = empty(cfg.out) ? "src" : cfg.out
-    emit_all(reg, out_dir)
+    let boost_dir = empty(cfg.boost_out) ? "daslib" : cfg.boost_out
+    var em <- build_emit_model(reg)
+    if (!cfg.no_cpp) {
+        emit_all(reg, em, out_dir)
+    }
+    emit_boost(reg, em, boost_dir)
     return 0
 }
