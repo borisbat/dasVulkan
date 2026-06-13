@@ -28,12 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SCCACHE_GHA_ENABLED: "true"
-      # daspkg's cmake_build runs `cmake --build --parallel` with NO job count.
-      # With the default Unix Makefiles generator that lowers to `make -j` =
-      # unlimited, so all ~55 template-heavy ManagedStructureAnnotation TUs
-      # compile at once and OOM the runner (exit 143). Cap the parallel level.
-      CMAKE_BUILD_PARALLEL_LEVEL: "2"
-      MAKEFLAGS: "-j2"
     defaults:
       run:
         shell: bash
@@ -63,29 +57,44 @@ jobs:
 
       - name: "Build daslang"
         working-directory: daslang-src
-        # daspkg itself requires the pugixml module (utils/daspkg/commands.das ->
-        # PUGIXML_boost), so build it. LLVM/HV/GLFW are not needed -- the dasVulkan
-        # generated C++ is committed and the module only links volk + vendored headers.
+        # Only the `daslang` binary + its shared runtime libs are needed. Building
+        # that target also produces lib/liblibDaScriptDyn{,_runtime}.so (the module
+        # links them). The generated dasVulkan C++ is committed, so no generator run
+        # in CI -- pugixml/LLVM/HV/GLFW are all unnecessary.
         run: |
           set -eux
           cmake --no-warn-unused-cli -B./build \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DDAS_HV_DISABLED=ON \
-            -DDAS_PUGIXML_DISABLED=OFF \
+            -DDAS_PUGIXML_DISABLED=ON \
             -DDAS_LLVM_DISABLED=ON \
             -DDAS_GLFW_DISABLED=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
             -G Ninja
-          cmake --build ./build --parallel --target daslang dasModulePUGIXML
+          cmake --build ./build --parallel --target daslang
           sccache --show-stats
           echo "BIN_DIR=bin" >> "$GITHUB_ENV"
 
-      - name: "daspkg install dasVulkan (global, builds the native module)"
-        working-directory: daslang-src
+      - name: "Build the dasVulkan native module"
+        # Build the .shared_module directly (NOT via `daspkg install`): daspkg's
+        # cmake_build hardcodes `cmake --build --parallel` with no job count, which
+        # under Unix Makefiles becomes unlimited `make -j` and OOMs the runner on
+        # the ~55 template-heavy generated TUs (exit 143). Here we drive it with an
+        # explicit `--parallel 2` over Ninja + sccache, so it's bounded and cached.
+        # Output lands at <repo>/dasModuleVulkan.shared_module (CMakeLists output dir)
+        # and is picked up by `-load_module` below via the .das_module descriptor.
         run: |
           set -eux
-          ${BIN_DIR}/daslang utils/daspkg/main.das -- install ../dasVulkan --global
+          cmake -S "${GITHUB_WORKSPACE}/dasVulkan" -B "${GITHUB_WORKSPACE}/dasVulkan/_build" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDASLANG_DIR="${GITHUB_WORKSPACE}/daslang-src" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          cmake --build "${GITHUB_WORKSPACE}/dasVulkan/_build" --config Release --parallel 2
+          sccache --show-stats
+          ls -la "${GITHUB_WORKSPACE}/dasVulkan"/*.shared_module
 
       - name: "Verify lavapipe is visible to the loader"
         env:
@@ -100,8 +109,8 @@ jobs:
           VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: |
           set -eux
-          ${BIN_DIR}/daslang dastest/dastest.das -- \
-            --test modules/dasVulkan/tests/integration \
+          ${BIN_DIR}/daslang -load_module "${GITHUB_WORKSPACE}/dasVulkan" dastest/dastest.das -- \
+            --test "${GITHUB_WORKSPACE}/dasVulkan/tests/integration" \
             --timeout 600 \
             --isolated-mode \
             --isolated-mode-threads 4
