@@ -45,9 +45,27 @@ jobs:
           path: dasVulkan
 
       - name: "Install lavapipe (software Vulkan) + tools"
+        # The lavapipe ICD JSON path is not stable across distro versions, so
+        # discover it after install rather than hardcoding it (the old hardcoded
+        # /usr/share/vulkan/icd.d/lvp_icd.x86_64.json did not exist on noble, and
+        # a missing VK_DRIVER_FILES path disables default ICD discovery entirely
+        # -> ERROR_INCOMPATIBLE_DRIVER). Export the found path for later steps.
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
+          echo "=== /usr/share/vulkan/icd.d ==="
+          ls -la /usr/share/vulkan/icd.d/ || true
+          echo "=== mesa-vulkan-drivers ICD payload ==="
+          dpkg -L mesa-vulkan-drivers 2>/dev/null | grep -iE 'icd|lvp|\.json' || true
+          echo "=== any ICD json under /usr ==="
+          find /usr -iname '*icd*.json' 2>/dev/null || true
+          LVP=$(find /usr -iname 'lvp_icd*.json' 2>/dev/null | head -1)
+          if [ -n "$LVP" ]; then
+            echo "lavapipe ICD: $LVP"
+            echo "VK_DRIVER_FILES=$LVP" >> "$GITHUB_ENV"
+          else
+            echo "WARNING: lavapipe ICD not found; relying on default loader discovery"
+          fi
 
       - name: "Install CMake and Ninja"
         uses: lukka/get-cmake@latest
@@ -97,16 +115,15 @@ jobs:
           ls -la "${GITHUB_WORKSPACE}/dasVulkan"/*.shared_module
 
       - name: "Verify lavapipe is visible to the loader"
-        env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-        run: vulkaninfo --summary | grep -iE "deviceName|llvmpipe|apiVersion" || true
+        # VK_DRIVER_FILES comes from the discovery step (GITHUB_ENV); if it was not
+        # found this still runs default discovery. No `|| true` -- a missing driver
+        # here should fail loudly rather than let the tests report the same error.
+        run: vulkaninfo --summary | grep -iE "deviceName|llvmpipe|apiVersion"
 
       - name: "Run integration tests (offscreen, lavapipe)"
         working-directory: ${{ github.workspace }}/daslang-src
-        # VK_DRIVER_FILES points the loader at lavapipe. MUST NOT run under sudo --
-        # the Vulkan loader ignores VK_DRIVER_FILES for elevated processes.
-        env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        # VK_DRIVER_FILES (lavapipe ICD) is inherited from the discovery step. MUST
+        # NOT run under sudo -- the loader ignores VK_DRIVER_FILES for elevated procs.
         run: |
           set -eux
           ${BIN_DIR}/daslang -load_module "${GITHUB_WORKSPACE}/dasVulkan" dastest/dastest.das -- \
