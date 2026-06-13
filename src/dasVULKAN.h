@@ -3,8 +3,12 @@
 #include "daScript/daScript.h"
 #include "daScript/ast/ast_handle.h"
 #include "daScript/simulate/interop.h"
+#include "daScript/simulate/bind_enum.h"
 
 #include <volk.h>
+
+// type factories + enum cast/factory specializations for every bound Vulkan type
+#include "dasVULKAN.gen.h"
 
 namespace das {
 

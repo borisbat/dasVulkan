@@ -25,7 +25,6 @@ static void das_volkFinalize() {
 }
 
 Module_dasVULKAN::Module_dasVULKAN() : Module("vulkan") {
-    DAS_PROFILE_SECTION("Module_dasVULKAN");
     ModuleLibrary lib(this);
     lib.addBuiltInModule();
     das_vulkan_init_generated(*this, lib);
