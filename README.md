@@ -9,11 +9,18 @@ The binding generator is itself written in daslang (`generator/`), parsing `vk.x
 
 ## Status
 
-Early but working. The generated `vulkan` module builds and runs: `examples/offscreen_triangle.das` renders the classic RGB triangle offscreen on a real GPU and reads it back, entirely from daslang. The ergonomic `vulkan_boost` layer is next.
+Working. The raw `vulkan` module covers the full API surface, and the generated `vulkan_boost` layer makes it ergonomic — RAII-owned handle wrappers, sType-filling constructors, `array<T>`-based struct views, and high-level builders. Three offscreen examples (triangle, compute, device enumeration) run on a real GPU or on Mesa lavapipe in CI.
 
 ```
-daslang -load_module <path-to-dasVulkan> examples/offscreen_triangle.das
+daslang -load_module <path-to-dasVulkan> examples/offscreen_triangle_boost.das   # boost
+daslang -load_module <path-to-dasVulkan> examples/compute.das                    # compute
+daslang -load_module <path-to-dasVulkan> examples/enumerate.das                  # device info
 ```
+
+### Layers
+
+- **`vulkan`** — the raw binding, generated from `vk.xml` over volk.
+- **`vulkan/vulkan_boost`** — the ergonomic layer: `create_instance` / `create_device` / `create_image` … return RAII wrappers (`var inscope` destroys in reverse), VkFlags are daslang bitfields (`usage.color_attachment = true`), and builders (`build_offscreen_target`, `run_cmd_sync`, `record_render_pass`) collapse the boilerplate. The boost triangle is ~1/3 the lines of the raw one and renders byte-identically.
 
 ## Vendored dependencies
 
