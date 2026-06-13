@@ -3,6 +3,7 @@ options gen2
 require vulkan
 require daslib/fio
 require strings
+require math
 
 let WIDTH = 256
 let HEIGHT = 256
@@ -11,6 +12,22 @@ let FORMAT = VkFormat.R8G8B8A8_UNORM
 def fail(msg : string) {
     to_log(LOG_ERROR, "FAIL: {msg}\n")
     panic(msg)
+}
+
+//! read the (r,g,b) of pixel (x,y) from a tightly-packed RGBA byte buffer
+def sample(pixels : array<uint8>; x, y : int) : int3 {
+    let p = (y * WIDTH + x) * 4
+    return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
+}
+
+//! the clear color is (0.1, 0.1, 0.15) -> roughly (26, 26, 38) in 8-bit
+def is_clear(c : int3) : bool {
+    return abs(c.x - 26) <= 8 && abs(c.y - 26) <= 8 && abs(c.z - 38) <= 8
+}
+
+def vcheck(what : string; ok : bool) : int {
+    print("  [{ok ? "PASS" : "FAIL"}] {what}\n")
+    return ok ? 0 : 1
 }
 
 def check(r : VkResult; msg : string) {
@@ -411,26 +428,44 @@ def main() : int {
     }
     vkUnmapMemory(device, buf_mem)
 
-    // verify: center should be a bright triangle pixel; top-left corner is the clear color
-    let center = (HEIGHT / 2 * WIDTH + WIDTH / 2) * 4
-    let corner = 0
-    let cr = int(pixels[center])
-    let cg = int(pixels[center + 1])
-    let cb = int(pixels[center + 2])
-    let kr = int(pixels[corner])
-    let kg = int(pixels[corner + 1])
-    let kb = int(pixels[corner + 2])
-    print("center rgb = ({cr},{cg},{cb})  corner rgb = ({kr},{kg},{kb})\n")
-
     write_ppm("triangle.ppm", pixels, WIDTH, HEIGHT)
     print("wrote triangle.ppm\n")
 
+    // Structural verification. The shader places three vertices in NDC:
+    //   v0 (0.0,-0.6)=top, v1 (0.6,0.6)=bottom-right, v2 (-0.6,0.6)=bottom-left,
+    //   colored red / green / blue. In a 256x256 framebuffer that is
+    //   top (128,51) red, bottom-right (204,204) green, bottom-left (51,204) blue.
+    // Sample well inside each colored region and assert the matching channel
+    // dominates; the centroid must show all three (the interpolated blend);
+    // the corners must still hold the clear color. This proves geometry AND
+    // color interpolation, not just "something non-blank rendered".
     var rc = 0
-    if (cr + cg + cb <= kr + kg + kb) {
-        to_log(LOG_ERROR, "verification FAILED: center not brighter than corner\n")
+    var fails = 0
+
+    let top = sample(pixels, 128, 80)        // near the red vertex
+    let bl = sample(pixels, 75, 190)         // near the blue vertex
+    let br = sample(pixels, 180, 190)        // near the green vertex
+    let mid = sample(pixels, 128, 150)       // centroid: the blend
+    let k0 = sample(pixels, 5, 5)            // corner: clear color
+    let k1 = sample(pixels, 250, 5)          // corner: clear color
+    print("top   {top}\n")
+    print("bl    {bl}\n")
+    print("br    {br}\n")
+    print("mid   {mid}\n")
+    print("corner {k0} {k1}\n")
+
+    fails += vcheck("top is red", top.x > top.y + 40 && top.x > top.z + 40)
+    fails += vcheck("bottom-left is blue", bl.z > bl.x + 40 && bl.z > bl.y + 40)
+    fails += vcheck("bottom-right is green", br.y > br.x + 40 && br.y > br.z + 40)
+    fails += vcheck("centroid is a blend", mid.x > 20 && mid.y > 20 && mid.z > 20)
+    fails += vcheck("corner 0 is clear color", is_clear(k0))
+    fails += vcheck("corner 1 is clear color", is_clear(k1))
+
+    if (fails != 0) {
+        to_log(LOG_ERROR, "verification FAILED: {fails} check(s) wrong\n")
         rc = 1
     } else {
-        print("verification OK: triangle rendered\n")
+        print("verification OK: 6/6 structural checks passed\n")
     }
 
     // ----- cleanup -----

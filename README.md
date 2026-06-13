@@ -9,7 +9,11 @@ The binding generator is itself written in daslang (`generator/`), parsing `vk.x
 
 ## Status
 
-Early development. Nothing to see here yet.
+Early but working. The generated `vulkan` module builds and runs: `examples/offscreen_triangle.das` renders the classic RGB triangle offscreen on a real GPU and reads it back, entirely from daslang. The ergonomic `vulkan_boost` layer is next.
+
+```
+daslang -load_module <path-to-dasVulkan> examples/offscreen_triangle.das
+```
 
 ## Vendored dependencies
 
