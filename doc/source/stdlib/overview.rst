@@ -80,37 +80,49 @@ The offscreen triangle, in full boost form — no hand-set ``sType``, no user
 
 .. code-block:: das
 
-    var inscope instance <- create_instance(application_name = "triangle",
-                                             api_version = make_api_version(1, 3, 0))
-    volkLoadInstance(instance |> boost_value_to_vk)
-    let phys  = select_physical_device(instance)
-    let gfx   = select_graphics_queue_family(phys)
+    var inscope instance <- create_instance("dasVulkan triangle", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx  = select_graphics_queue_family(phys)
     var inscope device <- create_device(phys, gfx)
-    volkLoadDevice(device |> boost_value_to_vk)
+    volkLoadDevice(boost_value_to_vk(device))
     let queue = get_device_queue(device, gfx, 0u)
 
-    var inscope target   <- build_offscreen_target(device, phys, WIDTH, HEIGHT, FORMAT)
-    var inscope rp       <- create_render_pass_single_color(device, FORMAT)
-    var inscope fb       <- create_framebuffer(device, FramebufferCreateInfo(
-                                render_pass = rp, attachments = [target.view],
-                                width = uint(WIDTH), height = uint(HEIGHT), layers = 1u))
-    var inscope pipe     <- create_graphics_pipeline_simple(device, rp, layout,
-                                vert_spirv, frag_spirv, WIDTH, HEIGHT)
-    var inscope readback <- create_host_buffer(device, phys, buf_size)
-    var inscope pool     <- create_command_pool(device, CommandPoolCreateInfo(queue_family_index = gfx))
+    var inscope target      <- build_offscreen_target(device, phys, WIDTH, HEIGHT, FORMAT)
+    var inscope render_pass <- create_render_pass_single_color(device, FORMAT)
 
-    run_cmd_sync(device, pool, queue) <| $(cmd) {
-        record_render_pass(cmd, rp, fb, full_area(WIDTH, HEIGHT), clear_color(0.1, 0.1, 0.15)) <| {
-            cmd_bind_pipeline(cmd, pipe)
+    // CreateInfo view structs are filled field-by-field. Handle fields take a
+    // weak_copy (a non-owning alias — the create_* keeps ownership), and the
+    // array field is move-assigned with <-. Note the C-style field names
+    // (renderPass, pAttachments) — see the p-prefix note in the overview.
+    var fbci : FramebufferCreateInfo
+    fbci.renderPass = weak_copy(render_pass)
+    fbci.pAttachments <- [weak_copy(target.view)]
+    fbci.width = uint(WIDTH)
+    fbci.height = uint(HEIGHT)
+    fbci.layers = 1u
+    var inscope framebuffer <- create_framebuffer(device, fbci)
+
+    var inscope vert     <- create_shader_module(device, vert_code)
+    var inscope frag     <- create_shader_module(device, frag_code)
+    var inscope layout   <- create_pipeline_layout(device)
+    var inscope pipeline <- create_graphics_pipeline_simple(device, render_pass, layout, vert, frag, WIDTH, HEIGHT)
+    var inscope readback <- create_host_buffer(device, phys, buf_size)
+    var inscope pool     <- create_command_pool(device, command_pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        record_render_pass(cmd, render_pass, framebuffer, full_area(WIDTH, HEIGHT),
+                           clear_color(0.1f, 0.1f, 0.15f, 1.0f)) {
+            cmd_bind_pipeline(cmd, pipeline)
             cmd_draw(cmd, 3u)
         }
         copy_image_to_buffer(cmd, target.image, readback, WIDTH, HEIGHT)
     }
 
     var pixels : array<uint8>
-    map_memory_to_array(device, readback.memory, buf_size) <| $(m) { pixels := m }
+    map_memory_to_array(device, readback.memory, buf_size) $(m) { pixels := m }
     // ... write PPM ...
-    // finalizers destroy instance/device/target/rp/fb/pipe/readback/pool in reverse — no cleanup block.
+    // finalizers destroy each inscope owner in reverse order — no cleanup block.
 
 The complete, compiling versions live under ``examples/`` in the repository
 (``offscreen_triangle_boost.das``, ``compute.das``, ``enumerate.das``,
