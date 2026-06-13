@@ -282,6 +282,26 @@ def public create_graphics_pipeline_simple(device : Device; render_pass : Render
     return <- b
 }
 
+//! create a compute pipeline from a shader module + layout (owns the VkPipeline;
+//! finalizes via vkDestroyPipeline). Wraps the batch vkCreateComputePipelines at count 1.
+def public create_compute_pipeline(device : Device; layout : PipelineLayout; shader : ShaderModule; entry : string = "main") : Pipeline {
+    var stage = VkPipelineShaderStageCreateInfo()
+    stage.stage.compute = true
+    stage.module_ = boost_value_to_vk(shader)
+    stage.pName = entry
+    var cp = VkComputePipelineCreateInfo()
+    cp.stage = stage
+    cp.layout = boost_value_to_vk(layout)
+    var h : VkPipeline
+    unsafe {
+        vk_check(vkCreateComputePipelines(boost_value_to_vk(device), null, 1u, addr(cp), null, addr(h)), null)
+    }
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
 // ===== combined builders =====
 
 //! image + backing device memory + view, owned together (destroyed view->image->memory)
@@ -437,6 +457,25 @@ def public map_memory_to_array(device : Device; memory : DeviceMemory; size : ui
     delete arr
 }
 
+//! map a device-memory range, copy `count` elements of T into an owned array<T>, unmap.
+//! The typed/copying readback — no block, no manual memcpy/reinterpret at the call site.
+[unused_argument(elem)] def public read_memory(device : Device; memory : DeviceMemory; elem : type<auto(TT)>; count : int) : array<TT> {
+    var out : array<TT>
+    if (count <= 0) {
+        return <- out
+    }
+    out |> resize(count)
+    let nbytes = count * typeinfo sizeof(type<TT>)
+    var mapped : void? = null
+    let flags : VkMemoryMapFlags
+    unsafe {
+        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, uint64(nbytes), flags, addr(mapped)), null)
+        memcpy(reinterpret<void?>(addr(out[0])), mapped, nbytes)
+    }
+    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
+    return <- out
+}
+
 // ===== conveniences =====
 
 def public full_area(width, height : int) : VkRect2D {
@@ -455,9 +494,9 @@ def public clear_color(r, g, b, a : float) : VkClearValue {
     return c
 }
 
-//! bind a graphics pipeline (convenience over the generated cmd_bind_pipeline)
-def public cmd_bind_pipeline(cmd : CommandBuffer; pipeline : Pipeline) {
-    vkCmdBindPipeline(boost_value_to_vk(cmd), VkPipelineBindPoint.GRAPHICS, boost_value_to_vk(pipeline))
+//! bind a pipeline (defaults to the graphics bind point; pass COMPUTE for a compute pipeline)
+def public cmd_bind_pipeline(cmd : CommandBuffer; pipeline : Pipeline; bind_point : VkPipelineBindPoint = VkPipelineBindPoint.GRAPHICS) {
+    vkCmdBindPipeline(boost_value_to_vk(cmd), bind_point, boost_value_to_vk(pipeline))
 }
 
 //! draw (convenience over the generated cmd_draw: defaults instance/first to 0)

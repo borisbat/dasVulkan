@@ -63,10 +63,10 @@ def document_module_vulkan_boost() {
     var groups <- array<DocGroup>(
         group_by_regex("Device selection", mod, %regex~^(select_physical_device|select_graphics_queue_family|find_memory_type)$%%),
         group_by_regex("Instance & device", mod, %regex~^(create_instance|create_device|get_device_queue)$%%),
-        group_by_regex("Shaders & pipelines", mod, %regex~^(create_shader_module|create_pipeline_layout|create_graphics_pipeline_simple)$%%),
+        group_by_regex("Shaders & pipelines", mod, %regex~^(create_shader_module|create_pipeline_layout|create_graphics_pipeline_simple|create_compute_pipeline)$%%),
         group_by_regex("Render passes",    mod, %regex~^create_render_pass_single_color$%%),
         group_by_regex("Builders",         mod, %regex~^(build_offscreen_target|create_host_buffer)$%%),
-        group_by_regex("Block brackets",   mod, %regex~^(run_cmd_sync|record_render_pass|map_memory_to_array)$%%),
+        group_by_regex("Memory & brackets", mod, %regex~^(run_cmd_sync|record_render_pass|map_memory_to_array|read_memory)$%%),
         group_by_regex("Command recording", mod, %regex~^(cmd_bind_pipeline|cmd_draw|copy_image_to_buffer)$%%),
         group_by_regex("Conveniences",     mod, %regex~^(full_area|clear_color)$%%),
         hide_group(group_by_regex("Finalizers", mod, %regex~^finalize$%%))

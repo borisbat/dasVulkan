@@ -41,6 +41,15 @@ Image memory layout (``VK_IMAGE_LAYOUT_UNDEFINED``,
 ``VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL``, …) used in render passes and
 barriers.
 
+.. _enum-vulkan-vkpipelinebindpoint:
+
+``vulkan::VkPipelineBindPoint``
+-------------------------------
+
+Selects which bind point a pipeline / descriptor set binds to —
+``GRAPHICS`` or ``COMPUTE``. The trailing ``bind_point`` argument to
+``cmd_bind_pipeline`` (defaults to ``GRAPHICS``).
+
 Core handles and aliases
 ========================
 
