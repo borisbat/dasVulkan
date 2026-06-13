@@ -112,9 +112,11 @@ call `volkInitialize()` themselves.
   `pAttachments`, `queueFamilyIndex` (camelCase + Hungarian `p`), NOT
   `render_pass`/`attachments`. `pNext` → `next : void?` (raw escape hatch).
   Stripping the `p` and typed pNext chains are deferred (see `ROADMAP.md`).
-- **Filling a CreateInfo view:** build it field-by-field. Handle fields take a
-  `weak_copy` (the `create_*` keeps ownership); array fields are move-assigned
-  with `<-`. The named-constructor form does NOT work for handle/array fields.
+- **Filling a CreateInfo view:** the named-argument constructor works for every
+  field kind — `Foo(scalar = x, handle = weak_copy(h), arr <- [..])`. Handle
+  fields take a `weak_copy` (a non-owning alias; the `create_*` keeps
+  ownership); non-copyable array fields are move-initialized with `<-`.
+  Field-by-field assignment also works but trips STYLE013 — prefer the ctor.
 - **Count fields are mostly auto-derived** from array length. The exceptions
   (optional / `noautovalidity` arrays, e.g. `descriptorCount` without samplers)
   are settable boost fields under the independent-count model: the view sets

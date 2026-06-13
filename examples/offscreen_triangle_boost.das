@@ -3,7 +3,6 @@ options gen2
 require vulkan
 require vulkan/vulkan_boost
 require daslib/fio
-require strings
 require math
 
 let WIDTH = 256
@@ -70,12 +69,9 @@ def main() : int {
     var inscope target <- build_offscreen_target(device, phys, WIDTH, HEIGHT, FORMAT)
     var inscope render_pass <- create_render_pass_single_color(device, FORMAT)
 
-    var fbci : FramebufferCreateInfo
-    fbci.renderPass = weak_copy(render_pass)
-    fbci.pAttachments <- [weak_copy(target.view)]
-    fbci.width = uint(WIDTH)
-    fbci.height = uint(HEIGHT)
-    fbci.layers = 1u
+    var fbci = FramebufferCreateInfo(renderPass = weak_copy(render_pass),
+                                     pAttachments <- [weak_copy(target.view)],
+                                     width = uint(WIDTH), height = uint(HEIGHT), layers = 1u)
     var inscope framebuffer <- create_framebuffer(device, fbci)
 
     var vert_code <- load_spirv("examples/shaders/triangle.vert.spv")

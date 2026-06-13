@@ -12,8 +12,8 @@ The binding generator is itself written in daslang (`generator/`), parsing `vk.x
 Working. The raw `vulkan` module covers the full API surface, and the generated `vulkan_boost` layer makes it ergonomic — RAII-owned handle wrappers, sType-filling constructors, `array<T>`-based struct views, and high-level builders. Three offscreen examples (triangle, compute, device enumeration) run on a real GPU or on Mesa lavapipe in CI.
 
 ```
-daslang -load_module <path-to-dasVulkan> examples/offscreen_triangle_boost.das   # boost
-daslang -load_module <path-to-dasVulkan> examples/compute.das                    # compute
+daslang -load_module <path-to-dasVulkan> examples/offscreen_triangle_boost.das   # boost triangle
+daslang -load_module <path-to-dasVulkan> examples/compute_boost.das              # boost compute
 daslang -load_module <path-to-dasVulkan> examples/enumerate.das                  # device info
 ```
 

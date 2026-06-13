@@ -91,16 +91,13 @@ The offscreen triangle, in full boost form — no hand-set ``sType``, no user
     var inscope target      <- build_offscreen_target(device, phys, WIDTH, HEIGHT, FORMAT)
     var inscope render_pass <- create_render_pass_single_color(device, FORMAT)
 
-    // CreateInfo view structs are filled field-by-field. Handle fields take a
-    // weak_copy (a non-owning alias — the create_* keeps ownership), and the
-    // array field is move-assigned with <-. Note the C-style field names
-    // (renderPass, pAttachments) — see the p-prefix note in the overview.
-    var fbci : FramebufferCreateInfo
-    fbci.renderPass = weak_copy(render_pass)
-    fbci.pAttachments <- [weak_copy(target.view)]
-    fbci.width = uint(WIDTH)
-    fbci.height = uint(HEIGHT)
-    fbci.layers = 1u
+    // CreateInfo view structs use the named-argument constructor. Handle fields
+    // take a weak_copy (a non-owning alias — the create_* keeps ownership);
+    // non-copyable array fields are move-initialized with <-. Note the C-style
+    // field names (renderPass, pAttachments) — see the p-prefix note above.
+    var fbci = FramebufferCreateInfo(renderPass = weak_copy(render_pass),
+                                     pAttachments <- [weak_copy(target.view)],
+                                     width = uint(WIDTH), height = uint(HEIGHT), layers = 1u)
     var inscope framebuffer <- create_framebuffer(device, fbci)
 
     var inscope vert     <- create_shader_module(device, vert_code)
@@ -125,5 +122,6 @@ The offscreen triangle, in full boost form — no hand-set ``sType``, no user
     // finalizers destroy each inscope owner in reverse order — no cleanup block.
 
 The complete, compiling versions live under ``examples/`` in the repository
-(``offscreen_triangle_boost.das``, ``compute.das``, ``enumerate.das``,
-``window_triangle.das``).
+(``offscreen_triangle_boost.das``, ``compute_boost.das``, ``enumerate.das``,
+``window_triangle.das``; ``offscreen_triangle.das`` and ``compute.das`` are the
+raw references).
