@@ -57,20 +57,21 @@ jobs:
 
       - name: "Build daslang"
         working-directory: daslang-src
-        # Minimal daslang: the generated C++ bindings are committed, so the
-        # package build needs neither the generator (pugixml) nor LLVM/HV/GLFW.
+        # daspkg itself requires the pugixml module (utils/daspkg/commands.das ->
+        # PUGIXML_boost), so build it. LLVM/HV/GLFW are not needed -- the dasVulkan
+        # generated C++ is committed and the module only links volk + vendored headers.
         run: |
           set -eux
           cmake --no-warn-unused-cli -B./build \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DDAS_HV_DISABLED=ON \
-            -DDAS_PUGIXML_DISABLED=ON \
+            -DDAS_PUGIXML_DISABLED=OFF \
             -DDAS_LLVM_DISABLED=ON \
             -DDAS_GLFW_DISABLED=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
             -G Ninja
-          cmake --build ./build --parallel --target daslang
+          cmake --build ./build --parallel --target daslang dasModulePUGIXML
           sccache --show-stats
           echo "BIN_DIR=bin" >> "$GITHUB_ENV"
 
