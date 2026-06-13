@@ -16,3 +16,6 @@ out/
 *.ppm
 _smoke_*.das
 imgui.ini
+
+# daspkg install dir + index cache (created by `daspkg install` / `daspkg introduce`)
+modules/

@@ -188,7 +188,7 @@ def public create_frame_sync(device : Device) : FrameSync {
 //! returns false if the swapchain is out of date (caller should recreate).
 def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_pass : RenderPass;
         pool : CommandPool; sync : FrameSync; clear : VkClearValue;
-        blk : block<(cmd : VkCommandBuffer) : void>) : bool {
+        blk : block<(cmd : CommandBuffer) : void>) : bool {
     let dev = boost_value_to_vk(device)
 
     var image_index = 0u
@@ -202,17 +202,18 @@ def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_p
     ai.commandPool = boost_value_to_vk(pool)
     ai.level = VkCommandBufferLevel.PRIMARY
     ai.commandBufferCount = 1u
-    var cmd : VkCommandBuffer
+    var raw_cmd : VkCommandBuffer
     unsafe {
-        vk_check(vkAllocateCommandBuffers(dev, ai, addr(cmd)), null)
+        vk_check(vkAllocateCommandBuffers(dev, ai, addr(raw_cmd)), null)
     }
+    let cmd = vk_value_to_boost(raw_cmd)
     let begin = VkCommandBufferBeginInfo()
-    vk_check(vkBeginCommandBuffer(cmd, begin), null)
+    vk_check(vkBeginCommandBuffer(raw_cmd, begin), null)
     record_render_pass(cmd, render_pass, sc.framebuffers[int(image_index)],
             full_area(sc.width, sc.height), clear) {
         invoke(blk, cmd)
     }
-    vk_check(vkEndCommandBuffer(cmd), null)
+    vk_check(vkEndCommandBuffer(raw_cmd), null)
 
     var wait_sem = boost_value_to_vk(sync.image_available)
     var signal_sem = boost_value_to_vk(sync.render_finished)
@@ -225,7 +226,7 @@ def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_p
     unsafe {
         submit.pWaitSemaphores = addr(wait_sem)
         submit.pWaitDstStageMask = reinterpret<uint?>(addr(wait_stage))
-        submit.pCommandBuffers = addr(cmd)
+        submit.pCommandBuffers = addr(raw_cmd)
         submit.pSignalSemaphores = addr(signal_sem)
         vk_check(vkQueueSubmit(queue, 1u, addr(submit), null), null)
     }
@@ -243,7 +244,7 @@ def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_p
     }
     vk_check(vkQueueWaitIdle(queue), null)
     unsafe {
-        vkFreeCommandBuffers(dev, boost_value_to_vk(pool), 1u, addr(cmd))
+        vkFreeCommandBuffers(dev, boost_value_to_vk(pool), 1u, addr(raw_cmd))
     }
     return presented != VkResult.ERROR_OUT_OF_DATE_KHR
 }

@@ -150,11 +150,13 @@ def main() : int {
     // ---- dispatch ----
     var inscope pool <- create_command_pool(device, pool_info(uint(fam)))
     run_cmd_sync(device, pool, queue) $(cmd) {
-        vkCmdBindPipeline(cmd, VkPipelineBindPoint.COMPUTE, pipeline)
+        // pipeline/layout/desc_set are raw here (raw descriptor setup), so unwrap the
+        // command buffer; cmd_dispatch is a generated boost wrapper taking CommandBuffer.
+        vkCmdBindPipeline(boost_value_to_vk(cmd), VkPipelineBindPoint.COMPUTE, pipeline)
         unsafe {
-            vkCmdBindDescriptorSets(cmd, VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, 1u, addr(desc_set), 0u, null)
+            vkCmdBindDescriptorSets(boost_value_to_vk(cmd), VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, 1u, addr(desc_set), 0u, null)
         }
-        vkCmdDispatch(cmd, uint(N / GROUP), 1u, 1u)
+        cmd_dispatch(cmd, uint(N / GROUP), 1u, 1u)
     }
 
     // ---- read back + verify ----

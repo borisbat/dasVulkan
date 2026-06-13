@@ -14,6 +14,7 @@ require vulkan/vulkan_ctors public
 require vulkan/vulkan_handles public
 require vulkan/vulkan_structs public
 require vulkan/vulkan_commands public
+require vulkan/vulkan_cmds public
 require daslib/defer
 
 // ===== selection =====
@@ -358,33 +359,34 @@ def public create_host_buffer(device : Device; phys : VkPhysicalDevice; size : u
 // ===== block brackets =====
 
 //! allocate a one-shot primary command buffer, record the block, submit, wait idle
-def public run_cmd_sync(device : Device; pool : CommandPool; queue : VkQueue; blk : block<(cmd : VkCommandBuffer) : void>) {
+def public run_cmd_sync(device : Device; pool : CommandPool; queue : VkQueue; blk : block<(cmd : CommandBuffer) : void>) {
     var ai = VkCommandBufferAllocateInfo()
     ai.commandPool = boost_value_to_vk(pool)
     ai.level = VkCommandBufferLevel.PRIMARY
     ai.commandBufferCount = 1u
-    var cmd : VkCommandBuffer
+    var raw_cmd : VkCommandBuffer
     unsafe {
-        vk_check(vkAllocateCommandBuffers(boost_value_to_vk(device), ai, addr(cmd)), null)
+        vk_check(vkAllocateCommandBuffers(boost_value_to_vk(device), ai, addr(raw_cmd)), null)
     }
-    var begin = VkCommandBufferBeginInfo()
-    vk_check(vkBeginCommandBuffer(cmd, begin), null)
+    let cmd = vk_value_to_boost(raw_cmd)   // non-owning wrapper (pool-freed below)
+    let begin = VkCommandBufferBeginInfo()
+    vk_check(vkBeginCommandBuffer(raw_cmd, begin), null)
     invoke(blk, cmd)
-    vk_check(vkEndCommandBuffer(cmd), null)
+    vk_check(vkEndCommandBuffer(raw_cmd), null)
     var submit = VkSubmitInfo()
     submit.commandBufferCount = 1u
     unsafe {
-        submit.pCommandBuffers = addr(cmd)
+        submit.pCommandBuffers = addr(raw_cmd)
         vk_check(vkQueueSubmit(queue, 1u, addr(submit), null), null)
     }
     vk_check(vkQueueWaitIdle(queue), null)
     unsafe {
-        vkFreeCommandBuffers(boost_value_to_vk(device), boost_value_to_vk(pool), 1u, addr(cmd))
+        vkFreeCommandBuffers(boost_value_to_vk(device), boost_value_to_vk(pool), 1u, addr(raw_cmd))
     }
 }
 
 //! begin/end a render pass around the block, clearing to `clear`
-def public record_render_pass(cmd : VkCommandBuffer; render_pass : RenderPass; framebuffer : Framebuffer;
+def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; framebuffer : Framebuffer;
         area : VkRect2D; clear : VkClearValue; blk : block<() : void>) {
     var rp = VkRenderPassBeginInfo()
     rp.renderPass = boost_value_to_vk(render_pass)
@@ -392,12 +394,13 @@ def public record_render_pass(cmd : VkCommandBuffer; render_pass : RenderPass; f
     rp.renderArea = area
     rp.clearValueCount = 1u
     var c = clear
+    let raw_cmd = boost_value_to_vk(cmd)
     unsafe {
         rp.pClearValues = addr(c)
-        vkCmdBeginRenderPass(cmd, rp, VkSubpassContents.INLINE)
+        vkCmdBeginRenderPass(raw_cmd, rp, VkSubpassContents.INLINE)
     }
     invoke(blk)
-    vkCmdEndRenderPass(cmd)
+    vkCmdEndRenderPass(raw_cmd)
 }
 
 //! map a device-memory range, expose it as an array<uint8>, unmap after the block
@@ -435,15 +438,17 @@ def public clear_color(r, g, b, a : float) : VkClearValue {
     return c
 }
 
-def public cmd_bind_pipeline(cmd : VkCommandBuffer; pipeline : Pipeline) {
-    vkCmdBindPipeline(cmd, VkPipelineBindPoint.GRAPHICS, boost_value_to_vk(pipeline))
+//! bind a graphics pipeline (convenience over the generated cmd_bind_pipeline)
+def public cmd_bind_pipeline(cmd : CommandBuffer; pipeline : Pipeline) {
+    vkCmdBindPipeline(boost_value_to_vk(cmd), VkPipelineBindPoint.GRAPHICS, boost_value_to_vk(pipeline))
 }
 
-def public cmd_draw(cmd : VkCommandBuffer; vertex_count : uint; instance_count : uint = 1u) {
-    vkCmdDraw(cmd, vertex_count, instance_count, 0u, 0u)
+//! draw (convenience over the generated cmd_draw: defaults instance/first to 0)
+def public cmd_draw(cmd : CommandBuffer; vertex_count : uint; instance_count : uint = 1u) {
+    vkCmdDraw(boost_value_to_vk(cmd), vertex_count, instance_count, 0u, 0u)
 }
 
-def public copy_image_to_buffer(cmd : VkCommandBuffer; image : Image; buffer : HostBuffer; width, height : int) {
+def public copy_image_to_buffer(cmd : CommandBuffer; image : Image; buffer : HostBuffer; width, height : int) {
     var region : VkBufferImageCopy
     region.imageSubresource.aspectMask.color = true
     region.imageSubresource.layerCount = 1u
@@ -451,7 +456,7 @@ def public copy_image_to_buffer(cmd : VkCommandBuffer; image : Image; buffer : H
     region.imageExtent.height = uint(height)
     region.imageExtent.depth = 1u
     unsafe {
-        vkCmdCopyImageToBuffer(cmd, boost_value_to_vk(image), VkImageLayout.TRANSFER_SRC_OPTIMAL,
+        vkCmdCopyImageToBuffer(boost_value_to_vk(cmd), boost_value_to_vk(image), VkImageLayout.TRANSFER_SRC_OPTIMAL,
             boost_value_to_vk(buffer.buffer), 1u, addr(region))
     }
 }

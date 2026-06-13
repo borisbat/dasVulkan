@@ -253,8 +253,8 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
         return <- bf
     }
     // arrays: a len that names a count member
-    let has_count = !empty(m.len) && key_exists(counts, m.len)
-    if (has_count && m.num_ptrs == 1 && tn != "void" && tn != "char") {
+    let hasvkcount = !empty(m.len) && key_exists(counts, m.len)
+    if (hasvkcount && m.num_ptrs == 1 && tn != "void" && tn != "char") {
         bf.count_member = m.len
         if (elem_is_handle(em, tn)) {
             bf.kind = FieldKind.arr_handle
@@ -556,6 +556,442 @@ def private emit_commands_boost(reg : VkRegistry; em : EmitModel; out_dir : stri
     to_log(LOG_INFO, "boost: {length(creators)} creators -> vulkan_commands.das\n")
 }
 
+// ===== plain commands (vkCmd* / vkGet* / vkQueue* / vkWait* / ...) =====
+// Every non-create, non-destroy command: boost handle params, boost vk_view struct
+// params, array<T> for count+ptr pairs, a single out-param -> return value, the
+// two-call enumerate idiom -> return array<T>. Conservative: any unmappable param
+// skips the whole command (logged); the raw vk* call always stays available.
+
+enum CmdArgKind {
+    in_handle       //! boost handle by value -> boost_value_to_vk(x)
+    in_view         //! single const struct ptr -> boost vk_view struct
+    in_array_scalar //! count+const scalar/enum ptr -> array<scalar>
+    in_array_handle //! count+const handle ptr -> array<BoostHandle>
+    in_scalar       //! by-value scalar / enum / flags
+    in_string       //! const char*
+    erasevkcount     //! input count member named by an input array's len -> uint(length(arr))
+    out_value       //! single non-const ptr (by-ref) -> returned
+    out_array       //! enumerate array out -> array<elem>, addr() pointer
+    count_query     //! the uint32* count in a two-call enumerate (by-ref)
+    hard            //! unmappable -> skip the whole command
+}
+
+struct CmdArg {
+    kind : CmdArgKind
+    pname : string          //! das-safe param name
+    boost_type : string     //! signature type (for inputs)
+    vktype : string         //! raw type name
+    elem_vktype : string    //! arrays: raw element type
+    elem_boost : string     //! arrays: boost element type
+    count_for : string      //! erasevkcount: das-safe name of the array param it counts
+}
+
+struct CmdPlan {
+    emittable : bool
+    skip : string
+    fn_name : string
+    command : string
+    args : array<CmdArg>            //! all params, in declaration order
+    is_result : bool               //! returns VkResult -> thread var result + vk_check
+    has_out_value : bool
+    out_value_pname : string
+    out_value_vktype : string
+    out_value_ret : string         //! returned das type
+    out_value_is_handle : bool
+    has_out_array : bool
+    out_array_pname : string
+    out_array_elem : string        //! raw elem type (array<elem>)
+    count_query_pname : string
+    count_is_64 : bool             //! enumerate count is size_t (uint64) not uint32
+    direct_ret : string            //! non-void non-VkResult scalar return ("" if none)
+}
+
+def private boost_is_flags(em : EmitModel; tn : string) : bool {
+    let fi = em.flags_lookup?[tn] ?? FlagsInfo()
+    return fi.kind != FlagsKind.not_flags
+}
+
+//! can we declare `var x : <mapped>` and return/pass it by value? scalar / handle /
+//! emitted-struct / plain-enum. Excludes flags (raw uint* pointer), void, foreign, PFN.
+def private mappable_value_type(reg : VkRegistry; em : EmitModel; tn : string) : bool {
+    if (!empty(DAS_SCALAR_MAP?[tn] ?? "")) {
+        return true
+    }
+    let bt = reg.base_types?[tn] ?? ""
+    if (!empty(DAS_SCALAR_MAP?[bt] ?? "")) {
+        return true
+    }
+    if (key_exists(em.handle_names, tn) || key_exists(em.struct_emit, tn) || key_exists(em.plain_enums, tn)) {
+        return true
+    }
+    return false
+}
+
+//! the das type for a by-value/out scalar/enum/flags/handle/struct type name
+def private cmd_value_type(reg : VkRegistry; em : EmitModel; vktype : string) : string {
+    let ds = DAS_SCALAR_MAP?[vktype] ?? ""
+    if (!empty(ds)) {
+        return ds
+    }
+    let fi = em.flags_lookup?[vktype] ?? FlagsInfo()
+    if (fi.kind != FlagsKind.not_flags) {
+        return fi.canonical
+    }
+    let bt = reg.base_types?[vktype] ?? ""
+    let vb = DAS_SCALAR_MAP?[bt] ?? ""
+    if (!empty(vb)) {
+        return vb
+    }
+    return vktype                  // enum / nested struct / handle raw type
+}
+
+def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; view_set : table<string>) : CmdPlan {
+    var plan = CmdPlan(emittable = true, fn_name = command_fn_name(c.name), command = c.name)
+    let n = length(c.params)
+    plan.is_result = c.ret_type == "VkResult"
+    if (c.ret_type != "void" && !plan.is_result) {
+        if (key_exists(reg.func_pointers, c.ret_type) || !mappable_value_type(reg, em, c.ret_type)) {
+            plan.emittable = false
+            plan.skip = "{c.name}: return type {c.ret_type} not mappable"
+            return <- plan
+        }
+        plan.direct_ret = cmd_value_type(reg, em, c.ret_type)
+    }
+    var param_names : table<string>
+    for (p in c.params) {
+        param_names |> insert(p.name)
+    }
+    // detect the two-call enumerate: a non-const uint32_t*/size_t* count whose name is
+    // the len= of another non-const, non-void pointer param (the output array)
+    var enum_count = -1
+    var enum_array = -1
+    for (p, i in c.params, range(n)) {
+        if (p.num_ptrs == 1 && !p.is_const && (p.type_name == "uint32_t" || p.type_name == "size_t")) {
+            for (q, j in c.params, range(n)) {
+                if (j != i && !empty(q.len) && q.len == p.name && q.num_ptrs >= 1 && !q.is_const &&
+                        q.type_name != "void" && mappable_value_type(reg, em, q.type_name)) {
+                    enum_count = i
+                    enum_array = j
+                    plan.count_is_64 = p.type_name == "size_t"
+                }
+            }
+        }
+    }
+    // names of params that are the count (len=) of an INPUT array param
+    var in_counts : table<string>
+    for (p, i in c.params, range(n)) {
+        continue if (i == enum_array)
+        if (!empty(p.len) && p.is_const && p.num_ptrs >= 1 && key_exists(param_names, p.len)) {
+            in_counts |> insert(p.len)
+        }
+    }
+    var out_value_count = 0
+    for (p, i in c.params, range(n)) {
+        var a = CmdArg(pname = das_safe_name(p.name), vktype = p.type_name)
+        let is_handle = key_exists(em.handle_names, p.type_name)
+        if (i == enum_count) {
+            a.kind = CmdArgKind.count_query
+            plan.count_query_pname = a.pname
+            plan.args |> emplace(a)
+            continue
+        }
+        if (i == enum_array) {
+            a.kind = CmdArgKind.out_array
+            plan.has_out_array = true
+            plan.out_array_pname = a.pname
+            plan.out_array_elem = p.type_name
+            plan.args |> emplace(a)
+            continue
+        }
+        // function pointer / fixed-array / multi-ptr -> hard
+        if (key_exists(reg.func_pointers, p.type_name) || length(p.arr_dims) > 0 || p.num_ptrs >= 2) {
+            plan.emittable = false
+            plan.skip = "{c.name}: param {p.name} ({p.type_name} x{p.num_ptrs}) not mappable"
+            return <- plan
+        }
+        // input count member of an input array -> derived
+        if (key_exists(in_counts, p.name)) {
+            a.kind = CmdArgKind.erasevkcount
+            plan.args |> emplace(a)
+            continue
+        }
+        // single non-const pointer (by-ref out) with no len -> out value. The raw binding
+        // ref-promotes it only when !optional, and only mappable value types work
+        // (flags out-params are raw uint* pointers, foreign/void types skip).
+        if (p.num_ptrs == 1 && !p.is_const && empty(p.len) && p.type_name != "void") {
+            if (p.optional_attr == "true" || boost_is_flags(em, p.type_name) || !mappable_value_type(reg, em, p.type_name)) {
+                plan.emittable = false
+                plan.skip = "{c.name}: out param {p.name} ({p.type_name}) not a ref-mappable value"
+                return <- plan
+            }
+            a.kind = CmdArgKind.out_value
+            plan.has_out_value = true
+            plan.out_value_pname = a.pname
+            plan.out_value_vktype = p.type_name
+            plan.out_value_is_handle = is_handle
+            plan.out_value_ret = is_handle ? boost_name(p.type_name) : cmd_value_type(reg, em, p.type_name)
+            out_value_count ++
+            plan.args |> emplace(a)
+            continue
+        }
+        // const array (len names a count param)
+        let hasvkcount = !empty(p.len) && p.is_const && p.num_ptrs == 1 && key_exists(param_names, p.len)
+        let arrayvkcount = das_safe_name(p.len)
+        if (hasvkcount && p.type_name != "void" && p.type_name != "char") {
+            if (is_handle) {
+                a.kind = CmdArgKind.in_array_handle
+                a.elem_boost = boost_name(p.type_name)
+                a.elem_vktype = p.type_name
+                a.boost_type = "array<{a.elem_boost}>"
+                a.count_for = arrayvkcount
+                plan.args |> emplace(a)
+                continue
+            }
+            let ds = DAS_SCALAR_MAP?[p.type_name] ?? ""
+            if (!empty(ds)) {
+                a.kind = CmdArgKind.in_array_scalar
+                a.elem_vktype = ds
+                a.boost_type = "array<{ds}>"
+                a.count_for = arrayvkcount
+                plan.args |> emplace(a)
+                continue
+            }
+            plan.emittable = false      // array of struct/enum/flags -> defer
+            plan.skip = "{c.name}: array param {p.name} ({p.type_name}) of non-scalar/handle"
+            return <- plan
+        }
+        // single const struct ptr (ref-promoted: no len, not optional) -> boost vk_view
+        if (p.num_ptrs == 1 && p.is_const && empty(p.len) && p.optional_attr != "true" && key_exists(view_set, p.type_name)) {
+            a.kind = CmdArgKind.in_view
+            a.boost_type = boost_name(p.type_name)
+            plan.args |> emplace(a)
+            continue
+        }
+        // const char*
+        if (p.type_name == "char" && p.num_ptrs == 1) {
+            a.kind = CmdArgKind.in_string
+            a.boost_type = "string"
+            plan.args |> emplace(a)
+            continue
+        }
+        // any remaining pointer -> hard
+        if (p.num_ptrs >= 1) {
+            plan.emittable = false
+            plan.skip = "{c.name}: pointer param {p.name} ({p.type_name}) not mappable"
+            return <- plan
+        }
+        // by-value handle
+        if (is_handle) {
+            a.kind = CmdArgKind.in_handle
+            a.boost_type = boost_name(p.type_name)
+            plan.args |> emplace(a)
+            continue
+        }
+        // by-value scalar / enum / flags / nested POD struct
+        if (!mappable_value_type(reg, em, p.type_name) && !boost_is_flags(em, p.type_name)) {
+            plan.emittable = false
+            plan.skip = "{c.name}: by-value param {p.name} ({p.type_name}) not mappable"
+            return <- plan
+        }
+        a.kind = CmdArgKind.in_scalar
+        a.boost_type = cmd_value_type(reg, em, p.type_name)
+        plan.args |> emplace(a)
+    }
+    if (out_value_count > 1) {
+        plan.emittable = false
+        plan.skip = "{c.name}: {out_value_count} out params (only single out supported)"
+        return <- plan
+    }
+    // link each erasevkcount to the array param it counts (-> uint(length(arr)))
+    for (i in range(length(plan.args))) {
+        let ak = plan.args[i].kind
+        if (ak == CmdArgKind.in_array_scalar || ak == CmdArgKind.in_array_handle) {
+            let target = plan.args[i].count_for
+            let arr_pname = plan.args[i].pname
+            for (j in range(length(plan.args))) {
+                if (plan.args[j].kind == CmdArgKind.erasevkcount && plan.args[j].pname == target) {
+                    plan.args[j].count_for = arr_pname
+                }
+            }
+        }
+    }
+    return <- plan
+}
+
+// hand-written in vulkan_boost.das as ergonomic conveniences (defaulted args /
+// raw-queue return) -> the generator skips these names to avoid a redefinition.
+let HAND_WRITTEN_COMMANDS : table<string> <- { "cmd_bind_pipeline", "cmd_draw", "get_device_queue" }
+
+def public derive_commands(reg : VkRegistry; em : EmitModel; views : array<ViewStruct>; var skip_log : array<string>) : array<CmdPlan> {
+    var view_set : table<string>
+    for (vs in views) {
+        view_set |> insert(reg.structs[vs.s_index].name)
+    }
+    var plans : array<CmdPlan>
+    for (c in reg.commands) {
+        continue if (!empty(c.alias))
+        continue if (!key_exists(reg.enabled_commands, c.name))
+        continue if (!empty(c.protect))
+        // creators (vkCreate*/vkAllocate*) and destroyers (vkDestroy*/vkFree*) are
+        // handled elsewhere (RAII creators / finalize)
+        continue if (c.name |> starts_with("vkCreate") || c.name |> starts_with("vkAllocate"))
+        continue if (c.name |> starts_with("vkDestroy") || c.name |> starts_with("vkFree"))
+        var plan <- plan_command(reg, em, c, view_set)
+        continue if (key_exists(HAND_WRITTEN_COMMANDS, plan.fn_name))
+        if (!plan.emittable) {
+            skip_log |> push(plan.skip)
+            continue
+        }
+        plans |> emplace(plan)
+    }
+    return <- plans
+}
+
+//! the raw-call argument expression for one param
+def private call_arg(a : CmdArg) : string {
+    if (a.kind == CmdArgKind.in_handle) {
+        return "boost_value_to_vk({a.pname})"
+    } elif (a.kind == CmdArgKind.in_view) {
+        return "vkview_{a.pname}"
+    } elif (a.kind == CmdArgKind.in_scalar || a.kind == CmdArgKind.in_string) {
+        return a.pname
+    } elif (a.kind == CmdArgKind.in_array_scalar) {
+        return "array_addr({a.pname})"
+    } elif (a.kind == CmdArgKind.in_array_handle) {
+        return "array_addr(vkraw_{a.pname})"
+    } elif (a.kind == CmdArgKind.erasevkcount) {
+        return "uint(length({a.count_for}))"
+    } elif (a.kind == CmdArgKind.count_query) {
+        return "vkcount"
+    } elif (a.kind == CmdArgKind.out_value) {
+        return "vkout"
+    }
+    return "null"   // out_array first-call placeholder is handled specially
+}
+
+def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir : string; plans : array<CmdPlan>) {
+    fopen("{out_dir}/vulkan_cmds.das", "wb") $(f) {
+        panic("can't write vulkan_cmds.das") if (f == null)
+        fprint(f, GEN_HEADER)
+        fprint(f, "options gen2\noptions indenting = 4\n\nmodule vulkan_cmds\n\n")
+        fprint(f, "require vulkan public\nrequire vulkan/vulkan_handles public\nrequire vulkan/vulkan_structs public\nrequire vulkan/vulkan_runtime public\nrequire daslib/defer\n\n")
+        for (plan in plans) {
+            // --- signature ---
+            fprint(f, "def {plan.fn_name}(")
+            var first = true
+            for (a in plan.args) {
+                let in_sig = (a.kind == CmdArgKind.in_handle || a.kind == CmdArgKind.in_view ||
+                    a.kind == CmdArgKind.in_array_scalar || a.kind == CmdArgKind.in_array_handle ||
+                    a.kind == CmdArgKind.in_scalar || a.kind == CmdArgKind.in_string)
+                continue if (!in_sig)
+                if (!first) {
+                    fprint(f, "; ")
+                }
+                first = false
+                // views and arrays need var (vk_view mutates scratch / array_addr needs var)
+                let needs_var = a.kind == CmdArgKind.in_view || a.kind == CmdArgKind.in_array_scalar
+                fprint(f, "{needs_var ? "var " : ""}{a.pname} : {a.boost_type}")
+            }
+            if (plan.is_result) {
+                fprint(f, "{first ? "" : "; "}var result : VkResult? = null")
+                first = false
+            }
+            fprint(f, ")")
+            // --- return type ---
+            if (plan.has_out_array) {
+                fprint(f, " : array<{plan.out_array_elem}>")
+            } elif (plan.has_out_value) {
+                fprint(f, " : {plan.out_value_ret}")
+            } elif (!empty(plan.direct_ret)) {
+                fprint(f, " : {plan.direct_ret}")
+            }
+            fprint(f, " {OB}\n")
+            // --- view prep ---
+            for (a in plan.args) {
+                if (a.kind == CmdArgKind.in_view) {
+                    fprint(f, "    let vkview_{a.pname} = vk_view_create_unsafe({a.pname})\n")
+                    fprint(f, "    defer() {OB} vk_view_destroy({a.pname}) {CB}\n")
+                } elif (a.kind == CmdArgKind.in_array_handle) {
+                    fprint(f, "    var vkraw_{a.pname} <- [for (h in {a.pname}); boost_value_to_vk(h)]\n")
+                }
+            }
+            // --- the call(s) ---
+            let need_unsafe = plan.has_out_array
+            if (plan.has_out_array) {
+                // two-call enumerate
+                fprint(f, "    var vkcount = {plan.count_is_64 ? "0ul" : "0u"}\n")
+                fprint(f, "    {plan.command}(")
+                emit_call_args(f, plan, "null")
+                fprint(f, ")\n")
+                fprint(f, "    var vklist : array<{plan.out_array_elem}>\n")
+                fprint(f, "    vklist |> resize(int(vkcount))\n")
+                fprint(f, "    if (vkcount > 0u) {OB}\n")
+                fprint(f, "        unsafe {OB}\n")
+                fprint(f, "            {plan.command}(")
+                emit_call_args(f, plan, "addr(vklist[0])")
+                fprint(f, ")\n")
+                fprint(f, "        {CB}\n")
+                fprint(f, "    {CB}\n")
+                emit_scratch_cleanup(f, plan)
+                fprint(f, "    return <- vklist\n")
+            } elif (plan.has_out_value) {
+                fprint(f, "    var vkout : {cmd_value_type(reg, em, plan.out_value_vktype)}\n")
+                fprint(f, "    {plan.command}(")
+                emit_call_args(f, plan, "")
+                fprint(f, ")\n")
+                emit_scratch_cleanup(f, plan)
+                if (plan.out_value_is_handle) {
+                    fprint(f, "    return vk_value_to_boost(vkout)\n")
+                } else {
+                    fprint(f, "    return vkout\n")
+                }
+            } elif (plan.is_result) {
+                fprint(f, "    vk_check({plan.command}(")
+                emit_call_args(f, plan, "")
+                fprint(f, "), result)\n")
+                emit_scratch_cleanup(f, plan)
+            } elif (!empty(plan.direct_ret)) {
+                fprint(f, "    let vkret = {plan.command}(")
+                emit_call_args(f, plan, "")
+                fprint(f, ")\n")
+                emit_scratch_cleanup(f, plan)
+                fprint(f, "    return vkret\n")
+            } else {
+                fprint(f, "    {plan.command}(")
+                emit_call_args(f, plan, "")
+                fprint(f, ")\n")
+                emit_scratch_cleanup(f, plan)
+            }
+            fprint(f, "{CB}\n\n")
+        }
+    }
+    to_log(LOG_INFO, "boost: {length(plans)} plain command wrappers -> vulkan_cmds.das\n")
+}
+
+//! emit the comma-separated raw-call args; `out_array_expr` replaces the out_array slot
+def private emit_call_args(f : file; plan : CmdPlan; out_array_expr : string) {
+    var first = true
+    for (a in plan.args) {
+        if (!first) {
+            fprint(f, ", ")
+        }
+        first = false
+        if (a.kind == CmdArgKind.out_array) {
+            fprint(f, out_array_expr)
+        } else {
+            fprint(f, call_arg(a))
+        }
+    }
+}
+
+def private emit_scratch_cleanup(f : file; plan : CmdPlan) {
+    for (a in plan.args) {
+        if (a.kind == CmdArgKind.in_array_handle) {
+            fprint(f, "    unsafe {OB} delete vkraw_{a.pname} {CB}\n")
+        }
+    }
+}
+
 // ===== orchestrator =====
 
 def public emit_boost(reg : VkRegistry; var em : EmitModel; out_dir : string) {
@@ -567,5 +1003,8 @@ def public emit_boost(reg : VkRegistry; var em : EmitModel; out_dir : string) {
     emit_structs_boost(reg, em, out_dir, views)
     let creators <- derive_creators(reg, em, owners, views)
     emit_commands_boost(reg, em, out_dir, creators)
-    to_log(LOG_INFO, "boost: {length(skip_log)} structs skipped (composite/unmappable members)\n")
+    var cmd_skip : array<string>
+    let plans <- derive_commands(reg, em, views, cmd_skip)
+    emit_plain_commands_boost(reg, em, out_dir, plans)
+    to_log(LOG_INFO, "boost: {length(skip_log)} structs + {length(cmd_skip)} commands skipped (unmappable)\n")
 }
