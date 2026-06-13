@@ -17,5 +17,15 @@ out/
 _smoke_*.das
 imgui.ini
 
+# docs build artifacts (Sphinx domain bytecode + generated site)
+__pycache__/
+*.pyc
+_site/
+
+# Sphinx reference content emitted by utils/vulkan2rst.das — regenerated in the
+# docs CI job before every build, never tracked. The hand-filled module intros
+# under stdlib/handmade/ ARE tracked (vulkan2rst only stubs them if absent).
+doc/source/stdlib/generated/
+
 # daspkg install dir + index cache (created by `daspkg install` / `daspkg introduce`)
 modules/
