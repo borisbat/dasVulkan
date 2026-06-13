@@ -15,7 +15,7 @@ struct VkGeometryNV_Ann : ManagedStructureAnnotation<VkGeometryNV> {
 static VkGeometryNV_Ann * ann_VkGeometryNV = nullptr;
 void VkGeometryNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkGeometryNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(geometryType)>("geometryType", "geometryType");
     addField<DAS_BIND_MANAGED_FIELD(geometry)>("geometry", "geometry");
     addFieldEx("flags", "flags", offsetof(VkGeometryNV, flags), makeVkFlags_VkGeometryFlagsKHR());
@@ -33,12 +33,12 @@ struct VkBindAccelerationStructureMemoryInfoNV_Ann : ManagedStructureAnnotation<
 static VkBindAccelerationStructureMemoryInfoNV_Ann * ann_VkBindAccelerationStructureMemoryInfoNV = nullptr;
 void VkBindAccelerationStructureMemoryInfoNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBindAccelerationStructureMemoryInfoNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructure)>("accelerationStructure", "accelerationStructure");
     addField<DAS_BIND_MANAGED_FIELD(memory)>("memory", "memory");
     addField<DAS_BIND_MANAGED_FIELD(memoryOffset)>("memoryOffset", "memoryOffset");
     addField<DAS_BIND_MANAGED_FIELD(deviceIndexCount)>("deviceIndexCount", "deviceIndexCount");
-    addField<DAS_BIND_MANAGED_FIELD(pDeviceIndices)>("pDeviceIndices", "pDeviceIndices");
+    addFieldEx("pDeviceIndices", "pDeviceIndices", offsetof(VkBindAccelerationStructureMemoryInfoNV, pDeviceIndices), makeType<uint32_t *>(*mlib));
 }
 #endif
 
@@ -53,9 +53,9 @@ struct VkWriteDescriptorSetAccelerationStructureKHR_Ann : ManagedStructureAnnota
 static VkWriteDescriptorSetAccelerationStructureKHR_Ann * ann_VkWriteDescriptorSetAccelerationStructureKHR = nullptr;
 void VkWriteDescriptorSetAccelerationStructureKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkWriteDescriptorSetAccelerationStructureKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructureCount)>("accelerationStructureCount", "accelerationStructureCount");
-    addField<DAS_BIND_MANAGED_FIELD(pAccelerationStructures)>("pAccelerationStructures", "pAccelerationStructures");
+    addFieldEx("pAccelerationStructures", "pAccelerationStructures", offsetof(VkWriteDescriptorSetAccelerationStructureKHR, pAccelerationStructures), makeType<VkAccelerationStructureKHR *>(*mlib));
 }
 #endif
 
@@ -70,9 +70,9 @@ struct VkWriteDescriptorSetAccelerationStructureNV_Ann : ManagedStructureAnnotat
 static VkWriteDescriptorSetAccelerationStructureNV_Ann * ann_VkWriteDescriptorSetAccelerationStructureNV = nullptr;
 void VkWriteDescriptorSetAccelerationStructureNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkWriteDescriptorSetAccelerationStructureNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructureCount)>("accelerationStructureCount", "accelerationStructureCount");
-    addField<DAS_BIND_MANAGED_FIELD(pAccelerationStructures)>("pAccelerationStructures", "pAccelerationStructures");
+    addFieldEx("pAccelerationStructures", "pAccelerationStructures", offsetof(VkWriteDescriptorSetAccelerationStructureNV, pAccelerationStructures), makeType<VkAccelerationStructureNV *>(*mlib));
 }
 #endif
 
@@ -87,7 +87,7 @@ struct VkAccelerationStructureMemoryRequirementsInfoNV_Ann : ManagedStructureAnn
 static VkAccelerationStructureMemoryRequirementsInfoNV_Ann * ann_VkAccelerationStructureMemoryRequirementsInfoNV = nullptr;
 void VkAccelerationStructureMemoryRequirementsInfoNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkAccelerationStructureMemoryRequirementsInfoNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(type)>("type_", "type");
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructure)>("accelerationStructure", "accelerationStructure");
 }
@@ -104,7 +104,7 @@ struct VkPhysicalDeviceAccelerationStructureFeaturesKHR_Ann : ManagedStructureAn
 static VkPhysicalDeviceAccelerationStructureFeaturesKHR_Ann * ann_VkPhysicalDeviceAccelerationStructureFeaturesKHR = nullptr;
 void VkPhysicalDeviceAccelerationStructureFeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceAccelerationStructureFeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructure)>("accelerationStructure", "accelerationStructure");
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructureCaptureReplay)>("accelerationStructureCaptureReplay", "accelerationStructureCaptureReplay");
     addField<DAS_BIND_MANAGED_FIELD(accelerationStructureIndirectBuild)>("accelerationStructureIndirectBuild", "accelerationStructureIndirectBuild");
@@ -124,7 +124,7 @@ struct VkPhysicalDeviceRayTracingPipelineFeaturesKHR_Ann : ManagedStructureAnnot
 static VkPhysicalDeviceRayTracingPipelineFeaturesKHR_Ann * ann_VkPhysicalDeviceRayTracingPipelineFeaturesKHR = nullptr;
 void VkPhysicalDeviceRayTracingPipelineFeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceRayTracingPipelineFeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(rayTracingPipeline)>("rayTracingPipeline", "rayTracingPipeline");
     addField<DAS_BIND_MANAGED_FIELD(rayTracingPipelineShaderGroupHandleCaptureReplay)>("rayTracingPipelineShaderGroupHandleCaptureReplay", "rayTracingPipelineShaderGroupHandleCaptureReplay");
     addField<DAS_BIND_MANAGED_FIELD(rayTracingPipelineShaderGroupHandleCaptureReplayMixed)>("rayTracingPipelineShaderGroupHandleCaptureReplayMixed", "rayTracingPipelineShaderGroupHandleCaptureReplayMixed");
@@ -144,7 +144,7 @@ struct VkPhysicalDeviceRayQueryFeaturesKHR_Ann : ManagedStructureAnnotation<VkPh
 static VkPhysicalDeviceRayQueryFeaturesKHR_Ann * ann_VkPhysicalDeviceRayQueryFeaturesKHR = nullptr;
 void VkPhysicalDeviceRayQueryFeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceRayQueryFeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(rayQuery)>("rayQuery", "rayQuery");
 }
 #endif
@@ -160,7 +160,7 @@ struct VkPhysicalDeviceAccelerationStructurePropertiesKHR_Ann : ManagedStructure
 static VkPhysicalDeviceAccelerationStructurePropertiesKHR_Ann * ann_VkPhysicalDeviceAccelerationStructurePropertiesKHR = nullptr;
 void VkPhysicalDeviceAccelerationStructurePropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceAccelerationStructurePropertiesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(maxGeometryCount)>("maxGeometryCount", "maxGeometryCount");
     addField<DAS_BIND_MANAGED_FIELD(maxInstanceCount)>("maxInstanceCount", "maxInstanceCount");
     addField<DAS_BIND_MANAGED_FIELD(maxPrimitiveCount)>("maxPrimitiveCount", "maxPrimitiveCount");
@@ -183,7 +183,7 @@ struct VkPhysicalDeviceRayTracingPipelinePropertiesKHR_Ann : ManagedStructureAnn
 static VkPhysicalDeviceRayTracingPipelinePropertiesKHR_Ann * ann_VkPhysicalDeviceRayTracingPipelinePropertiesKHR = nullptr;
 void VkPhysicalDeviceRayTracingPipelinePropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceRayTracingPipelinePropertiesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(shaderGroupHandleSize)>("shaderGroupHandleSize", "shaderGroupHandleSize");
     addField<DAS_BIND_MANAGED_FIELD(maxRayRecursionDepth)>("maxRayRecursionDepth", "maxRayRecursionDepth");
     addField<DAS_BIND_MANAGED_FIELD(maxShaderGroupStride)>("maxShaderGroupStride", "maxShaderGroupStride");
@@ -206,7 +206,7 @@ struct VkPhysicalDeviceRayTracingPropertiesNV_Ann : ManagedStructureAnnotation<V
 static VkPhysicalDeviceRayTracingPropertiesNV_Ann * ann_VkPhysicalDeviceRayTracingPropertiesNV = nullptr;
 void VkPhysicalDeviceRayTracingPropertiesNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceRayTracingPropertiesNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(shaderGroupHandleSize)>("shaderGroupHandleSize", "shaderGroupHandleSize");
     addField<DAS_BIND_MANAGED_FIELD(maxRecursionDepth)>("maxRecursionDepth", "maxRecursionDepth");
     addField<DAS_BIND_MANAGED_FIELD(maxShaderGroupStride)>("maxShaderGroupStride", "maxShaderGroupStride");
@@ -288,7 +288,7 @@ struct VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR_Ann : ManagedStructureA
 static VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR_Ann * ann_VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR = nullptr;
 void VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(rayTracingMaintenance1)>("rayTracingMaintenance1", "rayTracingMaintenance1");
     addField<DAS_BIND_MANAGED_FIELD(rayTracingPipelineTraceRaysIndirect2)>("rayTracingPipelineTraceRaysIndirect2", "rayTracingPipelineTraceRaysIndirect2");
 }
@@ -305,9 +305,9 @@ struct VkDrmFormatModifierPropertiesListEXT_Ann : ManagedStructureAnnotation<VkD
 static VkDrmFormatModifierPropertiesListEXT_Ann * ann_VkDrmFormatModifierPropertiesListEXT = nullptr;
 void VkDrmFormatModifierPropertiesListEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDrmFormatModifierPropertiesListEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifierCount)>("drmFormatModifierCount", "drmFormatModifierCount");
-    addField<DAS_BIND_MANAGED_FIELD(pDrmFormatModifierProperties)>("pDrmFormatModifierProperties", "pDrmFormatModifierProperties");
+    addFieldEx("pDrmFormatModifierProperties", "pDrmFormatModifierProperties", offsetof(VkDrmFormatModifierPropertiesListEXT, pDrmFormatModifierProperties), makeType<VkDrmFormatModifierPropertiesEXT *>(*mlib));
 }
 #endif
 
@@ -338,11 +338,11 @@ struct VkPhysicalDeviceImageDrmFormatModifierInfoEXT_Ann : ManagedStructureAnnot
 static VkPhysicalDeviceImageDrmFormatModifierInfoEXT_Ann * ann_VkPhysicalDeviceImageDrmFormatModifierInfoEXT = nullptr;
 void VkPhysicalDeviceImageDrmFormatModifierInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceImageDrmFormatModifierInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifier)>("drmFormatModifier", "drmFormatModifier");
     addField<DAS_BIND_MANAGED_FIELD(sharingMode)>("sharingMode", "sharingMode");
     addField<DAS_BIND_MANAGED_FIELD(queueFamilyIndexCount)>("queueFamilyIndexCount", "queueFamilyIndexCount");
-    addField<DAS_BIND_MANAGED_FIELD(pQueueFamilyIndices)>("pQueueFamilyIndices", "pQueueFamilyIndices");
+    addFieldEx("pQueueFamilyIndices", "pQueueFamilyIndices", offsetof(VkPhysicalDeviceImageDrmFormatModifierInfoEXT, pQueueFamilyIndices), makeType<uint32_t *>(*mlib));
 }
 #endif
 
@@ -357,9 +357,9 @@ struct VkImageDrmFormatModifierListCreateInfoEXT_Ann : ManagedStructureAnnotatio
 static VkImageDrmFormatModifierListCreateInfoEXT_Ann * ann_VkImageDrmFormatModifierListCreateInfoEXT = nullptr;
 void VkImageDrmFormatModifierListCreateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageDrmFormatModifierListCreateInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifierCount)>("drmFormatModifierCount", "drmFormatModifierCount");
-    addField<DAS_BIND_MANAGED_FIELD(pDrmFormatModifiers)>("pDrmFormatModifiers", "pDrmFormatModifiers");
+    addFieldEx("pDrmFormatModifiers", "pDrmFormatModifiers", offsetof(VkImageDrmFormatModifierListCreateInfoEXT, pDrmFormatModifiers), makeType<uint64_t *>(*mlib));
 }
 #endif
 
@@ -374,10 +374,10 @@ struct VkImageDrmFormatModifierExplicitCreateInfoEXT_Ann : ManagedStructureAnnot
 static VkImageDrmFormatModifierExplicitCreateInfoEXT_Ann * ann_VkImageDrmFormatModifierExplicitCreateInfoEXT = nullptr;
 void VkImageDrmFormatModifierExplicitCreateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageDrmFormatModifierExplicitCreateInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifier)>("drmFormatModifier", "drmFormatModifier");
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifierPlaneCount)>("drmFormatModifierPlaneCount", "drmFormatModifierPlaneCount");
-    addField<DAS_BIND_MANAGED_FIELD(pPlaneLayouts)>("pPlaneLayouts", "pPlaneLayouts");
+    addFieldEx("pPlaneLayouts", "pPlaneLayouts", offsetof(VkImageDrmFormatModifierExplicitCreateInfoEXT, pPlaneLayouts), makeType<VkSubresourceLayout *>(*mlib));
 }
 #endif
 
@@ -392,7 +392,7 @@ struct VkImageDrmFormatModifierPropertiesEXT_Ann : ManagedStructureAnnotation<Vk
 static VkImageDrmFormatModifierPropertiesEXT_Ann * ann_VkImageDrmFormatModifierPropertiesEXT = nullptr;
 void VkImageDrmFormatModifierPropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageDrmFormatModifierPropertiesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(drmFormatModifier)>("drmFormatModifier", "drmFormatModifier");
 }
 #endif
@@ -408,7 +408,7 @@ struct VkImageStencilUsageCreateInfo_Ann : ManagedStructureAnnotation<VkImageSte
 static VkImageStencilUsageCreateInfo_Ann * ann_VkImageStencilUsageCreateInfo = nullptr;
 void VkImageStencilUsageCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageStencilUsageCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("stencilUsage", "stencilUsage", offsetof(VkImageStencilUsageCreateInfo, stencilUsage), makeVkFlags_VkImageUsageFlags());
 }
 #endif
@@ -424,7 +424,7 @@ struct VkDeviceMemoryOverallocationCreateInfoAMD_Ann : ManagedStructureAnnotatio
 static VkDeviceMemoryOverallocationCreateInfoAMD_Ann * ann_VkDeviceMemoryOverallocationCreateInfoAMD = nullptr;
 void VkDeviceMemoryOverallocationCreateInfoAMD_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDeviceMemoryOverallocationCreateInfoAMD, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(overallocationBehavior)>("overallocationBehavior", "overallocationBehavior");
 }
 #endif
@@ -440,7 +440,7 @@ struct VkPhysicalDeviceFragmentDensityMapFeaturesEXT_Ann : ManagedStructureAnnot
 static VkPhysicalDeviceFragmentDensityMapFeaturesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMapFeaturesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMapFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMapFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMap)>("fragmentDensityMap", "fragmentDensityMap");
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMapDynamic)>("fragmentDensityMapDynamic", "fragmentDensityMapDynamic");
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMapNonSubsampledImages)>("fragmentDensityMapNonSubsampledImages", "fragmentDensityMapNonSubsampledImages");
@@ -458,7 +458,7 @@ struct VkPhysicalDeviceFragmentDensityMap2FeaturesEXT_Ann : ManagedStructureAnno
 static VkPhysicalDeviceFragmentDensityMap2FeaturesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMap2FeaturesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMap2FeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMap2FeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMapDeferred)>("fragmentDensityMapDeferred", "fragmentDensityMapDeferred");
 }
 #endif
@@ -474,7 +474,7 @@ struct VkPhysicalDeviceFragmentDensityMapOffsetFeaturesEXT_Ann : ManagedStructur
 static VkPhysicalDeviceFragmentDensityMapOffsetFeaturesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMapOffsetFeaturesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMapOffsetFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMapOffsetFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMapOffset)>("fragmentDensityMapOffset", "fragmentDensityMapOffset");
 }
 #endif
@@ -490,7 +490,7 @@ struct VkPhysicalDeviceFragmentDensityMapPropertiesEXT_Ann : ManagedStructureAnn
 static VkPhysicalDeviceFragmentDensityMapPropertiesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMapPropertiesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMapPropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMapPropertiesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(minFragmentDensityTexelSize)>("minFragmentDensityTexelSize", "minFragmentDensityTexelSize");
     addField<DAS_BIND_MANAGED_FIELD(maxFragmentDensityTexelSize)>("maxFragmentDensityTexelSize", "maxFragmentDensityTexelSize");
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityInvocations)>("fragmentDensityInvocations", "fragmentDensityInvocations");
@@ -508,7 +508,7 @@ struct VkPhysicalDeviceFragmentDensityMap2PropertiesEXT_Ann : ManagedStructureAn
 static VkPhysicalDeviceFragmentDensityMap2PropertiesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMap2PropertiesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMap2PropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMap2PropertiesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(subsampledLoads)>("subsampledLoads", "subsampledLoads");
     addField<DAS_BIND_MANAGED_FIELD(subsampledCoarseReconstructionEarlyAccess)>("subsampledCoarseReconstructionEarlyAccess", "subsampledCoarseReconstructionEarlyAccess");
     addField<DAS_BIND_MANAGED_FIELD(maxSubsampledArrayLayers)>("maxSubsampledArrayLayers", "maxSubsampledArrayLayers");
@@ -527,7 +527,7 @@ struct VkPhysicalDeviceFragmentDensityMapOffsetPropertiesEXT_Ann : ManagedStruct
 static VkPhysicalDeviceFragmentDensityMapOffsetPropertiesEXT_Ann * ann_VkPhysicalDeviceFragmentDensityMapOffsetPropertiesEXT = nullptr;
 void VkPhysicalDeviceFragmentDensityMapOffsetPropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceFragmentDensityMapOffsetPropertiesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityOffsetGranularity)>("fragmentDensityOffsetGranularity", "fragmentDensityOffsetGranularity");
 }
 #endif
@@ -543,7 +543,7 @@ struct VkRenderPassFragmentDensityMapCreateInfoEXT_Ann : ManagedStructureAnnotat
 static VkRenderPassFragmentDensityMapCreateInfoEXT_Ann * ann_VkRenderPassFragmentDensityMapCreateInfoEXT = nullptr;
 void VkRenderPassFragmentDensityMapCreateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkRenderPassFragmentDensityMapCreateInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityMapAttachment)>("fragmentDensityMapAttachment", "fragmentDensityMapAttachment");
 }
 #endif
@@ -559,9 +559,9 @@ struct VkRenderPassFragmentDensityMapOffsetEndInfoEXT_Ann : ManagedStructureAnno
 static VkRenderPassFragmentDensityMapOffsetEndInfoEXT_Ann * ann_VkRenderPassFragmentDensityMapOffsetEndInfoEXT = nullptr;
 void VkRenderPassFragmentDensityMapOffsetEndInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkRenderPassFragmentDensityMapOffsetEndInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(fragmentDensityOffsetCount)>("fragmentDensityOffsetCount", "fragmentDensityOffsetCount");
-    addField<DAS_BIND_MANAGED_FIELD(pFragmentDensityOffsets)>("pFragmentDensityOffsets", "pFragmentDensityOffsets");
+    addFieldEx("pFragmentDensityOffsets", "pFragmentDensityOffsets", offsetof(VkRenderPassFragmentDensityMapOffsetEndInfoEXT, pFragmentDensityOffsets), makeType<VkOffset2D *>(*mlib));
 }
 #endif
 
@@ -576,7 +576,7 @@ struct VkPhysicalDeviceScalarBlockLayoutFeatures_Ann : ManagedStructureAnnotatio
 static VkPhysicalDeviceScalarBlockLayoutFeatures_Ann * ann_VkPhysicalDeviceScalarBlockLayoutFeatures = nullptr;
 void VkPhysicalDeviceScalarBlockLayoutFeatures_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceScalarBlockLayoutFeatures, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(scalarBlockLayout)>("scalarBlockLayout", "scalarBlockLayout");
 }
 #endif
@@ -592,7 +592,7 @@ struct VkSurfaceProtectedCapabilitiesKHR_Ann : ManagedStructureAnnotation<VkSurf
 static VkSurfaceProtectedCapabilitiesKHR_Ann * ann_VkSurfaceProtectedCapabilitiesKHR = nullptr;
 void VkSurfaceProtectedCapabilitiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkSurfaceProtectedCapabilitiesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(supportsProtected)>("supportsProtected", "supportsProtected");
 }
 #endif
@@ -608,7 +608,7 @@ struct VkPhysicalDeviceUniformBufferStandardLayoutFeatures_Ann : ManagedStructur
 static VkPhysicalDeviceUniformBufferStandardLayoutFeatures_Ann * ann_VkPhysicalDeviceUniformBufferStandardLayoutFeatures = nullptr;
 void VkPhysicalDeviceUniformBufferStandardLayoutFeatures_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceUniformBufferStandardLayoutFeatures, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(uniformBufferStandardLayout)>("uniformBufferStandardLayout", "uniformBufferStandardLayout");
 }
 #endif
@@ -624,7 +624,7 @@ struct VkPhysicalDeviceDepthClipEnableFeaturesEXT_Ann : ManagedStructureAnnotati
 static VkPhysicalDeviceDepthClipEnableFeaturesEXT_Ann * ann_VkPhysicalDeviceDepthClipEnableFeaturesEXT = nullptr;
 void VkPhysicalDeviceDepthClipEnableFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceDepthClipEnableFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(depthClipEnable)>("depthClipEnable", "depthClipEnable");
 }
 #endif
@@ -640,7 +640,7 @@ struct VkPipelineRasterizationDepthClipStateCreateInfoEXT_Ann : ManagedStructure
 static VkPipelineRasterizationDepthClipStateCreateInfoEXT_Ann * ann_VkPipelineRasterizationDepthClipStateCreateInfoEXT = nullptr;
 void VkPipelineRasterizationDepthClipStateCreateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineRasterizationDepthClipStateCreateInfoEXT, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineRasterizationDepthClipStateCreateInfoEXT, flags), makeVkFlags_VkPipelineRasterizationDepthClipStateCreateFlagsEXT());
     addField<DAS_BIND_MANAGED_FIELD(depthClipEnable)>("depthClipEnable", "depthClipEnable");
 }
@@ -657,7 +657,7 @@ struct VkPhysicalDeviceMemoryBudgetPropertiesEXT_Ann : ManagedStructureAnnotatio
 static VkPhysicalDeviceMemoryBudgetPropertiesEXT_Ann * ann_VkPhysicalDeviceMemoryBudgetPropertiesEXT = nullptr;
 void VkPhysicalDeviceMemoryBudgetPropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceMemoryBudgetPropertiesEXT, pNext), makeType<void *>(*mlib));
     addFieldEx("heapBudget", "heapBudget", offsetof(VkPhysicalDeviceMemoryBudgetPropertiesEXT, heapBudget), makeFixedArrayTypeDecl(int32_t(VK_MAX_MEMORY_HEAPS), makeType<uint64_t>(*mlib)));
     addFieldEx("heapUsage", "heapUsage", offsetof(VkPhysicalDeviceMemoryBudgetPropertiesEXT, heapUsage), makeFixedArrayTypeDecl(int32_t(VK_MAX_MEMORY_HEAPS), makeType<uint64_t>(*mlib)));
 }
@@ -674,7 +674,7 @@ struct VkPhysicalDeviceMemoryPriorityFeaturesEXT_Ann : ManagedStructureAnnotatio
 static VkPhysicalDeviceMemoryPriorityFeaturesEXT_Ann * ann_VkPhysicalDeviceMemoryPriorityFeaturesEXT = nullptr;
 void VkPhysicalDeviceMemoryPriorityFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceMemoryPriorityFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(memoryPriority)>("memoryPriority", "memoryPriority");
 }
 #endif
@@ -690,7 +690,7 @@ struct VkMemoryPriorityAllocateInfoEXT_Ann : ManagedStructureAnnotation<VkMemory
 static VkMemoryPriorityAllocateInfoEXT_Ann * ann_VkMemoryPriorityAllocateInfoEXT = nullptr;
 void VkMemoryPriorityAllocateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkMemoryPriorityAllocateInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(priority)>("priority", "priority");
 }
 #endif
@@ -706,7 +706,7 @@ struct VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT_Ann : ManagedStructu
 static VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT_Ann * ann_VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT = nullptr;
 void VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pageableDeviceLocalMemory)>("pageableDeviceLocalMemory", "pageableDeviceLocalMemory");
 }
 #endif
@@ -722,7 +722,7 @@ struct VkPhysicalDeviceBufferDeviceAddressFeatures_Ann : ManagedStructureAnnotat
 static VkPhysicalDeviceBufferDeviceAddressFeatures_Ann * ann_VkPhysicalDeviceBufferDeviceAddressFeatures = nullptr;
 void VkPhysicalDeviceBufferDeviceAddressFeatures_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceBufferDeviceAddressFeatures, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddress)>("bufferDeviceAddress", "bufferDeviceAddress");
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddressCaptureReplay)>("bufferDeviceAddressCaptureReplay", "bufferDeviceAddressCaptureReplay");
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddressMultiDevice)>("bufferDeviceAddressMultiDevice", "bufferDeviceAddressMultiDevice");
@@ -740,7 +740,7 @@ struct VkPhysicalDeviceBufferDeviceAddressFeaturesEXT_Ann : ManagedStructureAnno
 static VkPhysicalDeviceBufferDeviceAddressFeaturesEXT_Ann * ann_VkPhysicalDeviceBufferDeviceAddressFeaturesEXT = nullptr;
 void VkPhysicalDeviceBufferDeviceAddressFeaturesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceBufferDeviceAddressFeaturesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddress)>("bufferDeviceAddress", "bufferDeviceAddress");
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddressCaptureReplay)>("bufferDeviceAddressCaptureReplay", "bufferDeviceAddressCaptureReplay");
     addField<DAS_BIND_MANAGED_FIELD(bufferDeviceAddressMultiDevice)>("bufferDeviceAddressMultiDevice", "bufferDeviceAddressMultiDevice");
@@ -758,7 +758,7 @@ struct VkBufferDeviceAddressInfo_Ann : ManagedStructureAnnotation<VkBufferDevice
 static VkBufferDeviceAddressInfo_Ann * ann_VkBufferDeviceAddressInfo = nullptr;
 void VkBufferDeviceAddressInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferDeviceAddressInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(buffer)>("buffer", "buffer");
 }
 #endif
@@ -774,7 +774,7 @@ struct VkBufferOpaqueCaptureAddressCreateInfo_Ann : ManagedStructureAnnotation<V
 static VkBufferOpaqueCaptureAddressCreateInfo_Ann * ann_VkBufferOpaqueCaptureAddressCreateInfo = nullptr;
 void VkBufferOpaqueCaptureAddressCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferOpaqueCaptureAddressCreateInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(opaqueCaptureAddress)>("opaqueCaptureAddress", "opaqueCaptureAddress");
 }
 #endif
@@ -790,7 +790,7 @@ struct VkBufferDeviceAddressCreateInfoEXT_Ann : ManagedStructureAnnotation<VkBuf
 static VkBufferDeviceAddressCreateInfoEXT_Ann * ann_VkBufferDeviceAddressCreateInfoEXT = nullptr;
 void VkBufferDeviceAddressCreateInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferDeviceAddressCreateInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(deviceAddress)>("deviceAddress", "deviceAddress");
 }
 #endif
@@ -806,7 +806,7 @@ struct VkPhysicalDeviceImageViewImageFormatInfoEXT_Ann : ManagedStructureAnnotat
 static VkPhysicalDeviceImageViewImageFormatInfoEXT_Ann * ann_VkPhysicalDeviceImageViewImageFormatInfoEXT = nullptr;
 void VkPhysicalDeviceImageViewImageFormatInfoEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceImageViewImageFormatInfoEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(imageViewType)>("imageViewType", "imageViewType");
 }
 #endif
@@ -822,7 +822,7 @@ struct VkFilterCubicImageViewImageFormatPropertiesEXT_Ann : ManagedStructureAnno
 static VkFilterCubicImageViewImageFormatPropertiesEXT_Ann * ann_VkFilterCubicImageViewImageFormatPropertiesEXT = nullptr;
 void VkFilterCubicImageViewImageFormatPropertiesEXT_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkFilterCubicImageViewImageFormatPropertiesEXT, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(filterCubic)>("filterCubic", "filterCubic");
     addField<DAS_BIND_MANAGED_FIELD(filterCubicMinmax)>("filterCubicMinmax", "filterCubicMinmax");
 }
@@ -839,7 +839,7 @@ struct VkPhysicalDeviceImagelessFramebufferFeatures_Ann : ManagedStructureAnnota
 static VkPhysicalDeviceImagelessFramebufferFeatures_Ann * ann_VkPhysicalDeviceImagelessFramebufferFeatures = nullptr;
 void VkPhysicalDeviceImagelessFramebufferFeatures_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceImagelessFramebufferFeatures, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(imagelessFramebuffer)>("imagelessFramebuffer", "imagelessFramebuffer");
 }
 #endif
@@ -855,9 +855,9 @@ struct VkFramebufferAttachmentsCreateInfo_Ann : ManagedStructureAnnotation<VkFra
 static VkFramebufferAttachmentsCreateInfo_Ann * ann_VkFramebufferAttachmentsCreateInfo = nullptr;
 void VkFramebufferAttachmentsCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkFramebufferAttachmentsCreateInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(attachmentImageInfoCount)>("attachmentImageInfoCount", "attachmentImageInfoCount");
-    addField<DAS_BIND_MANAGED_FIELD(pAttachmentImageInfos)>("pAttachmentImageInfos", "pAttachmentImageInfos");
+    addFieldEx("pAttachmentImageInfos", "pAttachmentImageInfos", offsetof(VkFramebufferAttachmentsCreateInfo, pAttachmentImageInfos), makeType<VkFramebufferAttachmentImageInfo *>(*mlib));
 }
 #endif
 
@@ -872,14 +872,14 @@ struct VkFramebufferAttachmentImageInfo_Ann : ManagedStructureAnnotation<VkFrame
 static VkFramebufferAttachmentImageInfo_Ann * ann_VkFramebufferAttachmentImageInfo = nullptr;
 void VkFramebufferAttachmentImageInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkFramebufferAttachmentImageInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkFramebufferAttachmentImageInfo, flags), makeVkFlags_VkImageCreateFlags());
     addFieldEx("usage", "usage", offsetof(VkFramebufferAttachmentImageInfo, usage), makeVkFlags_VkImageUsageFlags());
     addField<DAS_BIND_MANAGED_FIELD(width)>("width", "width");
     addField<DAS_BIND_MANAGED_FIELD(height)>("height", "height");
     addField<DAS_BIND_MANAGED_FIELD(layerCount)>("layerCount", "layerCount");
     addField<DAS_BIND_MANAGED_FIELD(viewFormatCount)>("viewFormatCount", "viewFormatCount");
-    addField<DAS_BIND_MANAGED_FIELD(pViewFormats)>("pViewFormats", "pViewFormats");
+    addFieldEx("pViewFormats", "pViewFormats", offsetof(VkFramebufferAttachmentImageInfo, pViewFormats), makeType<VkFormat *>(*mlib));
 }
 #endif
 

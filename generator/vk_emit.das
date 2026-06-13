@@ -622,9 +622,15 @@ def private elem_typedecl_text(reg : VkRegistry; em : EmitModel; tn : string) : 
     return "makeType<{tn}>(*mlib)"
 }
 
-//! "" when the plain DAS_BIND_MANAGED_FIELD path applies; otherwise the explicit TypeDecl text
+//! "" when the plain DAS_BIND_MANAGED_FIELD path applies; otherwise the explicit TypeDecl text.
+//! All pointer fields are bound const-stripped (writable) so CreateInfo structs are fillable das-side.
 def private field_override_text(reg : VkRegistry; em : EmitModel; s : VkStructDef; m : VkMember) : string {
     let tn = m.type_name
+    let np = m.num_ptrs
+    // function-pointer fields (PFN_* typedef IS the pointer, so num_ptrs==0) -> void*
+    if (key_exists(reg.func_pointers, tn)) {
+        return "makeType<void *>(*mlib)"
+    }
     // fixed arrays: nested makeFixedArrayTypeDecl, outermost first
     if (length(m.arr_dims) > 0) {
         var inner = elem_typedecl_text(reg, em, tn)
@@ -634,24 +640,36 @@ def private field_override_text(reg : VkRegistry; em : EmitModel; s : VkStructDe
         }
         return inner
     }
-    if (key_exists(reg.func_pointers, tn)) {
-        return "makeType<void *>(*mlib)"
-    }
-    let fm = FOREIGN_MAP?[tn] ?? ""
-    if (!empty(fm)) {
-        if (m.num_ptrs > 0 || fm == "void" || (fm |> ends_with("*"))) {
+    // pointer fields -- strip const (the C decl is usually `const X*`, which decltype binds
+    // as a const, non-assignable field). Bind as a writable typed pointer / string / void*.
+    if (np >= 1) {
+        if (!empty(FOREIGN_MAP?[tn] ?? "")) {
             return "makeType<void *>(*mlib)"
         }
+        if (tn == "void") {
+            return "makeType<void *>(*mlib)"
+        }
+        if (np >= 2) {
+            // ptr-to-ptr (string arrays `const char* const*`, out-arrays): raw void*; boost types it
+            return "makeType<void *>(*mlib)"
+        }
+        if (tn == "char") {
+            return "makeType<char *>(*mlib)"        // const char* -> writable string
+        }
+        // single pointer to a concrete C type (struct / enum / scalar / base typedef / flags)
+        return "makeType<{tn} *>(*mlib)"
+    }
+    // non-pointer overrides
+    let fm = FOREIGN_MAP?[tn] ?? ""
+    if (!empty(fm) && fm != "void") {
         return "makeType<{fm}>(*mlib)"
     }
-    if (tn == "size_t" && m.num_ptrs == 0) {
+    if (tn == "size_t") {
         return "makeType<uint64_t>(*mlib)"
     }
     let fi = em.flags_lookup?[tn] ?? FlagsInfo()
     if (fi.kind == FlagsKind.flags32 || fi.kind == FlagsKind.flags64 || fi.kind == FlagsKind.flag_bits64) {
-        if (m.num_ptrs == 0) {
-            return "makeVkFlags_{fi.canonical}()"
-        }
+        return "makeVkFlags_{fi.canonical}()"
     }
     return ""
 }
@@ -779,6 +797,13 @@ def private map_param(reg : VkRegistry; em : EmitModel; p : VkMember) : MappedPa
     let cst = p.is_const
     let has_len = !empty(p.len)
     let optional_true = p.optional_attr == "true"
+    // C-array parameter (const Elem name[N]): pass a pointer to the element; it decays
+    // to the C array param. tn is the real C type name from the header (float, an enum, ...).
+    if (length(p.arr_dims) > 0) {
+        r.cpp_param = cst ? "const {tn} * {n}" : "{tn} * {n}"
+        r.call_arg = n
+        return <- r
+    }
     // funcpointer
     if (key_exists(reg.func_pointers, tn)) {
         return MappedParam(ok = false, reason = "funcpointer param {tn}")

@@ -15,7 +15,7 @@ struct VkBaseOutStructure_Ann : ManagedStructureAnnotation<VkBaseOutStructure> {
 static VkBaseOutStructure_Ann * ann_VkBaseOutStructure = nullptr;
 void VkBaseOutStructure_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBaseOutStructure, pNext), makeType<VkBaseOutStructure *>(*mlib));
 }
 #endif
 
@@ -30,7 +30,7 @@ struct VkBaseInStructure_Ann : ManagedStructureAnnotation<VkBaseInStructure> {
 static VkBaseInStructure_Ann * ann_VkBaseInStructure = nullptr;
 void VkBaseInStructure_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBaseInStructure, pNext), makeType<VkBaseInStructure *>(*mlib));
 }
 #endif
 
@@ -228,10 +228,10 @@ struct VkApplicationInfo_Ann : ManagedStructureAnnotation<VkApplicationInfo> {
 static VkApplicationInfo_Ann * ann_VkApplicationInfo = nullptr;
 void VkApplicationInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
-    addField<DAS_BIND_MANAGED_FIELD(pApplicationName)>("pApplicationName", "pApplicationName");
+    addFieldEx("pNext", "pNext", offsetof(VkApplicationInfo, pNext), makeType<void *>(*mlib));
+    addFieldEx("pApplicationName", "pApplicationName", offsetof(VkApplicationInfo, pApplicationName), makeType<char *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(applicationVersion)>("applicationVersion", "applicationVersion");
-    addField<DAS_BIND_MANAGED_FIELD(pEngineName)>("pEngineName", "pEngineName");
+    addFieldEx("pEngineName", "pEngineName", offsetof(VkApplicationInfo, pEngineName), makeType<char *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(engineVersion)>("engineVersion", "engineVersion");
     addField<DAS_BIND_MANAGED_FIELD(apiVersion)>("apiVersion", "apiVersion");
 }
@@ -247,7 +247,7 @@ struct VkAllocationCallbacks_Ann : ManagedStructureAnnotation<VkAllocationCallba
 };
 static VkAllocationCallbacks_Ann * ann_VkAllocationCallbacks = nullptr;
 void VkAllocationCallbacks_Ann::init() {
-    addField<DAS_BIND_MANAGED_FIELD(pUserData)>("pUserData", "pUserData");
+    addFieldEx("pUserData", "pUserData", offsetof(VkAllocationCallbacks, pUserData), makeType<void *>(*mlib));
     addFieldEx("pfnAllocation", "pfnAllocation", offsetof(VkAllocationCallbacks, pfnAllocation), makeType<void *>(*mlib));
     addFieldEx("pfnReallocation", "pfnReallocation", offsetof(VkAllocationCallbacks, pfnReallocation), makeType<void *>(*mlib));
     addFieldEx("pfnFree", "pfnFree", offsetof(VkAllocationCallbacks, pfnFree), makeType<void *>(*mlib));
@@ -267,11 +267,11 @@ struct VkDeviceQueueCreateInfo_Ann : ManagedStructureAnnotation<VkDeviceQueueCre
 static VkDeviceQueueCreateInfo_Ann * ann_VkDeviceQueueCreateInfo = nullptr;
 void VkDeviceQueueCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDeviceQueueCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkDeviceQueueCreateInfo, flags), makeVkFlags_VkDeviceQueueCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(queueFamilyIndex)>("queueFamilyIndex", "queueFamilyIndex");
     addField<DAS_BIND_MANAGED_FIELD(queueCount)>("queueCount", "queueCount");
-    addField<DAS_BIND_MANAGED_FIELD(pQueuePriorities)>("pQueuePriorities", "pQueuePriorities");
+    addFieldEx("pQueuePriorities", "pQueuePriorities", offsetof(VkDeviceQueueCreateInfo, pQueuePriorities), makeType<float *>(*mlib));
 }
 #endif
 
@@ -286,15 +286,15 @@ struct VkDeviceCreateInfo_Ann : ManagedStructureAnnotation<VkDeviceCreateInfo> {
 static VkDeviceCreateInfo_Ann * ann_VkDeviceCreateInfo = nullptr;
 void VkDeviceCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDeviceCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkDeviceCreateInfo, flags), makeVkFlags_VkDeviceCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(queueCreateInfoCount)>("queueCreateInfoCount", "queueCreateInfoCount");
-    addField<DAS_BIND_MANAGED_FIELD(pQueueCreateInfos)>("pQueueCreateInfos", "pQueueCreateInfos");
+    addFieldEx("pQueueCreateInfos", "pQueueCreateInfos", offsetof(VkDeviceCreateInfo, pQueueCreateInfos), makeType<VkDeviceQueueCreateInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(enabledLayerCount)>("enabledLayerCount", "enabledLayerCount");
-    addField<DAS_BIND_MANAGED_FIELD(ppEnabledLayerNames)>("ppEnabledLayerNames", "ppEnabledLayerNames");
+    addFieldEx("ppEnabledLayerNames", "ppEnabledLayerNames", offsetof(VkDeviceCreateInfo, ppEnabledLayerNames), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(enabledExtensionCount)>("enabledExtensionCount", "enabledExtensionCount");
-    addField<DAS_BIND_MANAGED_FIELD(ppEnabledExtensionNames)>("ppEnabledExtensionNames", "ppEnabledExtensionNames");
-    addField<DAS_BIND_MANAGED_FIELD(pEnabledFeatures)>("pEnabledFeatures", "pEnabledFeatures");
+    addFieldEx("ppEnabledExtensionNames", "ppEnabledExtensionNames", offsetof(VkDeviceCreateInfo, ppEnabledExtensionNames), makeType<void *>(*mlib));
+    addFieldEx("pEnabledFeatures", "pEnabledFeatures", offsetof(VkDeviceCreateInfo, pEnabledFeatures), makeType<VkPhysicalDeviceFeatures *>(*mlib));
 }
 #endif
 
@@ -309,13 +309,13 @@ struct VkInstanceCreateInfo_Ann : ManagedStructureAnnotation<VkInstanceCreateInf
 static VkInstanceCreateInfo_Ann * ann_VkInstanceCreateInfo = nullptr;
 void VkInstanceCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkInstanceCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkInstanceCreateInfo, flags), makeVkFlags_VkInstanceCreateFlags());
-    addField<DAS_BIND_MANAGED_FIELD(pApplicationInfo)>("pApplicationInfo", "pApplicationInfo");
+    addFieldEx("pApplicationInfo", "pApplicationInfo", offsetof(VkInstanceCreateInfo, pApplicationInfo), makeType<VkApplicationInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(enabledLayerCount)>("enabledLayerCount", "enabledLayerCount");
-    addField<DAS_BIND_MANAGED_FIELD(ppEnabledLayerNames)>("ppEnabledLayerNames", "ppEnabledLayerNames");
+    addFieldEx("ppEnabledLayerNames", "ppEnabledLayerNames", offsetof(VkInstanceCreateInfo, ppEnabledLayerNames), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(enabledExtensionCount)>("enabledExtensionCount", "enabledExtensionCount");
-    addField<DAS_BIND_MANAGED_FIELD(ppEnabledExtensionNames)>("ppEnabledExtensionNames", "ppEnabledExtensionNames");
+    addFieldEx("ppEnabledExtensionNames", "ppEnabledExtensionNames", offsetof(VkInstanceCreateInfo, ppEnabledExtensionNames), makeType<void *>(*mlib));
 }
 #endif
 
@@ -364,7 +364,7 @@ struct VkMemoryAllocateInfo_Ann : ManagedStructureAnnotation<VkMemoryAllocateInf
 static VkMemoryAllocateInfo_Ann * ann_VkMemoryAllocateInfo = nullptr;
 void VkMemoryAllocateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkMemoryAllocateInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(allocationSize)>("allocationSize", "allocationSize");
     addField<DAS_BIND_MANAGED_FIELD(memoryTypeIndex)>("memoryTypeIndex", "memoryTypeIndex");
 }
@@ -461,7 +461,7 @@ struct VkMappedMemoryRange_Ann : ManagedStructureAnnotation<VkMappedMemoryRange>
 static VkMappedMemoryRange_Ann * ann_VkMappedMemoryRange = nullptr;
 void VkMappedMemoryRange_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkMappedMemoryRange, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(memory)>("memory", "memory");
     addField<DAS_BIND_MANAGED_FIELD(offset)>("offset", "offset");
     addField<DAS_BIND_MANAGED_FIELD(size)>("size", "size");
@@ -545,15 +545,15 @@ struct VkWriteDescriptorSet_Ann : ManagedStructureAnnotation<VkWriteDescriptorSe
 static VkWriteDescriptorSet_Ann * ann_VkWriteDescriptorSet = nullptr;
 void VkWriteDescriptorSet_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkWriteDescriptorSet, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(dstSet)>("dstSet", "dstSet");
     addField<DAS_BIND_MANAGED_FIELD(dstBinding)>("dstBinding", "dstBinding");
     addField<DAS_BIND_MANAGED_FIELD(dstArrayElement)>("dstArrayElement", "dstArrayElement");
     addField<DAS_BIND_MANAGED_FIELD(descriptorCount)>("descriptorCount", "descriptorCount");
     addField<DAS_BIND_MANAGED_FIELD(descriptorType)>("descriptorType", "descriptorType");
-    addField<DAS_BIND_MANAGED_FIELD(pImageInfo)>("pImageInfo", "pImageInfo");
-    addField<DAS_BIND_MANAGED_FIELD(pBufferInfo)>("pBufferInfo", "pBufferInfo");
-    addField<DAS_BIND_MANAGED_FIELD(pTexelBufferView)>("pTexelBufferView", "pTexelBufferView");
+    addFieldEx("pImageInfo", "pImageInfo", offsetof(VkWriteDescriptorSet, pImageInfo), makeType<VkDescriptorImageInfo *>(*mlib));
+    addFieldEx("pBufferInfo", "pBufferInfo", offsetof(VkWriteDescriptorSet, pBufferInfo), makeType<VkDescriptorBufferInfo *>(*mlib));
+    addFieldEx("pTexelBufferView", "pTexelBufferView", offsetof(VkWriteDescriptorSet, pTexelBufferView), makeType<VkBufferView *>(*mlib));
 }
 #endif
 
@@ -568,7 +568,7 @@ struct VkCopyDescriptorSet_Ann : ManagedStructureAnnotation<VkCopyDescriptorSet>
 static VkCopyDescriptorSet_Ann * ann_VkCopyDescriptorSet = nullptr;
 void VkCopyDescriptorSet_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkCopyDescriptorSet, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(srcSet)>("srcSet", "srcSet");
     addField<DAS_BIND_MANAGED_FIELD(srcBinding)>("srcBinding", "srcBinding");
     addField<DAS_BIND_MANAGED_FIELD(srcArrayElement)>("srcArrayElement", "srcArrayElement");
@@ -590,7 +590,7 @@ struct VkBufferUsageFlags2CreateInfo_Ann : ManagedStructureAnnotation<VkBufferUs
 static VkBufferUsageFlags2CreateInfo_Ann * ann_VkBufferUsageFlags2CreateInfo = nullptr;
 void VkBufferUsageFlags2CreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferUsageFlags2CreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("usage", "usage", offsetof(VkBufferUsageFlags2CreateInfo, usage), makeVkFlags_VkBufferUsageFlags2());
 }
 #endif
@@ -606,13 +606,13 @@ struct VkBufferCreateInfo_Ann : ManagedStructureAnnotation<VkBufferCreateInfo> {
 static VkBufferCreateInfo_Ann * ann_VkBufferCreateInfo = nullptr;
 void VkBufferCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkBufferCreateInfo, flags), makeVkFlags_VkBufferCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(size)>("size", "size");
     addFieldEx("usage", "usage", offsetof(VkBufferCreateInfo, usage), makeVkFlags_VkBufferUsageFlags());
     addField<DAS_BIND_MANAGED_FIELD(sharingMode)>("sharingMode", "sharingMode");
     addField<DAS_BIND_MANAGED_FIELD(queueFamilyIndexCount)>("queueFamilyIndexCount", "queueFamilyIndexCount");
-    addField<DAS_BIND_MANAGED_FIELD(pQueueFamilyIndices)>("pQueueFamilyIndices", "pQueueFamilyIndices");
+    addFieldEx("pQueueFamilyIndices", "pQueueFamilyIndices", offsetof(VkBufferCreateInfo, pQueueFamilyIndices), makeType<uint32_t *>(*mlib));
 }
 #endif
 
@@ -627,7 +627,7 @@ struct VkBufferViewCreateInfo_Ann : ManagedStructureAnnotation<VkBufferViewCreat
 static VkBufferViewCreateInfo_Ann * ann_VkBufferViewCreateInfo = nullptr;
 void VkBufferViewCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferViewCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkBufferViewCreateInfo, flags), makeVkFlags_VkBufferViewCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(buffer)>("buffer", "buffer");
     addField<DAS_BIND_MANAGED_FIELD(format)>("format", "format");
@@ -698,7 +698,7 @@ struct VkMemoryBarrier_Ann : ManagedStructureAnnotation<VkMemoryBarrier> {
 static VkMemoryBarrier_Ann * ann_VkMemoryBarrier = nullptr;
 void VkMemoryBarrier_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkMemoryBarrier, pNext), makeType<void *>(*mlib));
     addFieldEx("srcAccessMask", "srcAccessMask", offsetof(VkMemoryBarrier, srcAccessMask), makeVkFlags_VkAccessFlags());
     addFieldEx("dstAccessMask", "dstAccessMask", offsetof(VkMemoryBarrier, dstAccessMask), makeVkFlags_VkAccessFlags());
 }
@@ -715,7 +715,7 @@ struct VkBufferMemoryBarrier_Ann : ManagedStructureAnnotation<VkBufferMemoryBarr
 static VkBufferMemoryBarrier_Ann * ann_VkBufferMemoryBarrier = nullptr;
 void VkBufferMemoryBarrier_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBufferMemoryBarrier, pNext), makeType<void *>(*mlib));
     addFieldEx("srcAccessMask", "srcAccessMask", offsetof(VkBufferMemoryBarrier, srcAccessMask), makeVkFlags_VkAccessFlags());
     addFieldEx("dstAccessMask", "dstAccessMask", offsetof(VkBufferMemoryBarrier, dstAccessMask), makeVkFlags_VkAccessFlags());
     addField<DAS_BIND_MANAGED_FIELD(srcQueueFamilyIndex)>("srcQueueFamilyIndex", "srcQueueFamilyIndex");
@@ -737,7 +737,7 @@ struct VkImageMemoryBarrier_Ann : ManagedStructureAnnotation<VkImageMemoryBarrie
 static VkImageMemoryBarrier_Ann * ann_VkImageMemoryBarrier = nullptr;
 void VkImageMemoryBarrier_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageMemoryBarrier, pNext), makeType<void *>(*mlib));
     addFieldEx("srcAccessMask", "srcAccessMask", offsetof(VkImageMemoryBarrier, srcAccessMask), makeVkFlags_VkAccessFlags());
     addFieldEx("dstAccessMask", "dstAccessMask", offsetof(VkImageMemoryBarrier, dstAccessMask), makeVkFlags_VkAccessFlags());
     addField<DAS_BIND_MANAGED_FIELD(oldLayout)>("oldLayout", "oldLayout");
@@ -760,7 +760,7 @@ struct VkImageCreateInfo_Ann : ManagedStructureAnnotation<VkImageCreateInfo> {
 static VkImageCreateInfo_Ann * ann_VkImageCreateInfo = nullptr;
 void VkImageCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkImageCreateInfo, flags), makeVkFlags_VkImageCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(imageType)>("imageType", "imageType");
     addField<DAS_BIND_MANAGED_FIELD(format)>("format", "format");
@@ -772,7 +772,7 @@ void VkImageCreateInfo_Ann::init() {
     addFieldEx("usage", "usage", offsetof(VkImageCreateInfo, usage), makeVkFlags_VkImageUsageFlags());
     addField<DAS_BIND_MANAGED_FIELD(sharingMode)>("sharingMode", "sharingMode");
     addField<DAS_BIND_MANAGED_FIELD(queueFamilyIndexCount)>("queueFamilyIndexCount", "queueFamilyIndexCount");
-    addField<DAS_BIND_MANAGED_FIELD(pQueueFamilyIndices)>("pQueueFamilyIndices", "pQueueFamilyIndices");
+    addFieldEx("pQueueFamilyIndices", "pQueueFamilyIndices", offsetof(VkImageCreateInfo, pQueueFamilyIndices), makeType<uint32_t *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(initialLayout)>("initialLayout", "initialLayout");
 }
 #endif
@@ -806,7 +806,7 @@ struct VkImageViewCreateInfo_Ann : ManagedStructureAnnotation<VkImageViewCreateI
 static VkImageViewCreateInfo_Ann * ann_VkImageViewCreateInfo = nullptr;
 void VkImageViewCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkImageViewCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkImageViewCreateInfo, flags), makeVkFlags_VkImageViewCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(image)>("image", "image");
     addField<DAS_BIND_MANAGED_FIELD(viewType)>("viewType", "viewType");
@@ -881,7 +881,7 @@ static VkSparseBufferMemoryBindInfo_Ann * ann_VkSparseBufferMemoryBindInfo = nul
 void VkSparseBufferMemoryBindInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(buffer)>("buffer", "buffer");
     addField<DAS_BIND_MANAGED_FIELD(bindCount)>("bindCount", "bindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pBinds)>("pBinds", "pBinds");
+    addFieldEx("pBinds", "pBinds", offsetof(VkSparseBufferMemoryBindInfo, pBinds), makeType<VkSparseMemoryBind *>(*mlib));
 }
 #endif
 
@@ -897,7 +897,7 @@ static VkSparseImageOpaqueMemoryBindInfo_Ann * ann_VkSparseImageOpaqueMemoryBind
 void VkSparseImageOpaqueMemoryBindInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(image)>("image", "image");
     addField<DAS_BIND_MANAGED_FIELD(bindCount)>("bindCount", "bindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pBinds)>("pBinds", "pBinds");
+    addFieldEx("pBinds", "pBinds", offsetof(VkSparseImageOpaqueMemoryBindInfo, pBinds), makeType<VkSparseMemoryBind *>(*mlib));
 }
 #endif
 

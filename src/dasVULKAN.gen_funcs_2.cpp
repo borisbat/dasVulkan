@@ -191,7 +191,7 @@ static void WRAP_vkCmdSetDepthBias ( VkCommandBuffer commandBuffer, float depthB
 #endif
 
 #if defined(VK_VERSION_1_0)
-static void WRAP_vkCmdSetBlendConstants ( VkCommandBuffer commandBuffer, float blendConstants ) {
+static void WRAP_vkCmdSetBlendConstants ( VkCommandBuffer commandBuffer, const float * blendConstants ) {
     ::vkCmdSetBlendConstants(commandBuffer, blendConstants);
 }
 #endif

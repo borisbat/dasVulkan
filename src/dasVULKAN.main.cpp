@@ -46,6 +46,8 @@ ModuleAotType Module_dasVULKAN::aotRequire(TextWriter & tw) const {
     return ModuleAotType::cpp;
 }
 
+REGISTER_DYN_MODULE(Module_dasVULKAN, Module_dasVULKAN);
+
 }
 
 REGISTER_MODULE_IN_NAMESPACE(Module_dasVULKAN, das);

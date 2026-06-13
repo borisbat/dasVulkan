@@ -185,7 +185,7 @@ static void WRAP_vkCmdResolveImage2KHR ( VkCommandBuffer commandBuffer, const Vk
 #endif
 
 #if defined(VK_KHR_fragment_shading_rate)
-static void WRAP_vkCmdSetFragmentShadingRateKHR ( VkCommandBuffer commandBuffer, const VkExtent2D & pFragmentSize, VkFragmentShadingRateCombinerOpKHR combinerOps ) {
+static void WRAP_vkCmdSetFragmentShadingRateKHR ( VkCommandBuffer commandBuffer, const VkExtent2D & pFragmentSize, const VkFragmentShadingRateCombinerOpKHR * combinerOps ) {
     ::vkCmdSetFragmentShadingRateKHR(commandBuffer, &pFragmentSize, combinerOps);
 }
 #endif
@@ -197,7 +197,7 @@ static VkResult WRAP_vkGetPhysicalDeviceFragmentShadingRatesKHR ( VkPhysicalDevi
 #endif
 
 #if defined(VK_NV_fragment_shading_rate_enums)
-static void WRAP_vkCmdSetFragmentShadingRateEnumNV ( VkCommandBuffer commandBuffer, VkFragmentShadingRateNV shadingRate, VkFragmentShadingRateCombinerOpKHR combinerOps ) {
+static void WRAP_vkCmdSetFragmentShadingRateEnumNV ( VkCommandBuffer commandBuffer, VkFragmentShadingRateNV shadingRate, const VkFragmentShadingRateCombinerOpKHR * combinerOps ) {
     ::vkCmdSetFragmentShadingRateEnumNV(commandBuffer, shadingRate, combinerOps);
 }
 #endif

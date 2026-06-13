@@ -16,7 +16,7 @@ static VkSparseImageMemoryBindInfo_Ann * ann_VkSparseImageMemoryBindInfo = nullp
 void VkSparseImageMemoryBindInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(image)>("image", "image");
     addField<DAS_BIND_MANAGED_FIELD(bindCount)>("bindCount", "bindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pBinds)>("pBinds", "pBinds");
+    addFieldEx("pBinds", "pBinds", offsetof(VkSparseImageMemoryBindInfo, pBinds), makeType<VkSparseImageMemoryBind *>(*mlib));
 }
 #endif
 
@@ -31,17 +31,17 @@ struct VkBindSparseInfo_Ann : ManagedStructureAnnotation<VkBindSparseInfo> {
 static VkBindSparseInfo_Ann * ann_VkBindSparseInfo = nullptr;
 void VkBindSparseInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkBindSparseInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(waitSemaphoreCount)>("waitSemaphoreCount", "waitSemaphoreCount");
-    addField<DAS_BIND_MANAGED_FIELD(pWaitSemaphores)>("pWaitSemaphores", "pWaitSemaphores");
+    addFieldEx("pWaitSemaphores", "pWaitSemaphores", offsetof(VkBindSparseInfo, pWaitSemaphores), makeType<VkSemaphore *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(bufferBindCount)>("bufferBindCount", "bufferBindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pBufferBinds)>("pBufferBinds", "pBufferBinds");
+    addFieldEx("pBufferBinds", "pBufferBinds", offsetof(VkBindSparseInfo, pBufferBinds), makeType<VkSparseBufferMemoryBindInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(imageOpaqueBindCount)>("imageOpaqueBindCount", "imageOpaqueBindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pImageOpaqueBinds)>("pImageOpaqueBinds", "pImageOpaqueBinds");
+    addFieldEx("pImageOpaqueBinds", "pImageOpaqueBinds", offsetof(VkBindSparseInfo, pImageOpaqueBinds), makeType<VkSparseImageOpaqueMemoryBindInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(imageBindCount)>("imageBindCount", "imageBindCount");
-    addField<DAS_BIND_MANAGED_FIELD(pImageBinds)>("pImageBinds", "pImageBinds");
+    addFieldEx("pImageBinds", "pImageBinds", offsetof(VkBindSparseInfo, pImageBinds), makeType<VkSparseImageMemoryBindInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(signalSemaphoreCount)>("signalSemaphoreCount", "signalSemaphoreCount");
-    addField<DAS_BIND_MANAGED_FIELD(pSignalSemaphores)>("pSignalSemaphores", "pSignalSemaphores");
+    addFieldEx("pSignalSemaphores", "pSignalSemaphores", offsetof(VkBindSparseInfo, pSignalSemaphores), makeType<VkSemaphore *>(*mlib));
 }
 #endif
 
@@ -142,7 +142,7 @@ struct VkCopyMemoryIndirectInfoKHR_Ann : ManagedStructureAnnotation<VkCopyMemory
 static VkCopyMemoryIndirectInfoKHR_Ann * ann_VkCopyMemoryIndirectInfoKHR = nullptr;
 void VkCopyMemoryIndirectInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkCopyMemoryIndirectInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("srcCopyFlags", "srcCopyFlags", offsetof(VkCopyMemoryIndirectInfoKHR, srcCopyFlags), makeVkFlags_VkAddressCopyFlagsKHR());
     addFieldEx("dstCopyFlags", "dstCopyFlags", offsetof(VkCopyMemoryIndirectInfoKHR, dstCopyFlags), makeVkFlags_VkAddressCopyFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(copyCount)>("copyCount", "copyCount");
@@ -180,13 +180,13 @@ struct VkCopyMemoryToImageIndirectInfoKHR_Ann : ManagedStructureAnnotation<VkCop
 static VkCopyMemoryToImageIndirectInfoKHR_Ann * ann_VkCopyMemoryToImageIndirectInfoKHR = nullptr;
 void VkCopyMemoryToImageIndirectInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkCopyMemoryToImageIndirectInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("srcCopyFlags", "srcCopyFlags", offsetof(VkCopyMemoryToImageIndirectInfoKHR, srcCopyFlags), makeVkFlags_VkAddressCopyFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(copyCount)>("copyCount", "copyCount");
     addField<DAS_BIND_MANAGED_FIELD(copyAddressRange)>("copyAddressRange", "copyAddressRange");
     addField<DAS_BIND_MANAGED_FIELD(dstImage)>("dstImage", "dstImage");
     addField<DAS_BIND_MANAGED_FIELD(dstImageLayout)>("dstImageLayout", "dstImageLayout");
-    addField<DAS_BIND_MANAGED_FIELD(pImageSubresources)>("pImageSubresources", "pImageSubresources");
+    addFieldEx("pImageSubresources", "pImageSubresources", offsetof(VkCopyMemoryToImageIndirectInfoKHR, pImageSubresources), makeType<VkImageSubresourceLayers *>(*mlib));
 }
 #endif
 
@@ -219,10 +219,10 @@ struct VkShaderModuleCreateInfo_Ann : ManagedStructureAnnotation<VkShaderModuleC
 static VkShaderModuleCreateInfo_Ann * ann_VkShaderModuleCreateInfo = nullptr;
 void VkShaderModuleCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkShaderModuleCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkShaderModuleCreateInfo, flags), makeVkFlags_VkShaderModuleCreateFlags());
     addFieldEx("codeSize", "codeSize", offsetof(VkShaderModuleCreateInfo, codeSize), makeType<uint64_t>(*mlib));
-    addField<DAS_BIND_MANAGED_FIELD(pCode)>("pCode", "pCode");
+    addFieldEx("pCode", "pCode", offsetof(VkShaderModuleCreateInfo, pCode), makeType<uint32_t *>(*mlib));
 }
 #endif
 
@@ -240,7 +240,7 @@ void VkDescriptorSetLayoutBinding_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(descriptorType)>("descriptorType", "descriptorType");
     addField<DAS_BIND_MANAGED_FIELD(descriptorCount)>("descriptorCount", "descriptorCount");
     addFieldEx("stageFlags", "stageFlags", offsetof(VkDescriptorSetLayoutBinding, stageFlags), makeVkFlags_VkShaderStageFlags());
-    addField<DAS_BIND_MANAGED_FIELD(pImmutableSamplers)>("pImmutableSamplers", "pImmutableSamplers");
+    addFieldEx("pImmutableSamplers", "pImmutableSamplers", offsetof(VkDescriptorSetLayoutBinding, pImmutableSamplers), makeType<VkSampler *>(*mlib));
 }
 #endif
 
@@ -255,10 +255,10 @@ struct VkDescriptorSetLayoutCreateInfo_Ann : ManagedStructureAnnotation<VkDescri
 static VkDescriptorSetLayoutCreateInfo_Ann * ann_VkDescriptorSetLayoutCreateInfo = nullptr;
 void VkDescriptorSetLayoutCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDescriptorSetLayoutCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkDescriptorSetLayoutCreateInfo, flags), makeVkFlags_VkDescriptorSetLayoutCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(bindingCount)>("bindingCount", "bindingCount");
-    addField<DAS_BIND_MANAGED_FIELD(pBindings)>("pBindings", "pBindings");
+    addFieldEx("pBindings", "pBindings", offsetof(VkDescriptorSetLayoutCreateInfo, pBindings), makeType<VkDescriptorSetLayoutBinding *>(*mlib));
 }
 #endif
 
@@ -288,11 +288,11 @@ struct VkDescriptorPoolCreateInfo_Ann : ManagedStructureAnnotation<VkDescriptorP
 static VkDescriptorPoolCreateInfo_Ann * ann_VkDescriptorPoolCreateInfo = nullptr;
 void VkDescriptorPoolCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDescriptorPoolCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkDescriptorPoolCreateInfo, flags), makeVkFlags_VkDescriptorPoolCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(maxSets)>("maxSets", "maxSets");
     addField<DAS_BIND_MANAGED_FIELD(poolSizeCount)>("poolSizeCount", "poolSizeCount");
-    addField<DAS_BIND_MANAGED_FIELD(pPoolSizes)>("pPoolSizes", "pPoolSizes");
+    addFieldEx("pPoolSizes", "pPoolSizes", offsetof(VkDescriptorPoolCreateInfo, pPoolSizes), makeType<VkDescriptorPoolSize *>(*mlib));
 }
 #endif
 
@@ -307,10 +307,10 @@ struct VkDescriptorSetAllocateInfo_Ann : ManagedStructureAnnotation<VkDescriptor
 static VkDescriptorSetAllocateInfo_Ann * ann_VkDescriptorSetAllocateInfo = nullptr;
 void VkDescriptorSetAllocateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkDescriptorSetAllocateInfo, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(descriptorPool)>("descriptorPool", "descriptorPool");
     addField<DAS_BIND_MANAGED_FIELD(descriptorSetCount)>("descriptorSetCount", "descriptorSetCount");
-    addField<DAS_BIND_MANAGED_FIELD(pSetLayouts)>("pSetLayouts", "pSetLayouts");
+    addFieldEx("pSetLayouts", "pSetLayouts", offsetof(VkDescriptorSetAllocateInfo, pSetLayouts), makeType<VkDescriptorSetLayout *>(*mlib));
 }
 #endif
 
@@ -341,9 +341,9 @@ struct VkSpecializationInfo_Ann : ManagedStructureAnnotation<VkSpecializationInf
 static VkSpecializationInfo_Ann * ann_VkSpecializationInfo = nullptr;
 void VkSpecializationInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(mapEntryCount)>("mapEntryCount", "mapEntryCount");
-    addField<DAS_BIND_MANAGED_FIELD(pMapEntries)>("pMapEntries", "pMapEntries");
+    addFieldEx("pMapEntries", "pMapEntries", offsetof(VkSpecializationInfo, pMapEntries), makeType<VkSpecializationMapEntry *>(*mlib));
     addFieldEx("dataSize", "dataSize", offsetof(VkSpecializationInfo, dataSize), makeType<uint64_t>(*mlib));
-    addField<DAS_BIND_MANAGED_FIELD(pData)>("pData", "pData");
+    addFieldEx("pData", "pData", offsetof(VkSpecializationInfo, pData), makeType<void *>(*mlib));
 }
 #endif
 
@@ -358,12 +358,12 @@ struct VkPipelineShaderStageCreateInfo_Ann : ManagedStructureAnnotation<VkPipeli
 static VkPipelineShaderStageCreateInfo_Ann * ann_VkPipelineShaderStageCreateInfo = nullptr;
 void VkPipelineShaderStageCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineShaderStageCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineShaderStageCreateInfo, flags), makeVkFlags_VkPipelineShaderStageCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(stage)>("stage", "stage");
     addField<DAS_BIND_MANAGED_FIELD(module)>("module_", "module");
-    addField<DAS_BIND_MANAGED_FIELD(pName)>("pName", "pName");
-    addField<DAS_BIND_MANAGED_FIELD(pSpecializationInfo)>("pSpecializationInfo", "pSpecializationInfo");
+    addFieldEx("pName", "pName", offsetof(VkPipelineShaderStageCreateInfo, pName), makeType<char *>(*mlib));
+    addFieldEx("pSpecializationInfo", "pSpecializationInfo", offsetof(VkPipelineShaderStageCreateInfo, pSpecializationInfo), makeType<VkSpecializationInfo *>(*mlib));
 }
 #endif
 
@@ -378,7 +378,7 @@ struct VkComputePipelineCreateInfo_Ann : ManagedStructureAnnotation<VkComputePip
 static VkComputePipelineCreateInfo_Ann * ann_VkComputePipelineCreateInfo = nullptr;
 void VkComputePipelineCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkComputePipelineCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkComputePipelineCreateInfo, flags), makeVkFlags_VkPipelineCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(stage)>("stage", "stage");
     addField<DAS_BIND_MANAGED_FIELD(layout)>("layout", "layout");
@@ -398,7 +398,7 @@ struct VkComputePipelineIndirectBufferInfoNV_Ann : ManagedStructureAnnotation<Vk
 static VkComputePipelineIndirectBufferInfoNV_Ann * ann_VkComputePipelineIndirectBufferInfoNV = nullptr;
 void VkComputePipelineIndirectBufferInfoNV_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkComputePipelineIndirectBufferInfoNV, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(deviceAddress)>("deviceAddress", "deviceAddress");
     addField<DAS_BIND_MANAGED_FIELD(size)>("size", "size");
     addField<DAS_BIND_MANAGED_FIELD(pipelineDeviceAddressCaptureReplay)>("pipelineDeviceAddressCaptureReplay", "pipelineDeviceAddressCaptureReplay");
@@ -416,7 +416,7 @@ struct VkPipelineCreateFlags2CreateInfo_Ann : ManagedStructureAnnotation<VkPipel
 static VkPipelineCreateFlags2CreateInfo_Ann * ann_VkPipelineCreateFlags2CreateInfo = nullptr;
 void VkPipelineCreateFlags2CreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineCreateFlags2CreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineCreateFlags2CreateInfo, flags), makeVkFlags_VkPipelineCreateFlags2());
 }
 #endif
@@ -465,12 +465,12 @@ struct VkPipelineVertexInputStateCreateInfo_Ann : ManagedStructureAnnotation<VkP
 static VkPipelineVertexInputStateCreateInfo_Ann * ann_VkPipelineVertexInputStateCreateInfo = nullptr;
 void VkPipelineVertexInputStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineVertexInputStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineVertexInputStateCreateInfo, flags), makeVkFlags_VkPipelineVertexInputStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(vertexBindingDescriptionCount)>("vertexBindingDescriptionCount", "vertexBindingDescriptionCount");
-    addField<DAS_BIND_MANAGED_FIELD(pVertexBindingDescriptions)>("pVertexBindingDescriptions", "pVertexBindingDescriptions");
+    addFieldEx("pVertexBindingDescriptions", "pVertexBindingDescriptions", offsetof(VkPipelineVertexInputStateCreateInfo, pVertexBindingDescriptions), makeType<VkVertexInputBindingDescription *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(vertexAttributeDescriptionCount)>("vertexAttributeDescriptionCount", "vertexAttributeDescriptionCount");
-    addField<DAS_BIND_MANAGED_FIELD(pVertexAttributeDescriptions)>("pVertexAttributeDescriptions", "pVertexAttributeDescriptions");
+    addFieldEx("pVertexAttributeDescriptions", "pVertexAttributeDescriptions", offsetof(VkPipelineVertexInputStateCreateInfo, pVertexAttributeDescriptions), makeType<VkVertexInputAttributeDescription *>(*mlib));
 }
 #endif
 
@@ -485,7 +485,7 @@ struct VkPipelineInputAssemblyStateCreateInfo_Ann : ManagedStructureAnnotation<V
 static VkPipelineInputAssemblyStateCreateInfo_Ann * ann_VkPipelineInputAssemblyStateCreateInfo = nullptr;
 void VkPipelineInputAssemblyStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineInputAssemblyStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineInputAssemblyStateCreateInfo, flags), makeVkFlags_VkPipelineInputAssemblyStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(topology)>("topology", "topology");
     addField<DAS_BIND_MANAGED_FIELD(primitiveRestartEnable)>("primitiveRestartEnable", "primitiveRestartEnable");
@@ -503,7 +503,7 @@ struct VkPipelineTessellationStateCreateInfo_Ann : ManagedStructureAnnotation<Vk
 static VkPipelineTessellationStateCreateInfo_Ann * ann_VkPipelineTessellationStateCreateInfo = nullptr;
 void VkPipelineTessellationStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineTessellationStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineTessellationStateCreateInfo, flags), makeVkFlags_VkPipelineTessellationStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(patchControlPoints)>("patchControlPoints", "patchControlPoints");
 }
@@ -520,12 +520,12 @@ struct VkPipelineViewportStateCreateInfo_Ann : ManagedStructureAnnotation<VkPipe
 static VkPipelineViewportStateCreateInfo_Ann * ann_VkPipelineViewportStateCreateInfo = nullptr;
 void VkPipelineViewportStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineViewportStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineViewportStateCreateInfo, flags), makeVkFlags_VkPipelineViewportStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(viewportCount)>("viewportCount", "viewportCount");
-    addField<DAS_BIND_MANAGED_FIELD(pViewports)>("pViewports", "pViewports");
+    addFieldEx("pViewports", "pViewports", offsetof(VkPipelineViewportStateCreateInfo, pViewports), makeType<VkViewport *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(scissorCount)>("scissorCount", "scissorCount");
-    addField<DAS_BIND_MANAGED_FIELD(pScissors)>("pScissors", "pScissors");
+    addFieldEx("pScissors", "pScissors", offsetof(VkPipelineViewportStateCreateInfo, pScissors), makeType<VkRect2D *>(*mlib));
 }
 #endif
 
@@ -540,7 +540,7 @@ struct VkPipelineRasterizationStateCreateInfo_Ann : ManagedStructureAnnotation<V
 static VkPipelineRasterizationStateCreateInfo_Ann * ann_VkPipelineRasterizationStateCreateInfo = nullptr;
 void VkPipelineRasterizationStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineRasterizationStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineRasterizationStateCreateInfo, flags), makeVkFlags_VkPipelineRasterizationStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(depthClampEnable)>("depthClampEnable", "depthClampEnable");
     addField<DAS_BIND_MANAGED_FIELD(rasterizerDiscardEnable)>("rasterizerDiscardEnable", "rasterizerDiscardEnable");
@@ -566,12 +566,12 @@ struct VkPipelineMultisampleStateCreateInfo_Ann : ManagedStructureAnnotation<VkP
 static VkPipelineMultisampleStateCreateInfo_Ann * ann_VkPipelineMultisampleStateCreateInfo = nullptr;
 void VkPipelineMultisampleStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineMultisampleStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineMultisampleStateCreateInfo, flags), makeVkFlags_VkPipelineMultisampleStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(rasterizationSamples)>("rasterizationSamples", "rasterizationSamples");
     addField<DAS_BIND_MANAGED_FIELD(sampleShadingEnable)>("sampleShadingEnable", "sampleShadingEnable");
     addField<DAS_BIND_MANAGED_FIELD(minSampleShading)>("minSampleShading", "minSampleShading");
-    addField<DAS_BIND_MANAGED_FIELD(pSampleMask)>("pSampleMask", "pSampleMask");
+    addFieldEx("pSampleMask", "pSampleMask", offsetof(VkPipelineMultisampleStateCreateInfo, pSampleMask), makeType<VkSampleMask *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(alphaToCoverageEnable)>("alphaToCoverageEnable", "alphaToCoverageEnable");
     addField<DAS_BIND_MANAGED_FIELD(alphaToOneEnable)>("alphaToOneEnable", "alphaToOneEnable");
 }
@@ -609,12 +609,12 @@ struct VkPipelineColorBlendStateCreateInfo_Ann : ManagedStructureAnnotation<VkPi
 static VkPipelineColorBlendStateCreateInfo_Ann * ann_VkPipelineColorBlendStateCreateInfo = nullptr;
 void VkPipelineColorBlendStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineColorBlendStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineColorBlendStateCreateInfo, flags), makeVkFlags_VkPipelineColorBlendStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(logicOpEnable)>("logicOpEnable", "logicOpEnable");
     addField<DAS_BIND_MANAGED_FIELD(logicOp)>("logicOp", "logicOp");
     addField<DAS_BIND_MANAGED_FIELD(attachmentCount)>("attachmentCount", "attachmentCount");
-    addField<DAS_BIND_MANAGED_FIELD(pAttachments)>("pAttachments", "pAttachments");
+    addFieldEx("pAttachments", "pAttachments", offsetof(VkPipelineColorBlendStateCreateInfo, pAttachments), makeType<VkPipelineColorBlendAttachmentState *>(*mlib));
     addFieldEx("blendConstants", "blendConstants", offsetof(VkPipelineColorBlendStateCreateInfo, blendConstants), makeFixedArrayTypeDecl(int32_t(4), makeType<float>(*mlib)));
 }
 #endif
@@ -630,10 +630,10 @@ struct VkPipelineDynamicStateCreateInfo_Ann : ManagedStructureAnnotation<VkPipel
 static VkPipelineDynamicStateCreateInfo_Ann * ann_VkPipelineDynamicStateCreateInfo = nullptr;
 void VkPipelineDynamicStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineDynamicStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineDynamicStateCreateInfo, flags), makeVkFlags_VkPipelineDynamicStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(dynamicStateCount)>("dynamicStateCount", "dynamicStateCount");
-    addField<DAS_BIND_MANAGED_FIELD(pDynamicStates)>("pDynamicStates", "pDynamicStates");
+    addFieldEx("pDynamicStates", "pDynamicStates", offsetof(VkPipelineDynamicStateCreateInfo, pDynamicStates), makeType<VkDynamicState *>(*mlib));
 }
 #endif
 
@@ -668,7 +668,7 @@ struct VkPipelineDepthStencilStateCreateInfo_Ann : ManagedStructureAnnotation<Vk
 static VkPipelineDepthStencilStateCreateInfo_Ann * ann_VkPipelineDepthStencilStateCreateInfo = nullptr;
 void VkPipelineDepthStencilStateCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineDepthStencilStateCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineDepthStencilStateCreateInfo, flags), makeVkFlags_VkPipelineDepthStencilStateCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(depthTestEnable)>("depthTestEnable", "depthTestEnable");
     addField<DAS_BIND_MANAGED_FIELD(depthWriteEnable)>("depthWriteEnable", "depthWriteEnable");
@@ -693,19 +693,19 @@ struct VkGraphicsPipelineCreateInfo_Ann : ManagedStructureAnnotation<VkGraphicsP
 static VkGraphicsPipelineCreateInfo_Ann * ann_VkGraphicsPipelineCreateInfo = nullptr;
 void VkGraphicsPipelineCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkGraphicsPipelineCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkGraphicsPipelineCreateInfo, flags), makeVkFlags_VkPipelineCreateFlags());
     addField<DAS_BIND_MANAGED_FIELD(stageCount)>("stageCount", "stageCount");
-    addField<DAS_BIND_MANAGED_FIELD(pStages)>("pStages", "pStages");
-    addField<DAS_BIND_MANAGED_FIELD(pVertexInputState)>("pVertexInputState", "pVertexInputState");
-    addField<DAS_BIND_MANAGED_FIELD(pInputAssemblyState)>("pInputAssemblyState", "pInputAssemblyState");
-    addField<DAS_BIND_MANAGED_FIELD(pTessellationState)>("pTessellationState", "pTessellationState");
-    addField<DAS_BIND_MANAGED_FIELD(pViewportState)>("pViewportState", "pViewportState");
-    addField<DAS_BIND_MANAGED_FIELD(pRasterizationState)>("pRasterizationState", "pRasterizationState");
-    addField<DAS_BIND_MANAGED_FIELD(pMultisampleState)>("pMultisampleState", "pMultisampleState");
-    addField<DAS_BIND_MANAGED_FIELD(pDepthStencilState)>("pDepthStencilState", "pDepthStencilState");
-    addField<DAS_BIND_MANAGED_FIELD(pColorBlendState)>("pColorBlendState", "pColorBlendState");
-    addField<DAS_BIND_MANAGED_FIELD(pDynamicState)>("pDynamicState", "pDynamicState");
+    addFieldEx("pStages", "pStages", offsetof(VkGraphicsPipelineCreateInfo, pStages), makeType<VkPipelineShaderStageCreateInfo *>(*mlib));
+    addFieldEx("pVertexInputState", "pVertexInputState", offsetof(VkGraphicsPipelineCreateInfo, pVertexInputState), makeType<VkPipelineVertexInputStateCreateInfo *>(*mlib));
+    addFieldEx("pInputAssemblyState", "pInputAssemblyState", offsetof(VkGraphicsPipelineCreateInfo, pInputAssemblyState), makeType<VkPipelineInputAssemblyStateCreateInfo *>(*mlib));
+    addFieldEx("pTessellationState", "pTessellationState", offsetof(VkGraphicsPipelineCreateInfo, pTessellationState), makeType<VkPipelineTessellationStateCreateInfo *>(*mlib));
+    addFieldEx("pViewportState", "pViewportState", offsetof(VkGraphicsPipelineCreateInfo, pViewportState), makeType<VkPipelineViewportStateCreateInfo *>(*mlib));
+    addFieldEx("pRasterizationState", "pRasterizationState", offsetof(VkGraphicsPipelineCreateInfo, pRasterizationState), makeType<VkPipelineRasterizationStateCreateInfo *>(*mlib));
+    addFieldEx("pMultisampleState", "pMultisampleState", offsetof(VkGraphicsPipelineCreateInfo, pMultisampleState), makeType<VkPipelineMultisampleStateCreateInfo *>(*mlib));
+    addFieldEx("pDepthStencilState", "pDepthStencilState", offsetof(VkGraphicsPipelineCreateInfo, pDepthStencilState), makeType<VkPipelineDepthStencilStateCreateInfo *>(*mlib));
+    addFieldEx("pColorBlendState", "pColorBlendState", offsetof(VkGraphicsPipelineCreateInfo, pColorBlendState), makeType<VkPipelineColorBlendStateCreateInfo *>(*mlib));
+    addFieldEx("pDynamicState", "pDynamicState", offsetof(VkGraphicsPipelineCreateInfo, pDynamicState), makeType<VkPipelineDynamicStateCreateInfo *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(layout)>("layout", "layout");
     addField<DAS_BIND_MANAGED_FIELD(renderPass)>("renderPass", "renderPass");
     addField<DAS_BIND_MANAGED_FIELD(subpass)>("subpass", "subpass");
@@ -725,10 +725,10 @@ struct VkPipelineCacheCreateInfo_Ann : ManagedStructureAnnotation<VkPipelineCach
 static VkPipelineCacheCreateInfo_Ann * ann_VkPipelineCacheCreateInfo = nullptr;
 void VkPipelineCacheCreateInfo_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineCacheCreateInfo, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkPipelineCacheCreateInfo, flags), makeVkFlags_VkPipelineCacheCreateFlags());
     addFieldEx("initialDataSize", "initialDataSize", offsetof(VkPipelineCacheCreateInfo, initialDataSize), makeType<uint64_t>(*mlib));
-    addField<DAS_BIND_MANAGED_FIELD(pInitialData)>("pInitialData", "pInitialData");
+    addFieldEx("pInitialData", "pInitialData", offsetof(VkPipelineCacheCreateInfo, pInitialData), makeType<void *>(*mlib));
 }
 #endif
 
@@ -795,10 +795,10 @@ struct VkPipelineBinaryCreateInfoKHR_Ann : ManagedStructureAnnotation<VkPipeline
 static VkPipelineBinaryCreateInfoKHR_Ann * ann_VkPipelineBinaryCreateInfoKHR = nullptr;
 void VkPipelineBinaryCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
-    addField<DAS_BIND_MANAGED_FIELD(pKeysAndDataInfo)>("pKeysAndDataInfo", "pKeysAndDataInfo");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineBinaryCreateInfoKHR, pNext), makeType<void *>(*mlib));
+    addFieldEx("pKeysAndDataInfo", "pKeysAndDataInfo", offsetof(VkPipelineBinaryCreateInfoKHR, pKeysAndDataInfo), makeType<VkPipelineBinaryKeysAndDataKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pipeline)>("pipeline", "pipeline");
-    addField<DAS_BIND_MANAGED_FIELD(pPipelineCreateInfo)>("pPipelineCreateInfo", "pPipelineCreateInfo");
+    addFieldEx("pPipelineCreateInfo", "pPipelineCreateInfo", offsetof(VkPipelineBinaryCreateInfoKHR, pPipelineCreateInfo), makeType<VkPipelineCreateInfoKHR *>(*mlib));
 }
 #endif
 
@@ -813,9 +813,9 @@ struct VkPipelineBinaryHandlesInfoKHR_Ann : ManagedStructureAnnotation<VkPipelin
 static VkPipelineBinaryHandlesInfoKHR_Ann * ann_VkPipelineBinaryHandlesInfoKHR = nullptr;
 void VkPipelineBinaryHandlesInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineBinaryHandlesInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pipelineBinaryCount)>("pipelineBinaryCount", "pipelineBinaryCount");
-    addField<DAS_BIND_MANAGED_FIELD(pPipelineBinaries)>("pPipelineBinaries", "pPipelineBinaries");
+    addFieldEx("pPipelineBinaries", "pPipelineBinaries", offsetof(VkPipelineBinaryHandlesInfoKHR, pPipelineBinaries), makeType<VkPipelineBinaryKHR *>(*mlib));
 }
 #endif
 
@@ -830,7 +830,7 @@ struct VkPipelineBinaryDataKHR_Ann : ManagedStructureAnnotation<VkPipelineBinary
 static VkPipelineBinaryDataKHR_Ann * ann_VkPipelineBinaryDataKHR = nullptr;
 void VkPipelineBinaryDataKHR_Ann::init() {
     addFieldEx("dataSize", "dataSize", offsetof(VkPipelineBinaryDataKHR, dataSize), makeType<uint64_t>(*mlib));
-    addField<DAS_BIND_MANAGED_FIELD(pData)>("pData", "pData");
+    addFieldEx("pData", "pData", offsetof(VkPipelineBinaryDataKHR, pData), makeType<void *>(*mlib));
 }
 #endif
 
@@ -845,8 +845,8 @@ struct VkPipelineBinaryKeysAndDataKHR_Ann : ManagedStructureAnnotation<VkPipelin
 static VkPipelineBinaryKeysAndDataKHR_Ann * ann_VkPipelineBinaryKeysAndDataKHR = nullptr;
 void VkPipelineBinaryKeysAndDataKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(binaryCount)>("binaryCount", "binaryCount");
-    addField<DAS_BIND_MANAGED_FIELD(pPipelineBinaryKeys)>("pPipelineBinaryKeys", "pPipelineBinaryKeys");
-    addField<DAS_BIND_MANAGED_FIELD(pPipelineBinaryData)>("pPipelineBinaryData", "pPipelineBinaryData");
+    addFieldEx("pPipelineBinaryKeys", "pPipelineBinaryKeys", offsetof(VkPipelineBinaryKeysAndDataKHR, pPipelineBinaryKeys), makeType<VkPipelineBinaryKeyKHR *>(*mlib));
+    addFieldEx("pPipelineBinaryData", "pPipelineBinaryData", offsetof(VkPipelineBinaryKeysAndDataKHR, pPipelineBinaryData), makeType<VkPipelineBinaryDataKHR *>(*mlib));
 }
 #endif
 
@@ -861,7 +861,7 @@ struct VkPipelineBinaryKeyKHR_Ann : ManagedStructureAnnotation<VkPipelineBinaryK
 static VkPipelineBinaryKeyKHR_Ann * ann_VkPipelineBinaryKeyKHR = nullptr;
 void VkPipelineBinaryKeyKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineBinaryKeyKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(keySize)>("keySize", "keySize");
     addFieldEx("key", "key", offsetof(VkPipelineBinaryKeyKHR, key), makeFixedArrayTypeDecl(int32_t(VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR), makeType<uint8_t>(*mlib)));
 }
@@ -878,9 +878,9 @@ struct VkPipelineBinaryInfoKHR_Ann : ManagedStructureAnnotation<VkPipelineBinary
 static VkPipelineBinaryInfoKHR_Ann * ann_VkPipelineBinaryInfoKHR = nullptr;
 void VkPipelineBinaryInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineBinaryInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(binaryCount)>("binaryCount", "binaryCount");
-    addField<DAS_BIND_MANAGED_FIELD(pPipelineBinaries)>("pPipelineBinaries", "pPipelineBinaries");
+    addFieldEx("pPipelineBinaries", "pPipelineBinaries", offsetof(VkPipelineBinaryInfoKHR, pPipelineBinaries), makeType<VkPipelineBinaryKHR *>(*mlib));
 }
 #endif
 
@@ -895,7 +895,7 @@ struct VkReleaseCapturedPipelineDataInfoKHR_Ann : ManagedStructureAnnotation<VkR
 static VkReleaseCapturedPipelineDataInfoKHR_Ann * ann_VkReleaseCapturedPipelineDataInfoKHR = nullptr;
 void VkReleaseCapturedPipelineDataInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkReleaseCapturedPipelineDataInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pipeline)>("pipeline", "pipeline");
 }
 #endif
@@ -911,7 +911,7 @@ struct VkPipelineBinaryDataInfoKHR_Ann : ManagedStructureAnnotation<VkPipelineBi
 static VkPipelineBinaryDataInfoKHR_Ann * ann_VkPipelineBinaryDataInfoKHR = nullptr;
 void VkPipelineBinaryDataInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineBinaryDataInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pipelineBinary)>("pipelineBinary", "pipelineBinary");
 }
 #endif
@@ -927,7 +927,7 @@ struct VkPipelineCreateInfoKHR_Ann : ManagedStructureAnnotation<VkPipelineCreate
 static VkPipelineCreateInfoKHR_Ann * ann_VkPipelineCreateInfoKHR = nullptr;
 void VkPipelineCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPipelineCreateInfoKHR, pNext), makeType<void *>(*mlib));
 }
 #endif
 

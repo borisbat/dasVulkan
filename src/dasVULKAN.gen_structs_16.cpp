@@ -15,9 +15,9 @@ struct VkVideoReferenceSlotInfoKHR_Ann : ManagedStructureAnnotation<VkVideoRefer
 static VkVideoReferenceSlotInfoKHR_Ann * ann_VkVideoReferenceSlotInfoKHR = nullptr;
 void VkVideoReferenceSlotInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoReferenceSlotInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(slotIndex)>("slotIndex", "slotIndex");
-    addField<DAS_BIND_MANAGED_FIELD(pPictureResource)>("pPictureResource", "pPictureResource");
+    addFieldEx("pPictureResource", "pPictureResource", offsetof(VkVideoReferenceSlotInfoKHR, pPictureResource), makeType<VkVideoPictureResourceInfoKHR *>(*mlib));
 }
 #endif
 
@@ -32,7 +32,7 @@ struct VkVideoDecodeCapabilitiesKHR_Ann : ManagedStructureAnnotation<VkVideoDeco
 static VkVideoDecodeCapabilitiesKHR_Ann * ann_VkVideoDecodeCapabilitiesKHR = nullptr;
 void VkVideoDecodeCapabilitiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoDecodeCapabilitiesKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoDecodeCapabilitiesKHR, flags), makeVkFlags_VkVideoDecodeCapabilityFlagsKHR());
 }
 #endif
@@ -48,7 +48,7 @@ struct VkVideoDecodeUsageInfoKHR_Ann : ManagedStructureAnnotation<VkVideoDecodeU
 static VkVideoDecodeUsageInfoKHR_Ann * ann_VkVideoDecodeUsageInfoKHR = nullptr;
 void VkVideoDecodeUsageInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoDecodeUsageInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("videoUsageHints", "videoUsageHints", offsetof(VkVideoDecodeUsageInfoKHR, videoUsageHints), makeVkFlags_VkVideoDecodeUsageFlagsKHR());
 }
 #endif
@@ -64,15 +64,15 @@ struct VkVideoDecodeInfoKHR_Ann : ManagedStructureAnnotation<VkVideoDecodeInfoKH
 static VkVideoDecodeInfoKHR_Ann * ann_VkVideoDecodeInfoKHR = nullptr;
 void VkVideoDecodeInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoDecodeInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoDecodeInfoKHR, flags), makeVkFlags_VkVideoDecodeFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(srcBuffer)>("srcBuffer", "srcBuffer");
     addField<DAS_BIND_MANAGED_FIELD(srcBufferOffset)>("srcBufferOffset", "srcBufferOffset");
     addField<DAS_BIND_MANAGED_FIELD(srcBufferRange)>("srcBufferRange", "srcBufferRange");
     addField<DAS_BIND_MANAGED_FIELD(dstPictureResource)>("dstPictureResource", "dstPictureResource");
-    addField<DAS_BIND_MANAGED_FIELD(pSetupReferenceSlot)>("pSetupReferenceSlot", "pSetupReferenceSlot");
+    addFieldEx("pSetupReferenceSlot", "pSetupReferenceSlot", offsetof(VkVideoDecodeInfoKHR, pSetupReferenceSlot), makeType<VkVideoReferenceSlotInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(referenceSlotCount)>("referenceSlotCount", "referenceSlotCount");
-    addField<DAS_BIND_MANAGED_FIELD(pReferenceSlots)>("pReferenceSlots", "pReferenceSlots");
+    addFieldEx("pReferenceSlots", "pReferenceSlots", offsetof(VkVideoDecodeInfoKHR, pReferenceSlots), makeType<VkVideoReferenceSlotInfoKHR *>(*mlib));
 }
 #endif
 
@@ -87,7 +87,7 @@ struct VkPhysicalDeviceVideoMaintenance1FeaturesKHR_Ann : ManagedStructureAnnota
 static VkPhysicalDeviceVideoMaintenance1FeaturesKHR_Ann * ann_VkPhysicalDeviceVideoMaintenance1FeaturesKHR = nullptr;
 void VkPhysicalDeviceVideoMaintenance1FeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoMaintenance1FeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoMaintenance1)>("videoMaintenance1", "videoMaintenance1");
 }
 #endif
@@ -103,7 +103,7 @@ struct VkPhysicalDeviceVideoMaintenance2FeaturesKHR_Ann : ManagedStructureAnnota
 static VkPhysicalDeviceVideoMaintenance2FeaturesKHR_Ann * ann_VkPhysicalDeviceVideoMaintenance2FeaturesKHR = nullptr;
 void VkPhysicalDeviceVideoMaintenance2FeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoMaintenance2FeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoMaintenance2)>("videoMaintenance2", "videoMaintenance2");
 }
 #endif
@@ -119,7 +119,7 @@ struct VkVideoInlineQueryInfoKHR_Ann : ManagedStructureAnnotation<VkVideoInlineQ
 static VkVideoInlineQueryInfoKHR_Ann * ann_VkVideoInlineQueryInfoKHR = nullptr;
 void VkVideoInlineQueryInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoInlineQueryInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(queryPool)>("queryPool", "queryPool");
     addField<DAS_BIND_MANAGED_FIELD(firstQuery)>("firstQuery", "firstQuery");
     addField<DAS_BIND_MANAGED_FIELD(queryCount)>("queryCount", "queryCount");
@@ -137,7 +137,7 @@ struct VkPhysicalDeviceVideoDecodeVP9FeaturesKHR_Ann : ManagedStructureAnnotatio
 static VkPhysicalDeviceVideoDecodeVP9FeaturesKHR_Ann * ann_VkPhysicalDeviceVideoDecodeVP9FeaturesKHR = nullptr;
 void VkPhysicalDeviceVideoDecodeVP9FeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoDecodeVP9FeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoDecodeVP9)>("videoDecodeVP9", "videoDecodeVP9");
 }
 #endif
@@ -153,16 +153,16 @@ struct VkVideoSessionCreateInfoKHR_Ann : ManagedStructureAnnotation<VkVideoSessi
 static VkVideoSessionCreateInfoKHR_Ann * ann_VkVideoSessionCreateInfoKHR = nullptr;
 void VkVideoSessionCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoSessionCreateInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(queueFamilyIndex)>("queueFamilyIndex", "queueFamilyIndex");
     addFieldEx("flags", "flags", offsetof(VkVideoSessionCreateInfoKHR, flags), makeVkFlags_VkVideoSessionCreateFlagsKHR());
-    addField<DAS_BIND_MANAGED_FIELD(pVideoProfile)>("pVideoProfile", "pVideoProfile");
+    addFieldEx("pVideoProfile", "pVideoProfile", offsetof(VkVideoSessionCreateInfoKHR, pVideoProfile), makeType<VkVideoProfileInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(pictureFormat)>("pictureFormat", "pictureFormat");
     addField<DAS_BIND_MANAGED_FIELD(maxCodedExtent)>("maxCodedExtent", "maxCodedExtent");
     addField<DAS_BIND_MANAGED_FIELD(referencePictureFormat)>("referencePictureFormat", "referencePictureFormat");
     addField<DAS_BIND_MANAGED_FIELD(maxDpbSlots)>("maxDpbSlots", "maxDpbSlots");
     addField<DAS_BIND_MANAGED_FIELD(maxActiveReferencePictures)>("maxActiveReferencePictures", "maxActiveReferencePictures");
-    addField<DAS_BIND_MANAGED_FIELD(pStdHeaderVersion)>("pStdHeaderVersion", "pStdHeaderVersion");
+    addFieldEx("pStdHeaderVersion", "pStdHeaderVersion", offsetof(VkVideoSessionCreateInfoKHR, pStdHeaderVersion), makeType<VkExtensionProperties *>(*mlib));
 }
 #endif
 
@@ -177,7 +177,7 @@ struct VkVideoSessionParametersCreateInfoKHR_Ann : ManagedStructureAnnotation<Vk
 static VkVideoSessionParametersCreateInfoKHR_Ann * ann_VkVideoSessionParametersCreateInfoKHR = nullptr;
 void VkVideoSessionParametersCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoSessionParametersCreateInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoSessionParametersCreateInfoKHR, flags), makeVkFlags_VkVideoSessionParametersCreateFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(videoSessionParametersTemplate)>("videoSessionParametersTemplate", "videoSessionParametersTemplate");
     addField<DAS_BIND_MANAGED_FIELD(videoSession)>("videoSession", "videoSession");
@@ -195,7 +195,7 @@ struct VkVideoSessionParametersUpdateInfoKHR_Ann : ManagedStructureAnnotation<Vk
 static VkVideoSessionParametersUpdateInfoKHR_Ann * ann_VkVideoSessionParametersUpdateInfoKHR = nullptr;
 void VkVideoSessionParametersUpdateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoSessionParametersUpdateInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(updateSequenceCount)>("updateSequenceCount", "updateSequenceCount");
 }
 #endif
@@ -211,7 +211,7 @@ struct VkVideoEncodeSessionParametersGetInfoKHR_Ann : ManagedStructureAnnotation
 static VkVideoEncodeSessionParametersGetInfoKHR_Ann * ann_VkVideoEncodeSessionParametersGetInfoKHR = nullptr;
 void VkVideoEncodeSessionParametersGetInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeSessionParametersGetInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoSessionParameters)>("videoSessionParameters", "videoSessionParameters");
 }
 #endif
@@ -227,7 +227,7 @@ struct VkVideoEncodeSessionParametersFeedbackInfoKHR_Ann : ManagedStructureAnnot
 static VkVideoEncodeSessionParametersFeedbackInfoKHR_Ann * ann_VkVideoEncodeSessionParametersFeedbackInfoKHR = nullptr;
 void VkVideoEncodeSessionParametersFeedbackInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeSessionParametersFeedbackInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(hasOverrides)>("hasOverrides", "hasOverrides");
 }
 #endif
@@ -243,12 +243,12 @@ struct VkVideoBeginCodingInfoKHR_Ann : ManagedStructureAnnotation<VkVideoBeginCo
 static VkVideoBeginCodingInfoKHR_Ann * ann_VkVideoBeginCodingInfoKHR = nullptr;
 void VkVideoBeginCodingInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoBeginCodingInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoBeginCodingInfoKHR, flags), makeVkFlags_VkVideoBeginCodingFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(videoSession)>("videoSession", "videoSession");
     addField<DAS_BIND_MANAGED_FIELD(videoSessionParameters)>("videoSessionParameters", "videoSessionParameters");
     addField<DAS_BIND_MANAGED_FIELD(referenceSlotCount)>("referenceSlotCount", "referenceSlotCount");
-    addField<DAS_BIND_MANAGED_FIELD(pReferenceSlots)>("pReferenceSlots", "pReferenceSlots");
+    addFieldEx("pReferenceSlots", "pReferenceSlots", offsetof(VkVideoBeginCodingInfoKHR, pReferenceSlots), makeType<VkVideoReferenceSlotInfoKHR *>(*mlib));
 }
 #endif
 
@@ -263,7 +263,7 @@ struct VkVideoEndCodingInfoKHR_Ann : ManagedStructureAnnotation<VkVideoEndCoding
 static VkVideoEndCodingInfoKHR_Ann * ann_VkVideoEndCodingInfoKHR = nullptr;
 void VkVideoEndCodingInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEndCodingInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEndCodingInfoKHR, flags), makeVkFlags_VkVideoEndCodingFlagsKHR());
 }
 #endif
@@ -279,7 +279,7 @@ struct VkVideoCodingControlInfoKHR_Ann : ManagedStructureAnnotation<VkVideoCodin
 static VkVideoCodingControlInfoKHR_Ann * ann_VkVideoCodingControlInfoKHR = nullptr;
 void VkVideoCodingControlInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoCodingControlInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoCodingControlInfoKHR, flags), makeVkFlags_VkVideoCodingControlFlagsKHR());
 }
 #endif
@@ -295,7 +295,7 @@ struct VkVideoEncodeUsageInfoKHR_Ann : ManagedStructureAnnotation<VkVideoEncodeU
 static VkVideoEncodeUsageInfoKHR_Ann * ann_VkVideoEncodeUsageInfoKHR = nullptr;
 void VkVideoEncodeUsageInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeUsageInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("videoUsageHints", "videoUsageHints", offsetof(VkVideoEncodeUsageInfoKHR, videoUsageHints), makeVkFlags_VkVideoEncodeUsageFlagsKHR());
     addFieldEx("videoContentHints", "videoContentHints", offsetof(VkVideoEncodeUsageInfoKHR, videoContentHints), makeVkFlags_VkVideoEncodeContentFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(tuningMode)>("tuningMode", "tuningMode");
@@ -313,15 +313,15 @@ struct VkVideoEncodeInfoKHR_Ann : ManagedStructureAnnotation<VkVideoEncodeInfoKH
 static VkVideoEncodeInfoKHR_Ann * ann_VkVideoEncodeInfoKHR = nullptr;
 void VkVideoEncodeInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeInfoKHR, flags), makeVkFlags_VkVideoEncodeFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(dstBuffer)>("dstBuffer", "dstBuffer");
     addField<DAS_BIND_MANAGED_FIELD(dstBufferOffset)>("dstBufferOffset", "dstBufferOffset");
     addField<DAS_BIND_MANAGED_FIELD(dstBufferRange)>("dstBufferRange", "dstBufferRange");
     addField<DAS_BIND_MANAGED_FIELD(srcPictureResource)>("srcPictureResource", "srcPictureResource");
-    addField<DAS_BIND_MANAGED_FIELD(pSetupReferenceSlot)>("pSetupReferenceSlot", "pSetupReferenceSlot");
+    addFieldEx("pSetupReferenceSlot", "pSetupReferenceSlot", offsetof(VkVideoEncodeInfoKHR, pSetupReferenceSlot), makeType<VkVideoReferenceSlotInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(referenceSlotCount)>("referenceSlotCount", "referenceSlotCount");
-    addField<DAS_BIND_MANAGED_FIELD(pReferenceSlots)>("pReferenceSlots", "pReferenceSlots");
+    addFieldEx("pReferenceSlots", "pReferenceSlots", offsetof(VkVideoEncodeInfoKHR, pReferenceSlots), makeType<VkVideoReferenceSlotInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(precedingExternallyEncodedBytes)>("precedingExternallyEncodedBytes", "precedingExternallyEncodedBytes");
 }
 #endif
@@ -337,7 +337,7 @@ struct VkVideoEncodeQuantizationMapInfoKHR_Ann : ManagedStructureAnnotation<VkVi
 static VkVideoEncodeQuantizationMapInfoKHR_Ann * ann_VkVideoEncodeQuantizationMapInfoKHR = nullptr;
 void VkVideoEncodeQuantizationMapInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeQuantizationMapInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(quantizationMap)>("quantizationMap", "quantizationMap");
     addField<DAS_BIND_MANAGED_FIELD(quantizationMapExtent)>("quantizationMapExtent", "quantizationMapExtent");
 }
@@ -354,7 +354,7 @@ struct VkVideoEncodeQuantizationMapSessionParametersCreateInfoKHR_Ann : ManagedS
 static VkVideoEncodeQuantizationMapSessionParametersCreateInfoKHR_Ann * ann_VkVideoEncodeQuantizationMapSessionParametersCreateInfoKHR = nullptr;
 void VkVideoEncodeQuantizationMapSessionParametersCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeQuantizationMapSessionParametersCreateInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(quantizationMapTexelSize)>("quantizationMapTexelSize", "quantizationMapTexelSize");
 }
 #endif
@@ -370,7 +370,7 @@ struct VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR_Ann : ManagedStruct
 static VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR_Ann * ann_VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR = nullptr;
 void VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoEncodeQuantizationMap)>("videoEncodeQuantizationMap", "videoEncodeQuantizationMap");
 }
 #endif
@@ -386,7 +386,7 @@ struct VkQueryPoolVideoEncodeFeedbackCreateInfoKHR_Ann : ManagedStructureAnnotat
 static VkQueryPoolVideoEncodeFeedbackCreateInfoKHR_Ann * ann_VkQueryPoolVideoEncodeFeedbackCreateInfoKHR = nullptr;
 void VkQueryPoolVideoEncodeFeedbackCreateInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkQueryPoolVideoEncodeFeedbackCreateInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("encodeFeedbackFlags", "encodeFeedbackFlags", offsetof(VkQueryPoolVideoEncodeFeedbackCreateInfoKHR, encodeFeedbackFlags), makeVkFlags_VkVideoEncodeFeedbackFlagsKHR());
 }
 #endif
@@ -402,7 +402,7 @@ struct VkVideoEncodeQualityLevelInfoKHR_Ann : ManagedStructureAnnotation<VkVideo
 static VkVideoEncodeQualityLevelInfoKHR_Ann * ann_VkVideoEncodeQualityLevelInfoKHR = nullptr;
 void VkVideoEncodeQualityLevelInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeQualityLevelInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(qualityLevel)>("qualityLevel", "qualityLevel");
 }
 #endif
@@ -418,8 +418,8 @@ struct VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR_Ann : ManagedStructureAnno
 static VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR_Ann * ann_VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR = nullptr;
 void VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
-    addField<DAS_BIND_MANAGED_FIELD(pVideoProfile)>("pVideoProfile", "pVideoProfile");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR, pNext), makeType<void *>(*mlib));
+    addFieldEx("pVideoProfile", "pVideoProfile", offsetof(VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR, pVideoProfile), makeType<VkVideoProfileInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(qualityLevel)>("qualityLevel", "qualityLevel");
 }
 #endif
@@ -435,7 +435,7 @@ struct VkVideoEncodeQualityLevelPropertiesKHR_Ann : ManagedStructureAnnotation<V
 static VkVideoEncodeQualityLevelPropertiesKHR_Ann * ann_VkVideoEncodeQualityLevelPropertiesKHR = nullptr;
 void VkVideoEncodeQualityLevelPropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeQualityLevelPropertiesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(preferredRateControlMode)>("preferredRateControlMode", "preferredRateControlMode");
     addField<DAS_BIND_MANAGED_FIELD(preferredRateControlLayerCount)>("preferredRateControlLayerCount", "preferredRateControlLayerCount");
 }
@@ -452,11 +452,11 @@ struct VkVideoEncodeRateControlInfoKHR_Ann : ManagedStructureAnnotation<VkVideoE
 static VkVideoEncodeRateControlInfoKHR_Ann * ann_VkVideoEncodeRateControlInfoKHR = nullptr;
 void VkVideoEncodeRateControlInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeRateControlInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeRateControlInfoKHR, flags), makeVkFlags_VkVideoEncodeRateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(rateControlMode)>("rateControlMode", "rateControlMode");
     addField<DAS_BIND_MANAGED_FIELD(layerCount)>("layerCount", "layerCount");
-    addField<DAS_BIND_MANAGED_FIELD(pLayers)>("pLayers", "pLayers");
+    addFieldEx("pLayers", "pLayers", offsetof(VkVideoEncodeRateControlInfoKHR, pLayers), makeType<VkVideoEncodeRateControlLayerInfoKHR *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(virtualBufferSizeInMs)>("virtualBufferSizeInMs", "virtualBufferSizeInMs");
     addField<DAS_BIND_MANAGED_FIELD(initialVirtualBufferSizeInMs)>("initialVirtualBufferSizeInMs", "initialVirtualBufferSizeInMs");
 }
@@ -473,7 +473,7 @@ struct VkVideoEncodeRateControlLayerInfoKHR_Ann : ManagedStructureAnnotation<VkV
 static VkVideoEncodeRateControlLayerInfoKHR_Ann * ann_VkVideoEncodeRateControlLayerInfoKHR = nullptr;
 void VkVideoEncodeRateControlLayerInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeRateControlLayerInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(averageBitrate)>("averageBitrate", "averageBitrate");
     addField<DAS_BIND_MANAGED_FIELD(maxBitrate)>("maxBitrate", "maxBitrate");
     addField<DAS_BIND_MANAGED_FIELD(frameRateNumerator)>("frameRateNumerator", "frameRateNumerator");
@@ -492,7 +492,7 @@ struct VkVideoEncodeCapabilitiesKHR_Ann : ManagedStructureAnnotation<VkVideoEnco
 static VkVideoEncodeCapabilitiesKHR_Ann * ann_VkVideoEncodeCapabilitiesKHR = nullptr;
 void VkVideoEncodeCapabilitiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeCapabilitiesKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeCapabilitiesKHR, flags), makeVkFlags_VkVideoEncodeCapabilityFlagsKHR());
     addFieldEx("rateControlModes", "rateControlModes", offsetof(VkVideoEncodeCapabilitiesKHR, rateControlModes), makeVkFlags_VkVideoEncodeRateControlModeFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(maxRateControlLayers)>("maxRateControlLayers", "maxRateControlLayers");
@@ -514,7 +514,7 @@ struct VkVideoEncodeH264QualityLevelPropertiesKHR_Ann : ManagedStructureAnnotati
 static VkVideoEncodeH264QualityLevelPropertiesKHR_Ann * ann_VkVideoEncodeH264QualityLevelPropertiesKHR = nullptr;
 void VkVideoEncodeH264QualityLevelPropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264QualityLevelPropertiesKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("preferredRateControlFlags", "preferredRateControlFlags", offsetof(VkVideoEncodeH264QualityLevelPropertiesKHR, preferredRateControlFlags), makeVkFlags_VkVideoEncodeH264RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(preferredGopFrameCount)>("preferredGopFrameCount", "preferredGopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(preferredIdrPeriod)>("preferredIdrPeriod", "preferredIdrPeriod");
@@ -538,7 +538,7 @@ struct VkVideoEncodeH264SessionParametersGetInfoKHR_Ann : ManagedStructureAnnota
 static VkVideoEncodeH264SessionParametersGetInfoKHR_Ann * ann_VkVideoEncodeH264SessionParametersGetInfoKHR = nullptr;
 void VkVideoEncodeH264SessionParametersGetInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264SessionParametersGetInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(writeStdSPS)>("writeStdSPS", "writeStdSPS");
     addField<DAS_BIND_MANAGED_FIELD(writeStdPPS)>("writeStdPPS", "writeStdPPS");
     addField<DAS_BIND_MANAGED_FIELD(stdSPSId)>("stdSPSId", "stdSPSId");
@@ -557,7 +557,7 @@ struct VkVideoEncodeH264SessionParametersFeedbackInfoKHR_Ann : ManagedStructureA
 static VkVideoEncodeH264SessionParametersFeedbackInfoKHR_Ann * ann_VkVideoEncodeH264SessionParametersFeedbackInfoKHR = nullptr;
 void VkVideoEncodeH264SessionParametersFeedbackInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264SessionParametersFeedbackInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(hasStdSPSOverrides)>("hasStdSPSOverrides", "hasStdSPSOverrides");
     addField<DAS_BIND_MANAGED_FIELD(hasStdPPSOverrides)>("hasStdPPSOverrides", "hasStdPPSOverrides");
 }
@@ -574,7 +574,7 @@ struct VkVideoEncodeH264RateControlInfoKHR_Ann : ManagedStructureAnnotation<VkVi
 static VkVideoEncodeH264RateControlInfoKHR_Ann * ann_VkVideoEncodeH264RateControlInfoKHR = nullptr;
 void VkVideoEncodeH264RateControlInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264RateControlInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeH264RateControlInfoKHR, flags), makeVkFlags_VkVideoEncodeH264RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(gopFrameCount)>("gopFrameCount", "gopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(idrPeriod)>("idrPeriod", "idrPeriod");
@@ -626,7 +626,7 @@ struct VkVideoEncodeH264GopRemainingFrameInfoKHR_Ann : ManagedStructureAnnotatio
 static VkVideoEncodeH264GopRemainingFrameInfoKHR_Ann * ann_VkVideoEncodeH264GopRemainingFrameInfoKHR = nullptr;
 void VkVideoEncodeH264GopRemainingFrameInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264GopRemainingFrameInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(useGopRemainingFrames)>("useGopRemainingFrames", "useGopRemainingFrames");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingI)>("gopRemainingI", "gopRemainingI");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingP)>("gopRemainingP", "gopRemainingP");
@@ -645,7 +645,7 @@ struct VkVideoEncodeH264RateControlLayerInfoKHR_Ann : ManagedStructureAnnotation
 static VkVideoEncodeH264RateControlLayerInfoKHR_Ann * ann_VkVideoEncodeH264RateControlLayerInfoKHR = nullptr;
 void VkVideoEncodeH264RateControlLayerInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH264RateControlLayerInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(useMinQp)>("useMinQp", "useMinQp");
     addField<DAS_BIND_MANAGED_FIELD(minQp)>("minQp", "minQp");
     addField<DAS_BIND_MANAGED_FIELD(useMaxQp)>("useMaxQp", "useMaxQp");
@@ -666,7 +666,7 @@ struct VkVideoEncodeH265QualityLevelPropertiesKHR_Ann : ManagedStructureAnnotati
 static VkVideoEncodeH265QualityLevelPropertiesKHR_Ann * ann_VkVideoEncodeH265QualityLevelPropertiesKHR = nullptr;
 void VkVideoEncodeH265QualityLevelPropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265QualityLevelPropertiesKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("preferredRateControlFlags", "preferredRateControlFlags", offsetof(VkVideoEncodeH265QualityLevelPropertiesKHR, preferredRateControlFlags), makeVkFlags_VkVideoEncodeH265RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(preferredGopFrameCount)>("preferredGopFrameCount", "preferredGopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(preferredIdrPeriod)>("preferredIdrPeriod", "preferredIdrPeriod");
@@ -689,7 +689,7 @@ struct VkVideoEncodeH265SessionParametersGetInfoKHR_Ann : ManagedStructureAnnota
 static VkVideoEncodeH265SessionParametersGetInfoKHR_Ann * ann_VkVideoEncodeH265SessionParametersGetInfoKHR = nullptr;
 void VkVideoEncodeH265SessionParametersGetInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265SessionParametersGetInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(writeStdVPS)>("writeStdVPS", "writeStdVPS");
     addField<DAS_BIND_MANAGED_FIELD(writeStdSPS)>("writeStdSPS", "writeStdSPS");
     addField<DAS_BIND_MANAGED_FIELD(writeStdPPS)>("writeStdPPS", "writeStdPPS");
@@ -710,7 +710,7 @@ struct VkVideoEncodeH265SessionParametersFeedbackInfoKHR_Ann : ManagedStructureA
 static VkVideoEncodeH265SessionParametersFeedbackInfoKHR_Ann * ann_VkVideoEncodeH265SessionParametersFeedbackInfoKHR = nullptr;
 void VkVideoEncodeH265SessionParametersFeedbackInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265SessionParametersFeedbackInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(hasStdVPSOverrides)>("hasStdVPSOverrides", "hasStdVPSOverrides");
     addField<DAS_BIND_MANAGED_FIELD(hasStdSPSOverrides)>("hasStdSPSOverrides", "hasStdSPSOverrides");
     addField<DAS_BIND_MANAGED_FIELD(hasStdPPSOverrides)>("hasStdPPSOverrides", "hasStdPPSOverrides");
@@ -728,7 +728,7 @@ struct VkVideoEncodeH265RateControlInfoKHR_Ann : ManagedStructureAnnotation<VkVi
 static VkVideoEncodeH265RateControlInfoKHR_Ann * ann_VkVideoEncodeH265RateControlInfoKHR = nullptr;
 void VkVideoEncodeH265RateControlInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265RateControlInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeH265RateControlInfoKHR, flags), makeVkFlags_VkVideoEncodeH265RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(gopFrameCount)>("gopFrameCount", "gopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(idrPeriod)>("idrPeriod", "idrPeriod");
@@ -780,7 +780,7 @@ struct VkVideoEncodeH265GopRemainingFrameInfoKHR_Ann : ManagedStructureAnnotatio
 static VkVideoEncodeH265GopRemainingFrameInfoKHR_Ann * ann_VkVideoEncodeH265GopRemainingFrameInfoKHR = nullptr;
 void VkVideoEncodeH265GopRemainingFrameInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265GopRemainingFrameInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(useGopRemainingFrames)>("useGopRemainingFrames", "useGopRemainingFrames");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingI)>("gopRemainingI", "gopRemainingI");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingP)>("gopRemainingP", "gopRemainingP");
@@ -799,7 +799,7 @@ struct VkVideoEncodeH265RateControlLayerInfoKHR_Ann : ManagedStructureAnnotation
 static VkVideoEncodeH265RateControlLayerInfoKHR_Ann * ann_VkVideoEncodeH265RateControlLayerInfoKHR = nullptr;
 void VkVideoEncodeH265RateControlLayerInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeH265RateControlLayerInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(useMinQp)>("useMinQp", "useMinQp");
     addField<DAS_BIND_MANAGED_FIELD(minQp)>("minQp", "minQp");
     addField<DAS_BIND_MANAGED_FIELD(useMaxQp)>("useMaxQp", "useMaxQp");
@@ -820,7 +820,7 @@ struct VkVideoEncodeAV1QualityLevelPropertiesKHR_Ann : ManagedStructureAnnotatio
 static VkVideoEncodeAV1QualityLevelPropertiesKHR_Ann * ann_VkVideoEncodeAV1QualityLevelPropertiesKHR = nullptr;
 void VkVideoEncodeAV1QualityLevelPropertiesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeAV1QualityLevelPropertiesKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("preferredRateControlFlags", "preferredRateControlFlags", offsetof(VkVideoEncodeAV1QualityLevelPropertiesKHR, preferredRateControlFlags), makeVkFlags_VkVideoEncodeAV1RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(preferredGopFrameCount)>("preferredGopFrameCount", "preferredGopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(preferredKeyFramePeriod)>("preferredKeyFramePeriod", "preferredKeyFramePeriod");
@@ -850,7 +850,7 @@ struct VkPhysicalDeviceVideoEncodeAV1FeaturesKHR_Ann : ManagedStructureAnnotatio
 static VkPhysicalDeviceVideoEncodeAV1FeaturesKHR_Ann * ann_VkPhysicalDeviceVideoEncodeAV1FeaturesKHR = nullptr;
 void VkPhysicalDeviceVideoEncodeAV1FeaturesKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkPhysicalDeviceVideoEncodeAV1FeaturesKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(videoEncodeAV1)>("videoEncodeAV1", "videoEncodeAV1");
 }
 #endif
@@ -866,7 +866,7 @@ struct VkVideoEncodeAV1RateControlInfoKHR_Ann : ManagedStructureAnnotation<VkVid
 static VkVideoEncodeAV1RateControlInfoKHR_Ann * ann_VkVideoEncodeAV1RateControlInfoKHR = nullptr;
 void VkVideoEncodeAV1RateControlInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeAV1RateControlInfoKHR, pNext), makeType<void *>(*mlib));
     addFieldEx("flags", "flags", offsetof(VkVideoEncodeAV1RateControlInfoKHR, flags), makeVkFlags_VkVideoEncodeAV1RateControlFlagsKHR());
     addField<DAS_BIND_MANAGED_FIELD(gopFrameCount)>("gopFrameCount", "gopFrameCount");
     addField<DAS_BIND_MANAGED_FIELD(keyFramePeriod)>("keyFramePeriod", "keyFramePeriod");
@@ -918,7 +918,7 @@ struct VkVideoEncodeAV1GopRemainingFrameInfoKHR_Ann : ManagedStructureAnnotation
 static VkVideoEncodeAV1GopRemainingFrameInfoKHR_Ann * ann_VkVideoEncodeAV1GopRemainingFrameInfoKHR = nullptr;
 void VkVideoEncodeAV1GopRemainingFrameInfoKHR_Ann::init() {
     addField<DAS_BIND_MANAGED_FIELD(sType)>("sType", "sType");
-    addField<DAS_BIND_MANAGED_FIELD(pNext)>("pNext", "pNext");
+    addFieldEx("pNext", "pNext", offsetof(VkVideoEncodeAV1GopRemainingFrameInfoKHR, pNext), makeType<void *>(*mlib));
     addField<DAS_BIND_MANAGED_FIELD(useGopRemainingFrames)>("useGopRemainingFrames", "useGopRemainingFrames");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingIntra)>("gopRemainingIntra", "gopRemainingIntra");
     addField<DAS_BIND_MANAGED_FIELD(gopRemainingPredictive)>("gopRemainingPredictive", "gopRemainingPredictive");
