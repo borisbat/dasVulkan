@@ -63,7 +63,7 @@ def main {
     var inscope render_pass <- create_render_pass_single_color(device, swap.format, VkImageLayout.PRESENT_SRC_KHR)
     build_swapchain_framebuffers(device, swap, render_pass)
 
-    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_shaders.das
+    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_example_shaders.das
     var inscope vert <- create_shader_module(device, tri_vert_spv)
     var inscope frag <- create_shader_module(device, tri_frag_spv)
     var inscope layout <- create_pipeline_layout(device)

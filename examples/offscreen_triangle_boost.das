@@ -61,7 +61,7 @@ def main() : int {
                                      width = uint(WIDTH), height = uint(HEIGHT), layers = 1u)
     var inscope framebuffer <- create_framebuffer(device, fbci)
 
-    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_shaders.das
+    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_example_shaders.das
     var inscope vert <- create_shader_module(device, tri_vert_spv)
     var inscope frag <- create_shader_module(device, tri_frag_spv)
     var inscope layout <- create_pipeline_layout(device)

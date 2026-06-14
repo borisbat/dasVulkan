@@ -229,7 +229,7 @@ def main() : int {
     check(vkCreateFramebuffer(device, fb_ci, null, framebuffer), "create framebuffer")
 
     // ----- shaders + pipeline -----
-    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_shaders.das
+    // tri_vert_spv / tri_frag_spv: SPIR-V words emitted by dasSpirv from triangle_example_shaders.das
     var vert_mod = create_shader_module(device, tri_vert_spv)
     var frag_mod = create_shader_module(device, tri_frag_spv)
 
