@@ -537,12 +537,17 @@ def public render_textured_quad() : array<uint8> {
     // The push-constant size is reflected too — Tint{float3} is 12 bytes (std140 vec3), so the command
     // below pushes exactly what the layout declares rather than the over-sized 16 the hand-build used.
     var push_size = 0u
+    var have_push = false
     for (refl in reflections) {
-        if (!empty(refl.push_constants)) {
-            push_size = uint(refl.push_constants[0].size)
-            break
+        for (p in refl.push_constants) {
+            // this gate has exactly one push range (fragment Tint at offset 0); assert that shape rather
+            // than silently pushing 0 if reflection ever stops reporting it.
+            assert(p.offset == 0, "reflected push-constant range must start at offset 0 for this gate")
+            push_size = uint(p.size)
+            have_push = true
         }
     }
+    assert(have_push, "expected a reflected push-constant range (fragment Tint)")
     delete reflections
 
     var inscope vert <- create_shader_module(device, quad_vert_spv)

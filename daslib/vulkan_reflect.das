@@ -70,9 +70,7 @@ def merge_set_bindings(reflections : array<SpirvReflection>; set : int) : array<
     var merged : array<MergedBinding>
     for (refl in reflections) {
         for (b in refl.bindings) {
-            if (b.set != set) {
-                continue
-            }
+            continue if (b.set != set)
             var found = -1
             for (i in range(length(merged))) {
                 if (merged[i].binding == b.binding) {
@@ -81,6 +79,12 @@ def merge_set_bindings(reflections : array<SpirvReflection>; set : int) : array<
                 }
             }
             if (found >= 0) {
+                // A slot shared by several stages must agree on kind+count, else the merged layout is
+                // invalid Vulkan. Fail fast — a silent first-wins merge produces a layout that mismatches
+                // the shader and is very hard to diagnose on-GPU.
+                if (merged[found].kind != b.kind || merged[found].count != b.count) {
+                    panic("vulkan_reflect: (set {set}, binding {b.binding}) declared with conflicting kind/count across stages")
+                }
                 merged[found].stages = merged[found].stages | b.stages
             } else {
                 merged |> push(MergedBinding(binding = b.binding, kind = b.kind, count = b.count, stages = b.stages))
