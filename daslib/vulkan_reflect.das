@@ -116,6 +116,9 @@ def build_descriptor_set_layouts(device : Device; reflections : array<SpirvRefle
         var dslci : DescriptorSetLayoutCreateInfo
         dslci.pBindings <- merge_set_bindings(reflections, set)
         layouts |> emplace(create_descriptor_set_layout(device, dslci))
+        // create_descriptor_set_layout's vk_view_destroy frees only the _vk_view_* temporaries, not the
+        // idiomatic pBindings array we moved in — delete it so a per-frame caller does not accumulate.
+        unsafe { delete dslci.pBindings }
     }
     return <- layouts
 }
@@ -153,5 +156,11 @@ def build_pipeline_layout(device : Device; set_layouts : array<DescriptorSetLayo
         plci.pPushConstantRanges |> push(pcr)
     }
     delete ranges
-    return <- create_pipeline_layout(device, plci)
+    var pl <- create_pipeline_layout(device, plci)
+    // vk_view_destroy frees only the _vk_view_* temporaries; delete the idiomatic arrays we built so a
+    // per-frame caller does not accumulate. pSetLayouts holds weak copies (finalize is a no-op), so this
+    // does not destroy the real set layouts.
+    unsafe { delete plci.pSetLayouts }
+    delete plci.pPushConstantRanges
+    return <- pl
 }

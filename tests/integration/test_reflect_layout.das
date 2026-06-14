@@ -47,6 +47,13 @@ def test_reflect_merge_distinct_bindings(t : T?) {
     var refls <- [ <- rv, <- rf]
     var merged <- merge_set_bindings(refls, 0)
     t |> success(length(merged) == 2, "two distinct bindings stay separate")
+    if (length(merged) == 2) {
+        // merge preserves insertion order: vertex UBO @0 first, then fragment sampler @1
+        t |> success(merged[0].binding == 0u && merged[0].descriptorType == VkDescriptorType.UNIFORM_BUFFER &&
+            merged[0].stageFlags.vertex && !merged[0].stageFlags.fragment, "binding 0 is a vertex UBO")
+        t |> success(merged[1].binding == 1u && merged[1].descriptorType == VkDescriptorType.COMBINED_IMAGE_SAMPLER &&
+            merged[1].stageFlags.fragment && !merged[1].stageFlags.vertex, "binding 1 is a fragment sampler")
+    }
     unsafe { delete merged }    // DescriptorSetLayoutBinding holds a sampler-array field -> unsafe delete
     delete refls
 }
