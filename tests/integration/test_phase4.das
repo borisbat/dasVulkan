@@ -6,8 +6,9 @@ options indenting = 4
 // transformed by a column-major MVP (scale 0.6, translate x +0.4) and tinted by a push constant
 // (1,1,0 -> blue zeroed). The MVP and tint are uploaded by the host; only a correct render can
 // confirm the column-major matrix layout, the sampler UV mapping, and the push-constant delivery,
-// which spirv-val cannot. Quad screen extent is x in [102,256], y in [51,205]; quadrant centers at
-// u/v < 0.5 (top-left) and > 0.5 (bottom-right).
+// which spirv-val cannot. Quad screen extent is the half-open x in [102,256), y in [51,205) (right
+// and bottom edges exclusive; pixel indices run 0..255); quadrant centers at u/v < 0.5 (top-left)
+// and > 0.5 (bottom-right).
 
 require dastest/testing_boost public
 require scene_helpers

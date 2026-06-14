@@ -344,6 +344,7 @@ def private make_host_buffer(device : Device; phys : VkPhysicalDevice; size : ui
 }
 
 def private upload(device : Device; memory : DeviceMemory; var data : array<auto(TT)>) {
+    if (empty(data)) return            // vkMapMemory(size=0) is invalid; nothing to copy
     let nbytes = length(data) * typeinfo sizeof(type<TT>)
     var mapped : void? = null
     var mf : VkMemoryMapFlags
