@@ -13,6 +13,7 @@ require compute_shaders
 require triangle_shaders
 require phase4_shaders
 require vulkan/vulkan_reflect
+require dastest/testing_boost public
 
 let TRI_W = 256
 let TRI_H = 256
@@ -192,6 +193,31 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
     return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
 }
 
+//! Exact-analytic image oracle: assert EVERY pixel of a w*h RGBA8 buffer equals the value the
+//! `expected` block computes for (x,y) -> int4(r,g,b,a). Reports the FIRST mismatch (coords + got/want)
+//! as a single dastest success — far stronger than the loose per-channel spot-checks `px` enables, and
+//! the right fit for procedurally-generated content (gradients, NEAREST-sampled solid texels) where the
+//! expected pixel is CPU-computable. One assert per frame keeps the output readable.
+def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : string;
+                               expected : block<(x, y : int) : int4>) {
+    var ok = true
+    var msg = "{lbl}: all {w}x{h} pixels match expected"
+    for (y in range(h)) {
+        for (x in range(w)) {
+            let p = (y * w + x) * 4
+            let got = int4(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]), int(pixels[p + 3]))
+            let want = invoke(expected, x, y)
+            if (got.x != want.x || got.y != want.y || got.z != want.z || got.w != want.w) {
+                ok = false
+                msg = "{lbl}: first mismatch at ({x},{y}): got {got}, want {want}"
+                break
+            }
+        }
+        if (!ok) break
+    }
+    t |> success(ok, msg)
+}
+
 //! the dasSpirv GPU gate: run an arbitrary emitted SPIR-V compute blob (`words`) over `n`
 //! elements and return the result, with descriptor layout / pool / update all through the
 //! BOOST path. The storage-buffer binding has descriptorCount = 1 with no immutable samplers
@@ -312,6 +338,143 @@ def public run_compute_spirv(var words : array<uint>; n : int) : array<uint> {
 //! the boost-descriptor compute square, now fed by the daslang-emitted `square_spv` blob.
 def public run_compute_boost(n : int) : array<uint> {
     return <- run_compute_spirv(square_spv, n)
+}
+
+//! the dasSpirv storage-image GPU gate: run a compute blob (`words`) that writes a w*h RGBA8 storage
+//! image at set=0/binding=0, then read the image back as RGBA8 bytes. The image analog of
+//! run_compute_spirv (which reads a buffer); reused by every image phase. STORAGE usage + GENERAL
+//! layout for the compute write, then TRANSFER_SRC for the readback copy.
+def public compute_image_rgba8(var words : array<uint>; w, h : int) : array<uint8> {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    // the storage image (STORAGE for the compute write + TRANSFER_SRC for the readback), device-local + view
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = fmt
+    ici.extent.width = uint(w)
+    ici.extent.height = uint(h)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.storage = true
+    ici.usage.transfer_src = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope imem <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(image), boost_value_to_vk(imem), 0ul), null)
+    var vci : ImageViewCreateInfo
+    vci.image = weak_copy(image)
+    vci.viewType = VkImageViewType._2D
+    vci.format = fmt
+    vci.subresourceRange.aspectMask.color = true
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+
+    // descriptor set layout + pool: binding 0 = STORAGE_IMAGE, compute
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    b0.descriptorCount = 1u
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psize : DescriptorPoolSize
+    psize.type_ = VkDescriptorType.STORAGE_IMAGE
+    psize.descriptorCount = 1u
+    dpci.pPoolSizes |> push(psize)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    // bind the storage image view (layout GENERAL, no sampler) through BOOST update_descriptor_sets
+    var write : WriteDescriptorSet
+    write.dstSet = vk_value_to_boost(raw_set)
+    write.dstBinding = 0u
+    write.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    write.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.imageView = weak_copy(view)
+    iinfo.imageLayout = VkImageLayout.GENERAL
+    write.pImageInfo |> push(iinfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    // compute pipeline from the emitted blob
+    var inscope shader <- create_shader_module(device, words)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
+
+    var inscope readback <- create_host_buffer(device, phys, uint64(w * h * 4))
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var shader_write : VkAccessFlags
+        shader_write.shader_write = true
+        var to_read : VkAccessFlags
+        to_read.transfer_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var comp : VkPipelineStageFlags
+        comp.compute_shader = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        // UNDEFINED -> GENERAL for the storage-image write
+        transition_image(cmd, image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
+            none, shader_write, top, comp)
+        cmd_bind_pipeline(cmd, pipeline, VkPipelineBindPoint.COMPUTE)
+        var sets : array<DescriptorSet>
+        sets |> push(vk_value_to_boost(raw_set))
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, sets, no_dyn)
+        cmd_dispatch(cmd, uint(w / 8), uint(h / 8), 1u)
+        // GENERAL -> TRANSFER_SRC for the readback copy
+        transition_image(cmd, image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            shader_write, to_read, comp, xfer)
+        copy_image_to_buffer(cmd, image, readback, w, h)
+    }
+    map_memory_to_array(device, readback.memory, uint64(w * h * 4)) $(m) {
+        pixels := m
+    }
+    return <- pixels
 }
 
 def private pool_info(queue_family : uint) : CommandPoolCreateInfo {
