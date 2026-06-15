@@ -12,7 +12,10 @@ require vulkan/vulkan_boost public
 require compute_shaders
 require triangle_shaders
 require phase4_shaders
+require array_shaders
+require separate_shaders
 require vulkan/vulkan_reflect
+require dastest/testing_boost public
 
 let TRI_W = 256
 let TRI_H = 256
@@ -192,6 +195,36 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
     return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
 }
 
+//! Exact-analytic image oracle: assert EVERY pixel of a w*h RGBA8 buffer equals the value the
+//! `expected` block computes for (x,y) -> int4(r,g,b,a). Reports the FIRST mismatch (coords + got/want)
+//! as a single dastest success — far stronger than the loose per-channel spot-checks `px` enables, and
+//! the right fit for procedurally-generated content (gradients, NEAREST-sampled solid texels) where the
+//! expected pixel is CPU-computable. One assert per frame keeps the output readable.
+def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : string;
+                               expected : block<(x, y : int) : int4>) {
+    let need = uint64(w) * uint64(h) * 4ul   // uint64 so the w*h*4 byte count can't overflow int
+    if (uint64(length(pixels)) < need) {     // guard before indexing pixels[p+3]: a wrong-sized buffer
+        t |> success(false, "{lbl}: pixel buffer too small ({length(pixels)} < {need})")
+        return                               // is a clean test failure, not an out-of-bounds crash
+    }
+    var ok = true
+    var msg = "{lbl}: all {w}x{h} pixels match expected"
+    for (y in range(h)) {
+        for (x in range(w)) {
+            let p = (y * w + x) * 4
+            let got = int4(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]), int(pixels[p + 3]))
+            let want = invoke(expected, x, y)
+            if (got.x != want.x || got.y != want.y || got.z != want.z || got.w != want.w) {
+                ok = false
+                msg = "{lbl}: first mismatch at ({x},{y}): got {got}, want {want}"
+                break
+            }
+        }
+        if (!ok) break
+    }
+    t |> success(ok, msg)
+}
+
 //! the dasSpirv GPU gate: run an arbitrary emitted SPIR-V compute blob (`words`) over `n`
 //! elements and return the result, with descriptor layout / pool / update all through the
 //! BOOST path. The storage-buffer binding has descriptorCount = 1 with no immutable samplers
@@ -312,6 +345,752 @@ def public run_compute_spirv(var words : array<uint>; n : int) : array<uint> {
 //! the boost-descriptor compute square, now fed by the daslang-emitted `square_spv` blob.
 def public run_compute_boost(n : int) : array<uint> {
     return <- run_compute_spirv(square_spv, n)
+}
+
+//! the dasSpirv storage-image GPU gate: run a compute blob (`words`) that writes a w*h RGBA8 storage
+//! image at set=0/binding=0, then read the image back as RGBA8 bytes. The image analog of
+//! run_compute_spirv (which reads a buffer); reused by every image phase. STORAGE usage + GENERAL
+//! layout for the compute write, then TRANSFER_SRC for the readback copy.
+def public compute_image_rgba8(var words : array<uint>; w, h : int) : array<uint8> {
+    // the dispatch is w/8 x h/8 (8x8 local size); require exact multiples so no pixels are silently
+    // skipped and the image extent is never 0/negative -- a misuse fails deterministically here.
+    assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
+        "compute_image_rgba8: w/h must be positive multiples of 8")
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    // the storage image (STORAGE for the compute write + TRANSFER_SRC for the readback), device-local + view
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = fmt
+    ici.extent.width = uint(w)
+    ici.extent.height = uint(h)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.storage = true
+    ici.usage.transfer_src = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope imem <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(image), boost_value_to_vk(imem), 0ul), null)
+    var vci : ImageViewCreateInfo
+    vci.image = weak_copy(image)
+    vci.viewType = VkImageViewType._2D
+    vci.format = fmt
+    vci.subresourceRange.aspectMask.color = true
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+
+    // descriptor set layout + pool: binding 0 = STORAGE_IMAGE, compute
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    b0.descriptorCount = 1u
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psize : DescriptorPoolSize
+    psize.type_ = VkDescriptorType.STORAGE_IMAGE
+    psize.descriptorCount = 1u
+    dpci.pPoolSizes |> push(psize)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    // bind the storage image view (layout GENERAL, no sampler) through BOOST update_descriptor_sets
+    var write : WriteDescriptorSet
+    write.dstSet = vk_value_to_boost(raw_set)
+    write.dstBinding = 0u
+    write.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    write.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.imageView = weak_copy(view)
+    iinfo.imageLayout = VkImageLayout.GENERAL
+    write.pImageInfo |> push(iinfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    // compute pipeline from the emitted blob
+    var inscope shader <- create_shader_module(device, words)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
+
+    var inscope readback <- create_host_buffer(device, phys, uint64(w) * uint64(h) * 4ul)
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var shader_write : VkAccessFlags
+        shader_write.shader_write = true
+        var to_read : VkAccessFlags
+        to_read.transfer_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var comp : VkPipelineStageFlags
+        comp.compute_shader = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        // UNDEFINED -> GENERAL for the storage-image write
+        transition_image(cmd, image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
+            none, shader_write, top, comp)
+        cmd_bind_pipeline(cmd, pipeline, VkPipelineBindPoint.COMPUTE)
+        var sets : array<DescriptorSet>
+        sets |> push(vk_value_to_boost(raw_set))
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, sets, no_dyn)
+        cmd_dispatch(cmd, uint(w / 8), uint(h / 8), 1u)
+        // GENERAL -> TRANSFER_SRC for the readback copy
+        transition_image(cmd, image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            shader_write, to_read, comp, xfer)
+        copy_image_to_buffer(cmd, image, readback, w, h)
+    }
+    map_memory_to_array(device, readback.memory, uint64(w) * uint64(h) * 4ul) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
+//! the dasSpirv texelFetch GPU gate: upload `src` (w*h RGBA8) as a sampled texture at set=0/binding=0,
+//! run a compute blob (`words`) that texelFetch-copies it into a storage image at binding=1, and read
+//! the storage image back. Exact-analytic: the caller asserts the readback equals `src`, proving
+//! texelFetch reads the right texel by integer coordinate. (textureLod's GPU exactness needs a mip/
+//! filter setup and is deferred; its validity is covered by spirv-val + the main-tree opcode test.)
+def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>; w, h : int) : array<uint8> {
+    // the dispatch is w/8 x h/8 (8x8 local size); require exact multiples so no texels are silently
+    // skipped and extents are never 0/negative -- a misuse fails deterministically here.
+    assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
+        "texelfetch_copy_rgba8: w/h must be positive multiples of 8")
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+    let byte_count = uint64(w) * uint64(h) * 4ul
+    assert(uint64(length(src)) == byte_count, "texelfetch_copy_rgba8: src must be exactly w*h*4 bytes")
+
+    // source sampled texture (SAMPLED + TRANSFER_DST), device-local + view + NEAREST sampler
+    var sici : ImageCreateInfo
+    sici.imageType = VkImageType._2D
+    sici.format = fmt
+    sici.extent.width = uint(w)
+    sici.extent.height = uint(h)
+    sici.extent.depth = 1u
+    sici.mipLevels = 1u
+    sici.arrayLayers = 1u
+    sici.samples._1 = true
+    sici.tiling = VkImageTiling.OPTIMAL
+    sici.usage.sampled = true
+    sici.usage.transfer_dst = true
+    sici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope src_image <- create_image(device, sici)
+    var sreq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(src_image), sreq)
+    var swant : VkMemoryPropertyFlags
+    swant.device_local = true
+    var smai : MemoryAllocateInfo
+    smai.allocationSize = sreq.size
+    smai.memoryTypeIndex = find_memory_type(phys, sreq.memoryTypeBits, swant)
+    var inscope src_mem <- allocate_memory(device, smai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(src_image), boost_value_to_vk(src_mem), 0ul), null)
+    var svci : ImageViewCreateInfo
+    svci.image = weak_copy(src_image)
+    svci.viewType = VkImageViewType._2D
+    svci.format = fmt
+    svci.subresourceRange.aspectMask.color = true
+    svci.subresourceRange.levelCount = 1u
+    svci.subresourceRange.layerCount = 1u
+    var inscope src_view <- create_image_view(device, svci)
+    var sci : SamplerCreateInfo
+    sci.magFilter = VkFilter.NEAREST
+    sci.minFilter = VkFilter.NEAREST
+    sci.mipmapMode = VkSamplerMipmapMode.NEAREST
+    var inscope sampler <- create_sampler(device, sci)
+
+    // staging buffer with the source bytes
+    var staging_usage : VkBufferUsageFlags
+    staging_usage.transfer_src = true
+    var inscope staging <- make_host_buffer(device, phys, byte_count, staging_usage)
+    upload(device, staging.memory, src)
+
+    // destination storage image (STORAGE + TRANSFER_SRC), device-local + view
+    var dici : ImageCreateInfo
+    dici.imageType = VkImageType._2D
+    dici.format = fmt
+    dici.extent.width = uint(w)
+    dici.extent.height = uint(h)
+    dici.extent.depth = 1u
+    dici.mipLevels = 1u
+    dici.arrayLayers = 1u
+    dici.samples._1 = true
+    dici.tiling = VkImageTiling.OPTIMAL
+    dici.usage.storage = true
+    dici.usage.transfer_src = true
+    dici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope dst_image <- create_image(device, dici)
+    var dreq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(dst_image), dreq)
+    var dwant : VkMemoryPropertyFlags
+    dwant.device_local = true
+    var dmai : MemoryAllocateInfo
+    dmai.allocationSize = dreq.size
+    dmai.memoryTypeIndex = find_memory_type(phys, dreq.memoryTypeBits, dwant)
+    var inscope dst_mem <- allocate_memory(device, dmai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(dst_image), boost_value_to_vk(dst_mem), 0ul), null)
+    var dvci : ImageViewCreateInfo
+    dvci.image = weak_copy(dst_image)
+    dvci.viewType = VkImageViewType._2D
+    dvci.format = fmt
+    dvci.subresourceRange.aspectMask.color = true
+    dvci.subresourceRange.levelCount = 1u
+    dvci.subresourceRange.layerCount = 1u
+    var inscope dst_view <- create_image_view(device, dvci)
+
+    // descriptor set layout: binding 0 = combined image sampler, binding 1 = storage image
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    b0.descriptorCount = 1u
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var b1 : DescriptorSetLayoutBinding
+    b1.binding = 1u
+    b1.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    b1.descriptorCount = 1u
+    b1.stageFlags.compute = true
+    dslci.pBindings |> emplace(b1)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var ps0 : DescriptorPoolSize
+    ps0.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    ps0.descriptorCount = 1u
+    dpci.pPoolSizes |> push(ps0)
+    var ps1 : DescriptorPoolSize
+    ps1.type_ = VkDescriptorType.STORAGE_IMAGE
+    ps1.descriptorCount = 1u
+    dpci.pPoolSizes |> push(ps1)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    var writes : array<WriteDescriptorSet>
+    var w0 : WriteDescriptorSet
+    w0.dstSet = vk_value_to_boost(raw_set)
+    w0.dstBinding = 0u
+    w0.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    w0.descriptorCount = 1u
+    var srcinfo : DescriptorImageInfo
+    srcinfo.sampler = weak_copy(sampler)
+    srcinfo.imageView = weak_copy(src_view)
+    srcinfo.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    w0.pImageInfo |> push(srcinfo)
+    writes |> emplace(w0)
+    var w1 : WriteDescriptorSet
+    w1.dstSet = vk_value_to_boost(raw_set)
+    w1.dstBinding = 1u
+    w1.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    w1.descriptorCount = 1u
+    var dstinfo : DescriptorImageInfo
+    dstinfo.imageView = weak_copy(dst_view)
+    dstinfo.imageLayout = VkImageLayout.GENERAL
+    w1.pImageInfo |> push(dstinfo)
+    writes |> emplace(w1)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    var inscope shader <- create_shader_module(device, words)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
+
+    var inscope readback <- create_host_buffer(device, phys, byte_count)
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var to_dst : VkAccessFlags
+        to_dst.transfer_write = true
+        var shader_read : VkAccessFlags
+        shader_read.shader_read = true
+        var shader_write : VkAccessFlags
+        shader_write.shader_write = true
+        var to_read : VkAccessFlags
+        to_read.transfer_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        var comp : VkPipelineStageFlags
+        comp.compute_shader = true
+        // upload the source: UNDEFINED -> TRANSFER_DST, copy, -> SHADER_READ_ONLY
+        transition_image(cmd, src_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+            none, to_dst, top, xfer)
+        var region : BufferImageCopy
+        region.imageSubresource.aspectMask.color = true
+        region.imageSubresource.layerCount = 1u
+        region.imageExtent.width = uint(w)
+        region.imageExtent.height = uint(h)
+        region.imageExtent.depth = 1u
+        var regions : array<BufferImageCopy>
+        regions |> emplace(region)
+        cmd_copy_buffer_to_image(cmd, staging.buffer, src_image, VkImageLayout.TRANSFER_DST_OPTIMAL, regions)
+        transition_image(cmd, src_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.SHADER_READ_ONLY_OPTIMAL,
+            to_dst, shader_read, xfer, comp)
+        // destination storage image: UNDEFINED -> GENERAL
+        transition_image(cmd, dst_image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
+            none, shader_write, top, comp)
+        cmd_bind_pipeline(cmd, pipeline, VkPipelineBindPoint.COMPUTE)
+        var sets : array<DescriptorSet>
+        sets |> push(vk_value_to_boost(raw_set))
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, sets, no_dyn)
+        cmd_dispatch(cmd, uint(w / 8), uint(h / 8), 1u)
+        // destination GENERAL -> TRANSFER_SRC for the readback copy
+        transition_image(cmd, dst_image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            shader_write, to_read, comp, xfer)
+        copy_image_to_buffer(cmd, dst_image, readback, w, h)
+    }
+    map_memory_to_array(device, readback.memory, byte_count) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
+//! the dasSpirv sampler2DArray GPU gate: render a fullscreen quad whose fragment samples a 4-layer 2D
+//! array texture, the layer chosen per screen quadrant. Each layer is a distinct solid color, so each
+//! quadrant renders exactly that layer's color -- proving the Arrayed image + the layer (.z) coordinate
+//! select the right layer on a real driver. Returns the RGBA pixels (TRI_W*TRI_H*4). The four layer
+//! colors are red / green / blue / yellow (layers 0..3).
+def public render_sampler2darray() : array<uint8> {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    var inscope target <- build_offscreen_target(device, phys, TRI_W, TRI_H, fmt)
+    var inscope render_pass <- create_render_pass_single_color(device, fmt)
+    var fbci : FramebufferCreateInfo
+    fbci.renderPass = weak_copy(render_pass)
+    fbci.pAttachments <- [weak_copy(target.view)]
+    fbci.width = uint(TRI_W)
+    fbci.height = uint(TRI_H)
+    fbci.layers = 1u
+    var inscope framebuffer <- create_framebuffer(device, fbci)
+
+    // a 2x2-per-layer, 4-layer array texture: layer 0 red, 1 green, 2 blue, 3 yellow (each solid)
+    let lw = 2
+    let lh = 2
+    let layers = 4
+    var texels <- [for (i in range(lw * lh * layers * 4)); uint8(0)]
+    let cols = fixed_array(
+        fixed_array(255, 0, 0, 255),        // layer 0 red
+        fixed_array(0, 255, 0, 255),        // layer 1 green
+        fixed_array(0, 0, 255, 255),        // layer 2 blue
+        fixed_array(255, 255, 0, 255))      // layer 3 yellow
+    for (l in range(layers)) {
+        for (t in range(lw * lh)) {
+            let base = (l * lw * lh + t) * 4
+            for (c in range(4)) {
+                texels[base + c] = uint8(cols[l][c])
+            }
+        }
+    }
+    var staging_usage : VkBufferUsageFlags
+    staging_usage.transfer_src = true
+    var inscope staging <- make_host_buffer(device, phys, uint64(length(texels)), staging_usage)
+    upload(device, staging.memory, texels)
+    delete texels
+
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = fmt
+    ici.extent.width = uint(lw)
+    ici.extent.height = uint(lh)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = uint(layers)
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.sampled = true
+    ici.usage.transfer_dst = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope tex_image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(tex_image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope tex_memory <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(tex_image), boost_value_to_vk(tex_memory), 0ul), null)
+
+    var tvci : ImageViewCreateInfo
+    tvci.image = weak_copy(tex_image)
+    tvci.viewType = VkImageViewType._2D_ARRAY
+    tvci.format = fmt
+    tvci.subresourceRange.aspectMask.color = true
+    tvci.subresourceRange.levelCount = 1u
+    tvci.subresourceRange.layerCount = uint(layers)
+    var inscope tex_view <- create_image_view(device, tvci)
+
+    var sci : SamplerCreateInfo
+    sci.magFilter = VkFilter.NEAREST
+    sci.minFilter = VkFilter.NEAREST
+    sci.mipmapMode = VkSamplerMipmapMode.NEAREST
+    sci.addressModeU = VkSamplerAddressMode.CLAMP_TO_EDGE
+    sci.addressModeV = VkSamplerAddressMode.CLAMP_TO_EDGE
+    sci.addressModeW = VkSamplerAddressMode.CLAMP_TO_EDGE
+    var inscope sampler <- create_sampler(device, sci)
+
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    b0.descriptorCount = 1u
+    b0.stageFlags.fragment = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var ps0 : DescriptorPoolSize
+    ps0.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    ps0.descriptorCount = 1u
+    dpci.pPoolSizes |> push(ps0)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+    var write : WriteDescriptorSet
+    write.dstSet = vk_value_to_boost(raw_set)
+    write.dstBinding = 0u
+    write.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    write.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.sampler = weak_copy(sampler)
+    iinfo.imageView = weak_copy(tex_view)
+    iinfo.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    write.pImageInfo |> push(iinfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    var inscope pipe_layout <- create_pipeline_layout(device, PipelineLayoutCreateInfo(pSetLayouts <- [weak_copy(set_layout)]))
+    var inscope vert <- create_shader_module(device, arr_vert_spv)
+    var inscope frag <- create_shader_module(device, arr_frag_spv)
+    var inscope pipeline <- create_graphics_pipeline_simple(device, render_pass, pipe_layout, vert, frag, TRI_W, TRI_H)
+
+    let buf_size = uint64(TRI_W * TRI_H * 4)
+    var inscope readback <- create_host_buffer(device, phys, buf_size)
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var to_dst : VkAccessFlags
+        to_dst.transfer_write = true
+        var to_read : VkAccessFlags
+        to_read.shader_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        var frag_stage : VkPipelineStageFlags
+        frag_stage.fragment_shader = true
+        transition_image(cmd, tex_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+            none, to_dst, top, xfer)
+        var region : BufferImageCopy
+        region.imageSubresource.aspectMask.color = true
+        region.imageSubresource.layerCount = uint(layers)
+        region.imageExtent.width = uint(lw)
+        region.imageExtent.height = uint(lh)
+        region.imageExtent.depth = 1u
+        var regions : array<BufferImageCopy>
+        regions |> emplace(region)
+        cmd_copy_buffer_to_image(cmd, staging.buffer, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, regions)
+        transition_image(cmd, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.SHADER_READ_ONLY_OPTIMAL,
+            to_dst, to_read, xfer, frag_stage)
+        record_render_pass(cmd, render_pass, framebuffer, full_area(TRI_W, TRI_H), clear_color(0.1f, 0.1f, 0.15f, 1.0f)) {
+            cmd_bind_pipeline(cmd, pipeline)
+            var sets : array<DescriptorSet>
+            sets |> push(vk_value_to_boost(raw_set))
+            var no_dyn : array<uint>
+            cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, pipe_layout, 0u, sets, no_dyn)
+            cmd_draw(cmd, 6u)
+        }
+        copy_image_to_buffer(cmd, target.image, readback, TRI_W, TRI_H)
+    }
+    map_memory_to_array(device, readback.memory, buf_size) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
+//! the dasSpirv separate-image+sampler GPU gate: render a fullscreen quad whose fragment samples a
+//! standalone texture2D (binding 0, SAMPLED_IMAGE) combined with a standalone sampler (binding 1,
+//! SAMPLER) via sampleTexture. The texture is a 2x2 checkerboard (red/green/blue/yellow), so each
+//! screen quadrant renders exactly one texel -- proving the split image/sampler descriptors bind and
+//! combine (OpSampledImage) correctly on a real driver. Returns the RGBA pixels (TRI_W*TRI_H*4).
+def public render_separate_image_sampler() : array<uint8> {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan test", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    var inscope target <- build_offscreen_target(device, phys, TRI_W, TRI_H, fmt)
+    var inscope render_pass <- create_render_pass_single_color(device, fmt)
+    var fbci : FramebufferCreateInfo
+    fbci.renderPass = weak_copy(render_pass)
+    fbci.pAttachments <- [weak_copy(target.view)]
+    fbci.width = uint(TRI_W)
+    fbci.height = uint(TRI_H)
+    fbci.layers = 1u
+    var inscope framebuffer <- create_framebuffer(device, fbci)
+
+    // 2x2 checkerboard: (0,0) red, (1,0) green, (0,1) blue, (1,1) yellow
+    var texels <- [for (c in fixed_array(
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 255, 0, 255)); uint8(c)]
+    var staging_usage : VkBufferUsageFlags
+    staging_usage.transfer_src = true
+    var inscope staging <- make_host_buffer(device, phys, 16ul, staging_usage)
+    upload(device, staging.memory, texels)
+    delete texels
+
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = fmt
+    ici.extent.width = 2u
+    ici.extent.height = 2u
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.sampled = true
+    ici.usage.transfer_dst = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope tex_image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(tex_image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope tex_memory <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(tex_image), boost_value_to_vk(tex_memory), 0ul), null)
+    var tvci : ImageViewCreateInfo
+    tvci.image = weak_copy(tex_image)
+    tvci.viewType = VkImageViewType._2D
+    tvci.format = fmt
+    tvci.subresourceRange.aspectMask.color = true
+    tvci.subresourceRange.levelCount = 1u
+    tvci.subresourceRange.layerCount = 1u
+    var inscope tex_view <- create_image_view(device, tvci)
+
+    var sci : SamplerCreateInfo
+    sci.magFilter = VkFilter.NEAREST
+    sci.minFilter = VkFilter.NEAREST
+    sci.mipmapMode = VkSamplerMipmapMode.NEAREST
+    sci.addressModeU = VkSamplerAddressMode.CLAMP_TO_EDGE
+    sci.addressModeV = VkSamplerAddressMode.CLAMP_TO_EDGE
+    sci.addressModeW = VkSamplerAddressMode.CLAMP_TO_EDGE
+    var inscope sampler <- create_sampler(device, sci)
+
+    // separate descriptors: binding 0 = SAMPLED_IMAGE, binding 1 = SAMPLER
+    var dslci : DescriptorSetLayoutCreateInfo
+    var bi : DescriptorSetLayoutBinding
+    bi.binding = 0u
+    bi.descriptorType = VkDescriptorType.SAMPLED_IMAGE
+    bi.descriptorCount = 1u
+    bi.stageFlags.fragment = true
+    dslci.pBindings |> emplace(bi)
+    var bs : DescriptorSetLayoutBinding
+    bs.binding = 1u
+    bs.descriptorType = VkDescriptorType.SAMPLER
+    bs.descriptorCount = 1u
+    bs.stageFlags.fragment = true
+    dslci.pBindings |> emplace(bs)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psi : DescriptorPoolSize
+    psi.type_ = VkDescriptorType.SAMPLED_IMAGE
+    psi.descriptorCount = 1u
+    dpci.pPoolSizes |> push(psi)
+    var pss : DescriptorPoolSize
+    pss.type_ = VkDescriptorType.SAMPLER
+    pss.descriptorCount = 1u
+    dpci.pPoolSizes |> push(pss)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+    var writes : array<WriteDescriptorSet>
+    var wi : WriteDescriptorSet
+    wi.dstSet = vk_value_to_boost(raw_set)
+    wi.dstBinding = 0u
+    wi.descriptorType = VkDescriptorType.SAMPLED_IMAGE
+    wi.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.imageView = weak_copy(tex_view)
+    iinfo.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    wi.pImageInfo |> push(iinfo)
+    writes |> emplace(wi)
+    var ws : WriteDescriptorSet
+    ws.dstSet = vk_value_to_boost(raw_set)
+    ws.dstBinding = 1u
+    ws.descriptorType = VkDescriptorType.SAMPLER
+    ws.descriptorCount = 1u
+    var sinfo : DescriptorImageInfo
+    sinfo.sampler = weak_copy(sampler)
+    ws.pImageInfo |> push(sinfo)
+    writes |> emplace(ws)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    var inscope pipe_layout <- create_pipeline_layout(device, PipelineLayoutCreateInfo(pSetLayouts <- [weak_copy(set_layout)]))
+    var inscope vert <- create_shader_module(device, arr_vert_spv)
+    var inscope frag <- create_shader_module(device, sep_frag_spv)
+    var inscope pipeline <- create_graphics_pipeline_simple(device, render_pass, pipe_layout, vert, frag, TRI_W, TRI_H)
+
+    let buf_size = uint64(TRI_W * TRI_H * 4)
+    var inscope readback <- create_host_buffer(device, phys, buf_size)
+    var inscope pool <- create_command_pool(device, pool_info(gfx))
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var to_dst : VkAccessFlags
+        to_dst.transfer_write = true
+        var to_read : VkAccessFlags
+        to_read.shader_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        var frag_stage : VkPipelineStageFlags
+        frag_stage.fragment_shader = true
+        transition_image(cmd, tex_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+            none, to_dst, top, xfer)
+        var region : BufferImageCopy
+        region.imageSubresource.aspectMask.color = true
+        region.imageSubresource.layerCount = 1u
+        region.imageExtent.width = 2u
+        region.imageExtent.height = 2u
+        region.imageExtent.depth = 1u
+        var regions : array<BufferImageCopy>
+        regions |> emplace(region)
+        cmd_copy_buffer_to_image(cmd, staging.buffer, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, regions)
+        transition_image(cmd, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.SHADER_READ_ONLY_OPTIMAL,
+            to_dst, to_read, xfer, frag_stage)
+        record_render_pass(cmd, render_pass, framebuffer, full_area(TRI_W, TRI_H), clear_color(0.1f, 0.1f, 0.15f, 1.0f)) {
+            cmd_bind_pipeline(cmd, pipeline)
+            var sets : array<DescriptorSet>
+            sets |> push(vk_value_to_boost(raw_set))
+            var no_dyn : array<uint>
+            cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, pipe_layout, 0u, sets, no_dyn)
+            cmd_draw(cmd, 6u)
+        }
+        copy_image_to_buffer(cmd, target.image, readback, TRI_W, TRI_H)
+    }
+    map_memory_to_array(device, readback.memory, buf_size) $(m) {
+        pixels := m
+    }
+    return <- pixels
 }
 
 def private pool_info(queue_family : uint) : CommandPoolCreateInfo {
