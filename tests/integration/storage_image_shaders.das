@@ -4,8 +4,9 @@ options indenting = 4
 // Phase-7 storage-image GPU gate shader: a compute shader writes a coordinate-derived gradient into a
 // read-write storage image (image2D, Rgba8). The host reads it back and asserts EVERY pixel exactly
 // (exact-analytic oracle) — the real-driver proof that imageStore + the coordinate mapping + the Rgba8
-// format are correct, which spirv-val cannot check. pixel (x,y) = (x, y, 0, 255): R from gl_GlobalInvocationID.x,
-// G from .y, B=0, A=1. With the image <= 256 wide, x/255 round-trips to x through the unorm8 store.
+// format are correct, which spirv-val cannot check. readback pixel (x,y) = (x, y, 0, 255): R from
+// gl_GlobalInvocationID.x, G from .y, B=0, A=1.0 (stored -> 255 through the unorm8 conversion). With the
+// image <= 256 wide, x/255 round-trips to x through the unorm8 store.
 
 module storage_image_shaders shared public
 

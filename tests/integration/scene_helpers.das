@@ -202,6 +202,10 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
 //! expected pixel is CPU-computable. One assert per frame keeps the output readable.
 def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : string;
                                expected : block<(x, y : int) : int4>) {
+    if (length(pixels) < w * h * 4) {       // guard before indexing pixels[p+3]: a wrong-sized buffer
+        t |> success(false, "{lbl}: pixel buffer too small ({length(pixels)} < {w * h * 4})")
+        return                              // is a clean test failure, not an out-of-bounds crash
+    }
     var ok = true
     var msg = "{lbl}: all {w}x{h} pixels match expected"
     for (y in range(h)) {
@@ -347,6 +351,10 @@ def public run_compute_boost(n : int) : array<uint> {
 //! run_compute_spirv (which reads a buffer); reused by every image phase. STORAGE usage + GENERAL
 //! layout for the compute write, then TRANSFER_SRC for the readback copy.
 def public compute_image_rgba8(var words : array<uint>; w, h : int) : array<uint8> {
+    // the dispatch is w/8 x h/8 (8x8 local size); require exact multiples so no pixels are silently
+    // skipped and the image extent is never 0/negative -- a misuse fails deterministically here.
+    assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
+        "compute_image_rgba8: w/h must be positive multiples of 8")
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
@@ -485,6 +493,10 @@ def public compute_image_rgba8(var words : array<uint>; w, h : int) : array<uint
 //! texelFetch reads the right texel by integer coordinate. (textureLod's GPU exactness needs a mip/
 //! filter setup and is deferred; its validity is covered by spirv-val + the main-tree opcode test.)
 def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>; w, h : int) : array<uint8> {
+    // the dispatch is w/8 x h/8 (8x8 local size); require exact multiples so no texels are silently
+    // skipped and extents are never 0/negative -- a misuse fails deterministically here.
+    assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
+        "texelfetch_copy_rgba8: w/h must be positive multiples of 8")
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
