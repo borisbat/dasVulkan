@@ -137,3 +137,19 @@ jobs:
             --timeout 600 \
             --isolated-mode \
             --isolated-mode-threads 4
+
+      - name: "Run tutorial pixel-oracle gates (offscreen, lavapipe)"
+        # Each self-contained tutorial under tutorials/<name>/ carries a pixel-oracle
+        # [test] that is its regression gate. The recording drivers live in each
+        # tutorial's recording/ subdir and are skipped here by tutorials/.das_test
+        # (they need stbimage + audio, which this daslang build does not load).
+        working-directory: ${{ github.workspace }}/dasVulkan
+        run: |
+          set -eux
+          "${GITHUB_WORKSPACE}/daslang-src/${BIN_DIR}/daslang" \
+            -load_module "${GITHUB_WORKSPACE}/dasVulkan" \
+            "${GITHUB_WORKSPACE}/daslang-src/dastest/dastest.das" -- \
+            --test "${GITHUB_WORKSPACE}/dasVulkan/tutorials" \
+            --timeout 600 \
+            --isolated-mode \
+            --isolated-mode-threads 4
