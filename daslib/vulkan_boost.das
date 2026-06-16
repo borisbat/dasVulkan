@@ -184,7 +184,7 @@ def public create_pipeline_layout(device : Device) : PipelineLayout {
 }
 
 def public create_render_pass_single_color(device : Device; format : VkFormat;
-        final_layout : VkImageLayout = VkImageLayout.TRANSFER_SRC_OPTIMAL) : RenderPass {
+                                           final_layout : VkImageLayout = VkImageLayout.TRANSFER_SRC_OPTIMAL) : RenderPass {
     var attach : VkAttachmentDescription
     attach.format = format
     attach.samples._1 = true
@@ -215,11 +215,66 @@ def public create_render_pass_single_color(device : Device; format : VkFormat;
     return <- b
 }
 
+//! Two-attachment render pass: color at index 0, depth at index 1. Color clears+stores like the
+//! single-color path; depth clears+discards (no read after the pass). Framebuffers built against
+//! this must pass `[color_view, depth_view]` in attachment order.
+def public create_render_pass_color_depth(device : Device; color_format, depth_format : VkFormat;
+                                          color_final_layout : VkImageLayout = VkImageLayout.TRANSFER_SRC_OPTIMAL) : RenderPass {
+    var attaches : array<VkAttachmentDescription>
+    var color : VkAttachmentDescription
+    color.format = color_format
+    color.samples._1 = true
+    color.loadOp = VkAttachmentLoadOp.CLEAR
+    color.storeOp = VkAttachmentStoreOp.STORE
+    color.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
+    color.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
+    color.initialLayout = VkImageLayout.UNDEFINED
+    color.finalLayout = color_final_layout
+    attaches |> push(color)
+    var depth : VkAttachmentDescription
+    depth.format = depth_format
+    depth.samples._1 = true
+    depth.loadOp = VkAttachmentLoadOp.CLEAR
+    depth.storeOp = VkAttachmentStoreOp.DONT_CARE
+    depth.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
+    depth.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
+    depth.initialLayout = VkImageLayout.UNDEFINED
+    depth.finalLayout = VkImageLayout.DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    attaches |> push(depth)
+
+    var color_ref : VkAttachmentReference
+    color_ref.attachment = 0u
+    color_ref.layout = VkImageLayout.COLOR_ATTACHMENT_OPTIMAL
+    var depth_ref : VkAttachmentReference
+    depth_ref.attachment = 1u
+    depth_ref.layout = VkImageLayout.DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+
+    var subpass : VkSubpassDescription
+    subpass.pipelineBindPoint = VkPipelineBindPoint.GRAPHICS
+    subpass.colorAttachmentCount = 1u
+    var ci = VkRenderPassCreateInfo()
+    ci.attachmentCount = 2u
+    ci.subpassCount = 1u
+    var h : VkRenderPass
+    unsafe {
+        subpass.pColorAttachments = addr(color_ref)
+        subpass.pDepthStencilAttachment = addr(depth_ref)
+        ci.pAttachments = addr(attaches[0])
+        ci.pSubpasses = addr(subpass)
+        vk_check(vkCreateRenderPass(boost_value_to_vk(device), ci, null, h), null)
+    }
+    delete attaches
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
 //! `dynamic_viewport` leaves the viewport/scissor out of the pipeline (VIEWPORT+SCISSOR
 //! dynamic state) so the pipeline survives swapchain resize -- set them per frame with
 //! cmd_set_viewport / cmd_set_scissor (draw_frame does this when its dynamic_viewport is true).
 def public create_graphics_pipeline_simple(device : Device; render_pass : RenderPass; layout : PipelineLayout;
-        vert : ShaderModule; frag : ShaderModule; width, height : int; dynamic_viewport : bool = false) : Pipeline {
+                                           vert : ShaderModule; frag : ShaderModule; width, height : int; dynamic_viewport : bool = false) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)
     stages[0] = VkPipelineShaderStageCreateInfo()
@@ -288,6 +343,115 @@ def public create_graphics_pipeline_simple(device : Device; render_pass : Render
         gp.pViewportState = addr(vpstate)
         gp.pRasterizationState = addr(raster)
         gp.pMultisampleState = addr(msaa)
+        gp.pColorBlendState = addr(blend)
+        vk_check(vkCreateGraphicsPipelines(boost_value_to_vk(device), null, 1u, addr(gp), null, addr(h)), null)
+    }
+    delete dyn_states
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
+//! Graphics pipeline for textured / lit 3D meshes: takes vertex-input bindings + attributes (so a
+//! vertex buffer with pos+uv+normal etc. flows in instead of `gl_VertexIndex` fabrication) and
+//! enables depth test + write by default (LESS_OR_EQUAL, the standard z-buffer comparison). Other
+//! state — rasterizer, blend, msaa — matches `create_graphics_pipeline_simple`; the render pass
+//! must have a depth attachment when `depth_test_enable` is true. Pass `dynamic_viewport=true` to
+//! leave viewport/scissor out of the pipeline for swapchain-resize windowing.
+def public create_graphics_pipeline_v3d(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+                                        vert : ShaderModule; frag : ShaderModule; width, height : int;
+                                        var vertex_bindings : array<VkVertexInputBindingDescription>;
+                                        var vertex_attributes : array<VkVertexInputAttributeDescription>;
+                                        depth_test_enable : bool = true; depth_write_enable : bool = true;
+                                        depth_compare_op : VkCompareOp = VkCompareOp.LESS_OR_EQUAL;
+                                        dynamic_viewport : bool = false) : Pipeline {
+    var stages : array<VkPipelineShaderStageCreateInfo>
+    stages |> resize(2)
+    stages[0] = VkPipelineShaderStageCreateInfo()
+    stages[0].stage.vertex = true
+    stages[0].module_ = boost_value_to_vk(vert)
+    stages[0].pName = "main"
+    stages[1] = VkPipelineShaderStageCreateInfo()
+    stages[1].stage.fragment = true
+    stages[1].module_ = boost_value_to_vk(frag)
+    stages[1].pName = "main"
+
+    var vinput = VkPipelineVertexInputStateCreateInfo()
+    vinput.vertexBindingDescriptionCount = uint(length(vertex_bindings))
+    vinput.vertexAttributeDescriptionCount = uint(length(vertex_attributes))
+    var iasm = VkPipelineInputAssemblyStateCreateInfo()
+    iasm.topology = VkPrimitiveTopology.TRIANGLE_LIST
+
+    var viewport : VkViewport
+    viewport.width = float(width)
+    viewport.height = float(height)
+    viewport.maxDepth = 1.0f
+    var scissor : VkRect2D
+    scissor.extent.width = uint(width)
+    scissor.extent.height = uint(height)
+    var vpstate = VkPipelineViewportStateCreateInfo()
+    vpstate.viewportCount = 1u
+    vpstate.scissorCount = 1u
+
+    var raster = VkPipelineRasterizationStateCreateInfo()
+    raster.polygonMode = VkPolygonMode.FILL
+    raster.cullMode.back = true
+    raster.frontFace = VkFrontFace.COUNTER_CLOCKWISE
+    raster.lineWidth = 1.0f
+    var msaa = VkPipelineMultisampleStateCreateInfo()
+    msaa.rasterizationSamples._1 = true
+
+    var depthstate = VkPipelineDepthStencilStateCreateInfo()
+    depthstate.depthTestEnable = depth_test_enable ? VK_TRUE : VK_FALSE
+    depthstate.depthWriteEnable = depth_write_enable ? VK_TRUE : VK_FALSE
+    depthstate.depthCompareOp = depth_compare_op
+    depthstate.minDepthBounds = 0.0f
+    depthstate.maxDepthBounds = 1.0f
+
+    var blend_att : VkPipelineColorBlendAttachmentState
+    blend_att.colorWriteMask.r = true
+    blend_att.colorWriteMask.g = true
+    blend_att.colorWriteMask.b = true
+    blend_att.colorWriteMask.a = true
+    var blend = VkPipelineColorBlendStateCreateInfo()
+    blend.attachmentCount = 1u
+
+    var dyn_states : array<VkDynamicState>
+    var dynstate = VkPipelineDynamicStateCreateInfo()
+    if (dynamic_viewport) {
+        dyn_states |> push(VkDynamicState.VIEWPORT)
+        dyn_states |> push(VkDynamicState.SCISSOR)
+        dynstate.dynamicStateCount = uint(length(dyn_states))
+    }
+
+    var gp = VkGraphicsPipelineCreateInfo()
+    gp.stageCount = 2u
+    gp.layout = boost_value_to_vk(layout)
+    gp.renderPass = boost_value_to_vk(render_pass)
+    var h : VkPipeline
+    unsafe {
+        if (!empty(vertex_bindings)) {
+            vinput.pVertexBindingDescriptions = addr(vertex_bindings[0])
+        }
+        if (!empty(vertex_attributes)) {
+            vinput.pVertexAttributeDescriptions = addr(vertex_attributes[0])
+        }
+        if (dynamic_viewport) {
+            dynstate.pDynamicStates = addr(dyn_states[0])
+            gp.pDynamicState = addr(dynstate)
+        } else {
+            vpstate.pViewports = addr(viewport)
+            vpstate.pScissors = addr(scissor)
+        }
+        blend.pAttachments = addr(blend_att)
+        gp.pStages = addr(stages[0])
+        gp.pVertexInputState = addr(vinput)
+        gp.pInputAssemblyState = addr(iasm)
+        gp.pViewportState = addr(vpstate)
+        gp.pRasterizationState = addr(raster)
+        gp.pMultisampleState = addr(msaa)
+        gp.pDepthStencilState = addr(depthstate)
         gp.pColorBlendState = addr(blend)
         vk_check(vkCreateGraphicsPipelines(boost_value_to_vk(device), null, 1u, addr(gp), null, addr(h)), null)
     }
@@ -543,6 +707,71 @@ def public build_offscreen_target(device : Device; phys : VkPhysicalDevice; widt
     return <- t
 }
 
+//! depth image + backing memory + depth-aspect view, owned together. Mirrors OffscreenTarget but
+//! with depth_stencil_attachment usage + a depth-only aspect on the view, suitable for the depth
+//! attachment of an offscreen render pass. Default format `D32_SFLOAT` is one of the two formats
+//! Vulkan guarantees on every device for depth attachment (the other is `D32_SFLOAT_S8_UINT`).
+struct public OffscreenDepth {
+    image : Image
+    memory : DeviceMemory
+    view : ImageView
+}
+
+def public finalize(var d : OffscreenDepth) {
+    delete d.view
+    delete d.image
+    delete d.memory
+}
+
+def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width, height : int;
+                                 format : VkFormat = VkFormat.D32_SFLOAT) : OffscreenDepth {
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = format
+    ici.extent.width = uint(width)
+    ici.extent.height = uint(height)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.depth_stencil_attachment = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope image <- create_image(device, ici)
+
+    var req : VkMemoryRequirements
+    vkGetImageMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(image), req)
+    var want : VkMemoryPropertyFlags
+    want.device_local = true
+    var mai : MemoryAllocateInfo
+    mai.allocationSize = req.size
+    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
+    var inscope memory <- allocate_memory(device, mai)
+    vk_check(vkBindImageMemory(boost_value_to_vk(device), boost_value_to_vk(image), boost_value_to_vk(memory), 0ul), null)
+
+    var vci : ImageViewCreateInfo
+    vci.image = weak_copy(image)
+    vci.viewType = VkImageViewType._2D
+    vci.format = format
+    vci.subresourceRange.aspectMask.depth = true
+    // include the stencil aspect for combined depth+stencil formats -- omitting it on those leaves
+    // the view invalid (VUID-VkImageViewCreateInfo-subresourceRange-01018).
+    if (format == VkFormat.D16_UNORM_S8_UINT
+            || format == VkFormat.D24_UNORM_S8_UINT
+            || format == VkFormat.D32_SFLOAT_S8_UINT) {
+        vci.subresourceRange.aspectMask.stencil = true
+    }
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+
+    var d : OffscreenDepth
+    d.image <- image
+    d.memory <- memory
+    d.view <- view
+    return <- d
+}
+
 //! host-visible buffer + backing memory, owned together
 struct public HostBuffer {
     buffer : Buffer
@@ -608,7 +837,7 @@ def public run_cmd_sync(device : Device; pool : CommandPool; queue : VkQueue; bl
 
 //! begin/end a render pass around the block, clearing to `clear`
 def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; framebuffer : Framebuffer;
-        area : VkRect2D; clear : VkClearValue; blk : block<() : void>) {
+                              area : VkRect2D; clear : VkClearValue; blk : block<() : void>) {
     var rp = VkRenderPassBeginInfo()
     rp.renderPass = boost_value_to_vk(render_pass)
     rp.framebuffer = boost_value_to_vk(framebuffer)
@@ -618,6 +847,28 @@ def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; fra
     let raw_cmd = boost_value_to_vk(cmd)
     unsafe {
         rp.pClearValues = addr(c)
+        vkCmdBeginRenderPass(raw_cmd, rp, VkSubpassContents.INLINE)
+    }
+    invoke(blk)
+    vkCmdEndRenderPass(raw_cmd)
+}
+
+//! multi-clear overload: one VkClearValue per attachment, in framebuffer attachment order.
+//! Use with `create_render_pass_color_depth` (clears = [color, depth]). The single-clear overload
+//! above covers the no-clear / one-attachment case; this one is for per-attachment clears, so an
+//! empty `clears` is always a caller bug (CLEAR loadOp attachments would read uninitialized
+//! VkClearValues -- VUID-VkRenderPassBeginInfo-clearValueCount-00902).
+def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; framebuffer : Framebuffer;
+                              area : VkRect2D; var clears : array<VkClearValue>; blk : block<() : void>) {
+    assert(!empty(clears), "record_render_pass multi-clear: clears must be non-empty (one per attachment)")
+    var rp = VkRenderPassBeginInfo()
+    rp.renderPass = boost_value_to_vk(render_pass)
+    rp.framebuffer = boost_value_to_vk(framebuffer)
+    rp.renderArea = area
+    rp.clearValueCount = uint(length(clears))
+    let raw_cmd = boost_value_to_vk(cmd)
+    unsafe {
+        rp.pClearValues = addr(clears[0])
         vkCmdBeginRenderPass(raw_cmd, rp, VkSubpassContents.INLINE)
     }
     invoke(blk)
@@ -675,6 +926,14 @@ def public clear_color(r, g, b, a : float) : VkClearValue {
     c.color.float32[1] = g
     c.color.float32[2] = b
     c.color.float32[3] = a
+    return c
+}
+
+//! `depth` clear in [0, 1] (1.0 is the "far" reset for the standard z-buffer convention).
+def public clear_depth(depth : float = 1.0f; stencil : uint = 0u) : VkClearValue {
+    var c : VkClearValue
+    c.depthStencil.depth = depth
+    c.depthStencil.stencil = stencil
     return c
 }
 

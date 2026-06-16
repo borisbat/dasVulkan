@@ -1,0 +1,592 @@
+options gen2
+options indenting = 4
+
+// Tutorial 04 render path: draw the synthwave neon cube at `time` (seconds, controls the breathing
+// scale + texture UV scroll) and `camera_t` (in [0..1), drives the lemniscate orbit). Returns
+// CUBE_W*CUBE_H RGBA8 pixels. A parametric frame(time, camera_t) -> image: the CI gate asserts a
+// known frame, and the recording driver sweeps camera_t over a full lemniscate. Headline rails:
+// vertex buffer with (pos, uv, normal) per-vertex attributes, UBO matrices, push-const model
+// matrix, combined image sampler in the fragment, and a depth attachment (so back faces don't
+// punch through front faces).
+
+module cube_tut
+
+require vulkan public
+require vulkan/vulkan_boost public
+require vulkan/vulkan_reflect
+require cube_tut_shaders
+require math
+
+let public CUBE_W = 768
+let public CUBE_H = 768
+let CUBE_DEPTH_FMT = VkFormat.D32_SFLOAT
+let CUBE_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let TEX_DIM = 256
+
+let public N_VERTS = 24                    // 6 faces * 4 corners (per-face normals -> faceted look)
+let public N_INDICES = 36                  // 6 faces * 2 tris * 3 indices
+
+// ===== cube geometry =====
+
+//! 24 vertices, 4 per face. Layout per vertex (32 bytes): pos.xyz (float3, +0), uv (float2, +12),
+//! normal.xyz (float3, +20). CCW winding from outside (matches the pipeline's CCW front-face).
+let private cube_vertices : array<float> <- [
+    // +Z (front)
+    -0.5, -0.5, 0.5,  0.0, 1.0,   0.0, 0.0, 1.0,
+     0.5, -0.5, 0.5,  1.0, 1.0,   0.0, 0.0, 1.0,
+     0.5, 0.5, 0.5,  1.0, 0.0,   0.0, 0.0, 1.0,
+    -0.5, 0.5, 0.5,  0.0, 0.0,   0.0, 0.0, 1.0,
+    // -Z (back)
+     0.5, -0.5, -0.5,  0.0, 1.0,   0.0, 0.0, -1.0,
+    -0.5, -0.5, -0.5,  1.0, 1.0,   0.0, 0.0, -1.0,
+    -0.5, 0.5, -0.5,  1.0, 0.0,   0.0, 0.0, -1.0,
+     0.5, 0.5, -0.5,  0.0, 0.0,   0.0, 0.0, -1.0,
+    // +X (right)
+     0.5, -0.5, 0.5,  0.0, 1.0,   1.0, 0.0, 0.0,
+     0.5, -0.5, -0.5,  1.0, 1.0,   1.0, 0.0, 0.0,
+     0.5, 0.5, -0.5,  1.0, 0.0,   1.0, 0.0, 0.0,
+     0.5, 0.5, 0.5,  0.0, 0.0,   1.0, 0.0, 0.0,
+    // -X (left)
+    -0.5, -0.5, -0.5,  0.0, 1.0,  -1.0, 0.0, 0.0,
+    -0.5, -0.5, 0.5,  1.0, 1.0,  -1.0, 0.0, 0.0,
+    -0.5, 0.5, 0.5,  1.0, 0.0,  -1.0, 0.0, 0.0,
+    -0.5, 0.5, -0.5,  0.0, 0.0,  -1.0, 0.0, 0.0,
+    // +Y (top)
+    -0.5, 0.5, 0.5,  0.0, 1.0,   0.0, 1.0, 0.0,
+     0.5, 0.5, 0.5,  1.0, 1.0,   0.0, 1.0, 0.0,
+     0.5, 0.5, -0.5,  1.0, 0.0,   0.0, 1.0, 0.0,
+    -0.5, 0.5, -0.5,  0.0, 0.0,   0.0, 1.0, 0.0,
+    // -Y (bottom)
+    -0.5, -0.5, -0.5,  0.0, 1.0,   0.0, -1.0, 0.0,
+     0.5, -0.5, -0.5,  1.0, 1.0,   0.0, -1.0, 0.0,
+     0.5, -0.5, 0.5,  1.0, 0.0,   0.0, -1.0, 0.0,
+    -0.5, -0.5, 0.5,  0.0, 0.0,   0.0, -1.0, 0.0]
+
+//! 36 indices, two CCW triangles per face: 0-1-2 and 0-2-3 in face-local order, with face base
+//! 0/4/8/12/16/20.
+let private cube_indices : array<uint16> <- [
+    uint16(0), uint16(1), uint16(2),  uint16(0), uint16(2), uint16(3),
+    uint16(4), uint16(5), uint16(6),  uint16(4), uint16(6), uint16(7),
+    uint16(8), uint16(9), uint16(10), uint16(8), uint16(10), uint16(11),
+    uint16(12), uint16(13), uint16(14), uint16(12), uint16(14), uint16(15),
+    uint16(16), uint16(17), uint16(18), uint16(16), uint16(18), uint16(19),
+    uint16(20), uint16(21), uint16(22), uint16(20), uint16(22), uint16(23)]
+
+// ===== matrix builders (column-major, 16 floats each) =====
+
+//! Vulkan-style perspective: maps view-space z in (-near .. -far) to clip-space z in (0 .. 1) after
+//! the perspective divide, and flips Y so the framebuffer is right-side-up. fov_y is in radians.
+def perspective_vk(fov_y, aspect, znear, zfar : float) : array<float> {
+    let f = 1.0f / tan(fov_y * 0.5f)
+    let nf = 1.0f / (znear - zfar)
+    return <- [
+        f / aspect, 0.0f, 0.0f, 0.0f,           // column 0
+        0.0f,      -f,    0.0f, 0.0f,           // column 1 (Y flip)
+        0.0f, 0.0f, zfar * nf, -1.0f,           // column 2
+        0.0f, 0.0f, znear * zfar * nf, 0.0f]    // column 3
+}
+
+def vec3_sub(a, b : float3) : float3 => float3(a.x - b.x, a.y - b.y, a.z - b.z)
+def vec3_cross(a, b : float3) : float3 => float3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
+def vec3_dot(a, b : float3) : float => a.x * b.x + a.y * b.y + a.z * b.z
+def vec3_normalize(v : float3) : float3 {
+    let len = sqrt(vec3_dot(v, v))
+    return float3(v.x / len, v.y / len, v.z / len)
+}
+
+//! Right-handed lookAt, column-major.
+def look_at_rh(eye, center, up : float3) : array<float> {
+    let f = vec3_normalize(vec3_sub(center, eye))
+    let s = vec3_normalize(vec3_cross(f, up))
+    let u = vec3_cross(s, f)
+    return <- [
+        s.x, u.x, -f.x, 0.0f,                                                // column 0
+        s.y, u.y, -f.y, 0.0f,                                                // column 1
+        s.z, u.z, -f.z, 0.0f,                                                // column 2
+        -vec3_dot(s, eye), -vec3_dot(u, eye), vec3_dot(f, eye), 1.0f]        // column 3 (translation)
+}
+
+//! Uniform-scale rotation around the Y axis. Pure rotation+scale only -- the vertex shader uses a
+//! transposed-cofactor-free normal transform that assumes this.
+def model_matrix(angle, scale : float) : array<float> {
+    let c = cos(angle) * scale
+    let s = sin(angle) * scale
+    return <- [
+        c,    0.0f, -s,   0.0f,    // column 0
+        0.0f, scale, 0.0f, 0.0f,   // column 1
+        s,    0.0f,  c,    0.0f,   // column 2
+        0.0f, 0.0f,  0.0f, 1.0f]   // column 3
+}
+
+// ===== procedural synthwave texture =====
+
+//! 256x256 RGBA8 synthwave horizon: deep-purple to magenta sky with a banded neon sun above the
+//! horizon line, dark-indigo ground with a cyan perspective grid receding into the vanishing point.
+//! Generated CPU-side at init -- no asset file, no compute pre-pass.
+def gen_synthwave_texture(w, h : int) : array<uint8> {
+    var pixels : array<uint8>
+    pixels |> resize(w * h * 4)
+    let horizon = h / 2 - 8                    // horizon line a bit above center
+    let sun_cx = w / 2
+    let sun_cy = horizon - 26
+    let sun_r = 42
+    for (y in range(h)) {
+        for (x in range(w)) {
+            var r = 0
+            var g = 0
+            var b = 0
+            if (y < horizon) {
+                // sky: deep purple at top, magenta near horizon
+                let t = float(y) / float(horizon)
+                r = int(40.0f + t * 215.0f)
+                g = int(6.0f  + t * 64.0f)
+                b = int(80.0f + t * 175.0f)
+                // sun disk with horizontal scanline bands
+                let dx = x - sun_cx
+                let dy = y - sun_cy
+                if (dx * dx + dy * dy < sun_r * sun_r) {
+                    let band = (y / 4) % 2
+                    if (band == 0) {
+                        let glow = clamp(1.0f - float(dy + sun_r) / float(2 * sun_r), 0.0f, 1.0f)
+                        r = 255
+                        g = int(120.0f + glow * 100.0f)
+                        b = int(60.0f  + glow * 80.0f)
+                    }
+                }
+            } elif (y < horizon + 4) {
+                // bright magenta horizon line
+                r = 255
+                g = 90
+                b = 210
+            } else {
+                // ground: dark indigo with cyan perspective grid
+                r = 6
+                g = 6
+                b = 26
+                let dist = y - horizon - 4
+                let max_dist = h - horizon - 4
+                let scale = float(dist) / float(max_dist)
+                // horizontal lines, spacing widens with distance from horizon
+                let spacing = max(2, int(2.0f + scale * 18.0f))
+                if (dist % spacing < 1) {
+                    r = 0
+                    g = 220
+                    b = 255
+                }
+                // vertical lines converging to (w/2, horizon)
+                let dx = abs(x - w / 2)
+                let v_spacing = max(2, int(4.0f + scale * 40.0f))
+                if (dx % v_spacing < 2 && scale > 0.02f) {
+                    r = (r + 0) / 2
+                    g = (g + 200) / 2
+                    b = (b + 255) / 2
+                }
+            }
+            let idx = (y * w + x) * 4
+            pixels[idx + 0] = uint8(clamp(r, 0, 255))
+            pixels[idx + 1] = uint8(clamp(g, 0, 255))
+            pixels[idx + 2] = uint8(clamp(b, 0, 255))
+            pixels[idx + 3] = 255u8
+        }
+    }
+    return <- pixels
+}
+
+// ===== host helpers (local; mirror the private versions in tests/integration/scene_helpers.das) =====
+
+def private mhb(device : Device; phys : VkPhysicalDevice; size : uint64; usage : VkBufferUsageFlags) : HostBuffer {
+    var bci : BufferCreateInfo
+    bci.size = size
+    bci.usage = usage
+    var inscope buffer <- create_buffer(device, bci)
+    var req : VkMemoryRequirements
+    vkGetBufferMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(buffer), req)
+    var want : VkMemoryPropertyFlags
+    want.host_visible = true
+    want.host_coherent = true
+    var mai : MemoryAllocateInfo
+    mai.allocationSize = req.size
+    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
+    var inscope memory <- allocate_memory(device, mai)
+    vk_check(vkBindBufferMemory(boost_value_to_vk(device), boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
+    var hb : HostBuffer
+    hb.buffer <- buffer
+    hb.memory <- memory
+    hb.size = size
+    return <- hb
+}
+
+def private upload_bytes(device : Device; memory : DeviceMemory; var data : array<auto(TT)>) {
+    if (empty(data)) return
+    let nbytes = length(data) * typeinfo sizeof(type<TT>)
+    var mapped : void? = null
+    let mf : VkMemoryMapFlags
+    unsafe {
+        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, uint64(nbytes), mf, addr(mapped)), null)
+        memcpy(mapped, reinterpret<void?>(addr(data[0])), nbytes)
+    }
+    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
+}
+
+// ===== reusable per-frame context =====
+
+//! Long-lived Vulkan state shared across recorded frames -- per-call rebuild would dominate a 900
+//! frame recording wall-clock. Split so the test can do a one-shot via render_synthwave_cube and
+//! the recorder can build once and call render_cube_frame in a loop.
+struct public CubeContext {
+    instance    : Instance
+    device      : Device
+    queue       : VkQueue
+    pool        : CommandPool
+    color       : OffscreenTarget
+    depth       : OffscreenDepth
+    render_pass : RenderPass
+    framebuffer : Framebuffer
+    vb          : HostBuffer
+    ib          : HostBuffer
+    ubo         : HostBuffer
+    tex_image   : Image
+    tex_memory  : DeviceMemory
+    tex_view    : ImageView
+    sampler     : Sampler
+    set_layouts : array<DescriptorSetLayout>
+    desc_pool   : DescriptorPool
+    desc_set    : VkDescriptorSet
+    pipe_layout : PipelineLayout
+    pipeline    : Pipeline
+    readback    : HostBuffer
+    buf_size    : uint64
+    push_size   : uint
+}
+
+//! Reverse-of-creation cleanup (the desc_set is owned by desc_pool so its raw handle just goes
+//! away when the pool destroys; nothing to delete for it explicitly).
+def public finalize(var ctx : CubeContext) {
+    unsafe {
+        delete ctx.readback
+        delete ctx.pipeline
+        delete ctx.pipe_layout
+        delete ctx.desc_pool
+        delete ctx.set_layouts
+        delete ctx.sampler
+        delete ctx.tex_view
+        delete ctx.tex_image
+        delete ctx.tex_memory
+        delete ctx.ubo
+        delete ctx.ib
+        delete ctx.vb
+        delete ctx.framebuffer
+        delete ctx.render_pass
+        delete ctx.depth
+        delete ctx.color
+        delete ctx.pool
+        delete ctx.device
+        delete ctx.instance
+    }
+}
+
+//! One-time setup: instance, device, queue, color+depth offscreen targets, render pass, framebuffer,
+//! vertex+index+UBO buffers, procedural texture (uploaded + transitioned to SHADER_READ_ONLY),
+//! descriptor + pipeline layouts (from reflection), pipeline, readback buffer.
+def public build_cube_context() : CubeContext {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var inscope instance <- create_instance("dasVulkan tutorial 04", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    var queue = get_device_queue(device, gfx, 0u)
+
+    var inscope color <- build_offscreen_target(device, phys, CUBE_W, CUBE_H, CUBE_COLOR_FMT)
+    var inscope depth <- build_offscreen_depth(device, phys, CUBE_W, CUBE_H, CUBE_DEPTH_FMT)
+    var inscope render_pass <- create_render_pass_color_depth(device, CUBE_COLOR_FMT, CUBE_DEPTH_FMT)
+    var inscope framebuffer <- create_framebuffer(device, FramebufferCreateInfo(
+        renderPass = weak_copy(render_pass),
+        pAttachments <- [weak_copy(color.view), weak_copy(depth.view)],
+        width = uint(CUBE_W),
+        height = uint(CUBE_H),
+        layers = 1u))
+
+    var vb_usage : VkBufferUsageFlags
+    vb_usage.vertex_buffer = true
+    var inscope vb <- mhb(device, phys, uint64(length(cube_vertices) * 4), vb_usage)
+    var verts_copy : array<float>
+    verts_copy |> push_from(cube_vertices)
+    upload_bytes(device, vb.memory, verts_copy)
+    delete verts_copy
+    var ib_usage : VkBufferUsageFlags
+    ib_usage.index_buffer = true
+    var inscope ib <- mhb(device, phys, uint64(length(cube_indices) * 2), ib_usage)
+    var indices_copy : array<uint16>
+    indices_copy |> push_from(cube_indices)
+    upload_bytes(device, ib.memory, indices_copy)
+    delete indices_copy
+
+    var ubo_usage : VkBufferUsageFlags
+    ubo_usage.uniform_buffer = true
+    var inscope ubo <- mhb(device, phys, 144ul, ubo_usage)        // view + proj + cam_time
+
+    // procedural synthwave texture: 256x256 RGBA8 host data, staged into a device-local image
+    var tex_pixels <- gen_synthwave_texture(TEX_DIM, TEX_DIM)
+    var staging_usage : VkBufferUsageFlags
+    staging_usage.transfer_src = true
+    var inscope staging <- mhb(device, phys, uint64(length(tex_pixels)), staging_usage)
+    upload_bytes(device, staging.memory, tex_pixels)
+    delete tex_pixels
+
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = CUBE_COLOR_FMT
+    ici.extent.width = uint(TEX_DIM)
+    ici.extent.height = uint(TEX_DIM)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.sampled = true
+    ici.usage.transfer_dst = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope tex_image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(tex_image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope tex_memory <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(tex_image), boost_value_to_vk(tex_memory), 0ul), null)
+
+    var tvci : ImageViewCreateInfo
+    tvci.image = weak_copy(tex_image)
+    tvci.viewType = VkImageViewType._2D
+    tvci.format = CUBE_COLOR_FMT
+    tvci.subresourceRange.aspectMask.color = true
+    tvci.subresourceRange.levelCount = 1u
+    tvci.subresourceRange.layerCount = 1u
+    var inscope tex_view <- create_image_view(device, tvci)
+
+    var sci : SamplerCreateInfo
+    sci.magFilter = VkFilter.LINEAR
+    sci.minFilter = VkFilter.LINEAR
+    sci.mipmapMode = VkSamplerMipmapMode.LINEAR
+    sci.addressModeU = VkSamplerAddressMode.REPEAT
+    sci.addressModeV = VkSamplerAddressMode.REPEAT
+    sci.addressModeW = VkSamplerAddressMode.REPEAT
+    sci.maxLod = 1.0f
+    var inscope sampler <- create_sampler(device, sci)
+
+    var reflections <- [decode_reflection(cube_vert_spv_reflect), decode_reflection(cube_frag_spv_reflect)]
+    var inscope set_layouts <- build_descriptor_set_layouts(device, reflections)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var ps0 : DescriptorPoolSize
+    ps0.type_ = VkDescriptorType.UNIFORM_BUFFER
+    ps0.descriptorCount = 1u
+    dpci.pPoolSizes |> push(ps0)
+    var ps1 : DescriptorPoolSize
+    ps1.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    ps1.descriptorCount = 1u
+    dpci.pPoolSizes |> push(ps1)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layouts[0])
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    var writes : array<WriteDescriptorSet>
+    var w0 : WriteDescriptorSet
+    w0.dstSet = vk_value_to_boost(raw_set)
+    w0.dstBinding = 0u
+    w0.descriptorType = VkDescriptorType.UNIFORM_BUFFER
+    w0.descriptorCount = 1u
+    var binfo : DescriptorBufferInfo
+    binfo.buffer = weak_copy(ubo.buffer)
+    binfo.range_ = 144ul
+    w0.pBufferInfo |> push(binfo)
+    writes |> emplace(w0)
+    var w1 : WriteDescriptorSet
+    w1.dstSet = vk_value_to_boost(raw_set)
+    w1.dstBinding = 1u
+    w1.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    w1.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.sampler = weak_copy(sampler)
+    iinfo.imageView = weak_copy(tex_view)
+    iinfo.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    w1.pImageInfo |> push(iinfo)
+    writes |> emplace(w1)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    var inscope pipe_layout <- build_pipeline_layout(device, set_layouts, reflections)
+    var push_size = 0u
+    for (refl in reflections) {
+        for (p in refl.push_constants) {
+            push_size = uint(p.size)
+        }
+    }
+    assert(push_size == 64u, "expected reflected push constant size 64 (model float4x4)")
+    delete reflections
+
+    var inscope vert <- create_shader_module(device, cube_vert_spv)
+    var inscope frag <- create_shader_module(device, cube_frag_spv)
+
+    var vbindings : array<VkVertexInputBindingDescription>
+    var vb_desc : VkVertexInputBindingDescription
+    vb_desc.binding = 0u
+    vb_desc.stride = 32u
+    vb_desc.inputRate = VkVertexInputRate.VERTEX
+    vbindings |> push(vb_desc)
+    var vattrs : array<VkVertexInputAttributeDescription>
+    var attr_pos : VkVertexInputAttributeDescription
+    attr_pos.location = 0u
+    attr_pos.binding = 0u
+    attr_pos.format = VkFormat.R32G32B32_SFLOAT
+    attr_pos.offset = 0u
+    vattrs |> push(attr_pos)
+    var attr_uv : VkVertexInputAttributeDescription
+    attr_uv.location = 1u
+    attr_uv.binding = 0u
+    attr_uv.format = VkFormat.R32G32_SFLOAT
+    attr_uv.offset = 12u
+    vattrs |> push(attr_uv)
+    var attr_n : VkVertexInputAttributeDescription
+    attr_n.location = 2u
+    attr_n.binding = 0u
+    attr_n.format = VkFormat.R32G32B32_SFLOAT
+    attr_n.offset = 20u
+    vattrs |> push(attr_n)
+    var inscope pipeline <- create_graphics_pipeline_v3d(device, render_pass, pipe_layout, vert, frag,
+        CUBE_W, CUBE_H, vbindings, vattrs)
+    delete vbindings
+    delete vattrs
+
+    let buf_size = uint64(CUBE_W * CUBE_H * 4)
+    var inscope readback <- create_host_buffer(device, phys, buf_size)
+    var poolci : CommandPoolCreateInfo
+    poolci.queueFamilyIndex = gfx
+    var inscope pool <- create_command_pool(device, poolci)
+
+    // one-shot texture upload: staging -> tex_image, transitioned UNDEFINED -> TRANSFER_DST -> SHADER_READ_ONLY
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var to_dst : VkAccessFlags
+        to_dst.transfer_write = true
+        let none : VkAccessFlags
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        var frag_stage : VkPipelineStageFlags
+        frag_stage.fragment_shader = true
+        var to_read : VkAccessFlags
+        to_read.shader_read = true
+        transition_image(cmd, tex_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+            none, to_dst, top, xfer)
+        var region : BufferImageCopy
+        region.imageSubresource.aspectMask.color = true
+        region.imageSubresource.layerCount = 1u
+        region.imageExtent.width = uint(TEX_DIM)
+        region.imageExtent.height = uint(TEX_DIM)
+        region.imageExtent.depth = 1u
+        var regions : array<BufferImageCopy>
+        regions |> emplace(region)
+        cmd_copy_buffer_to_image(cmd, staging.buffer, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, regions)
+        transition_image(cmd, tex_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.SHADER_READ_ONLY_OPTIMAL,
+            to_dst, to_read, xfer, frag_stage)
+    }
+
+    return <- CubeContext(
+        instance <- instance, device <- device, queue = queue, pool <- pool,
+        color <- color, depth <- depth, render_pass <- render_pass, framebuffer <- framebuffer,
+        vb <- vb, ib <- ib, ubo <- ubo,
+        tex_image <- tex_image, tex_memory <- tex_memory, tex_view <- tex_view, sampler <- sampler,
+        set_layouts <- set_layouts, desc_pool <- desc_pool, desc_set = raw_set,
+        pipe_layout <- pipe_layout, pipeline <- pipeline, readback <- readback,
+        buf_size = buf_size, push_size = push_size)
+}
+
+//! Per-frame work: rewrite the UBO with the new camera+time, draw the cube with the new model
+//! matrix as a push constant, copy the color attachment into the readback buffer, and clone the
+//! bytes out as RGBA8.
+def public render_cube_frame(var ctx : CubeContext; time, camera_t : float) : array<uint8> {
+    let camera_angle = camera_t * 2.0f * PI
+    let camera_r = 3.5f
+    let cam_x = camera_r * cos(camera_angle)
+    let cam_z = camera_r * sin(camera_angle)
+    // Lemniscate at 2x frequency, but small amplitude -- the camera stays near the cube's height
+    // (cube extends y in [-0.5, 0.5]) so the top/bottom faces, which are textured for a face-on
+    // angle, only graze the view instead of dominating it.
+    let cam_y = sin(camera_angle * 2.0f) * 0.4f
+    let cam_pos = float3(cam_x, cam_y, cam_z)
+    let view = look_at_rh(cam_pos, float3(0.0f, 0.0f, 0.0f), float3(0.0f, 1.0f, 0.0f))
+    let proj = perspective_vk(60.0f * PI / 180.0f, float(CUBE_W) / float(CUBE_H), 0.1f, 10.0f)
+    var ubo_data : array<float>
+    ubo_data |> push_from(view)
+    ubo_data |> push_from(proj)
+    ubo_data |> push(cam_pos.x)
+    ubo_data |> push(cam_pos.y)
+    ubo_data |> push(cam_pos.z)
+    ubo_data |> push(time)
+    upload_bytes(ctx.device, ctx.ubo.memory, ubo_data)
+    delete ubo_data
+
+    let breathe = 1.0f + 0.05f * sin(time * 2.0f * PI / 5.0f)
+    let spin = time * 0.5f
+    var model = model_matrix(spin, breathe)
+
+    var pixels : array<uint8>
+    run_cmd_sync(ctx.device, ctx.pool, ctx.queue) $(cmd) {
+        let raw_cmd = boost_value_to_vk(cmd)
+        var clears <- [clear_color(0.02f, 0.0f, 0.06f, 1.0f), clear_depth(1.0f)]
+        record_render_pass(cmd, ctx.render_pass, ctx.framebuffer, full_area(CUBE_W, CUBE_H), clears) {
+            cmd_bind_pipeline(cmd, ctx.pipeline)
+            let sets <- [vk_value_to_boost(ctx.desc_set)]
+            var no_dyn : array<uint>
+            cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, ctx.pipe_layout, 0u, sets, no_dyn)
+            var pcf : VkShaderStageFlags
+            pcf.vertex = true
+            unsafe {
+                vkCmdPushConstants(raw_cmd, boost_value_to_vk(ctx.pipe_layout), pcf, 0u, ctx.push_size,
+                    reinterpret<void?>(addr(model[0])))
+                var raw_vb = boost_value_to_vk(ctx.vb.buffer)
+                var zero_off = 0ul
+                vkCmdBindVertexBuffers(raw_cmd, 0u, 1u, addr(raw_vb), addr(zero_off))
+                vkCmdBindIndexBuffer(raw_cmd, boost_value_to_vk(ctx.ib.buffer), 0ul, VkIndexType.UINT16)
+                vkCmdDrawIndexed(raw_cmd, uint(N_INDICES), 1u, 0u, 0, 0u)
+            }
+        }
+        delete clears
+        copy_image_to_buffer(cmd, ctx.color.image, ctx.readback, CUBE_W, CUBE_H)
+    }
+    delete model
+    map_memory_to_array(ctx.device, ctx.readback.memory, ctx.buf_size) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
+//! One-shot: build a context and render one frame. The test uses this; the recording driver uses
+//! build_cube_context + render_cube_frame directly in a loop.
+def public render_synthwave_cube(time, camera_t : float) : array<uint8> {
+    var inscope ctx <- build_cube_context()
+    return <- render_cube_frame(ctx, time, camera_t)
+}
+
+//! Sample the RGB of pixel (x,y) from a CUBE_W*CUBE_H RGBA8 buffer.
+def public px(pixels : array<uint8>; x, y : int) : int3 {
+    let p = (y * CUBE_W + x) * 4
+    return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
+}
