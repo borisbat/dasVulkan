@@ -754,6 +754,13 @@ def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width
     vci.viewType = VkImageViewType._2D
     vci.format = format
     vci.subresourceRange.aspectMask.depth = true
+    // include the stencil aspect for combined depth+stencil formats -- omitting it on those leaves
+    // the view invalid (VUID-VkImageViewCreateInfo-subresourceRange-01018).
+    if (format == VkFormat.D16_UNORM_S8_UINT
+            || format == VkFormat.D24_UNORM_S8_UINT
+            || format == VkFormat.D32_SFLOAT_S8_UINT) {
+        vci.subresourceRange.aspectMask.stencil = true
+    }
     vci.subresourceRange.levelCount = 1u
     vci.subresourceRange.layerCount = 1u
     var inscope view <- create_image_view(device, vci)
@@ -847,9 +854,13 @@ def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; fra
 }
 
 //! multi-clear overload: one VkClearValue per attachment, in framebuffer attachment order.
-//! Use with `create_render_pass_color_depth` (clears = [color, depth]).
+//! Use with `create_render_pass_color_depth` (clears = [color, depth]). The single-clear overload
+//! above covers the no-clear / one-attachment case; this one is for per-attachment clears, so an
+//! empty `clears` is always a caller bug (CLEAR loadOp attachments would read uninitialized
+//! VkClearValues -- VUID-VkRenderPassBeginInfo-clearValueCount-00902).
 def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; framebuffer : Framebuffer;
                               area : VkRect2D; var clears : array<VkClearValue>; blk : block<() : void>) {
+    assert(!empty(clears), "record_render_pass multi-clear: clears must be non-empty (one per attachment)")
     var rp = VkRenderPassBeginInfo()
     rp.renderPass = boost_value_to_vk(render_pass)
     rp.framebuffer = boost_value_to_vk(framebuffer)
@@ -857,9 +868,7 @@ def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; fra
     rp.clearValueCount = uint(length(clears))
     let raw_cmd = boost_value_to_vk(cmd)
     unsafe {
-        if (!empty(clears)) {
-            rp.pClearValues = addr(clears[0])
-        }
+        rp.pClearValues = addr(clears[0])
         vkCmdBeginRenderPass(raw_cmd, rp, VkSubpassContents.INLINE)
     }
     invoke(blk)
