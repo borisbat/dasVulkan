@@ -12,8 +12,16 @@
 # Kept out of the vendored ``daslang.py`` domain (which stays byte-compatible
 # with daslang upstream) -- this is presentation local to the dasVulkan docs.
 
+import re
+
 from docutils import nodes
 from docutils.parsers.rst import Directive
+
+# A tutorial video is a plain ``<name>.mp4`` basename under _static/tutorials/.
+# Restricting the argument to that shape keeps it out of the raw HTML as anything
+# but a safe filename (no quotes/brackets that could break markup, no path
+# traversal that could reference unintended files).
+_SAFE_VIDEO_NAME = re.compile(r'^[A-Za-z0-9._-]+\.mp4$')
 
 
 # Tutorial RSTs live at ``tutorials/<name>.rst`` and render to
@@ -41,6 +49,10 @@ class VideoDirective(Directive):
 
     def run(self):
         name = self.arguments[0].strip()
+        if not _SAFE_VIDEO_NAME.match(name):
+            raise self.error(
+                "video: argument must be a plain '<name>.mp4' filename under "
+                "_static/tutorials/ (got %r)" % name)
         return [nodes.raw('', _VIDEO_HTML.format(name=name), format='html')]
 
 

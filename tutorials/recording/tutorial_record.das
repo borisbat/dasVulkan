@@ -68,6 +68,24 @@ def public capture_apng(apng_path : string; w, h, n_frames, frame_ms : int;
     return ok
 }
 
+//! Locate the daslang executable under `das_root`, probing the common build layouts across platforms
+//! (Windows MSVC multi-config, single-config, Unix install / build dirs). Falls back to bare "daslang"
+//! (resolved via PATH) when none exist, so the recording driver runs on Windows, Linux, and macOS.
+def public find_daslang_exe(das_root : string) : string {
+    let candidates <- [
+        path_join(das_root, "bin/Release/daslang.exe"),    // Windows MSVC multi-config
+        path_join(das_root, "bin/daslang.exe"),            // Windows single-config
+        path_join(das_root, "bin/daslang"),                // Unix install layout
+        path_join(das_root, "build/daslang")]              // Unix Make/Ninja build dir
+    for (c in candidates) {
+        var st : FStat
+        if (stat(c, st)) {
+            return c
+        }
+    }
+    return "daslang"
+}
+
 //! Render the strudel music bed to `dur_s` seconds, then ffmpeg-mux the APNG video + a faded,
 //! low-volume bed into `out_mp4`. `daslang_exe` runs `music_feature` (a daStrudel feature) as a
 //! subprocess to synthesize the bed. Returns true on success.

@@ -20,7 +20,7 @@ def main {
     let apng = path_join(here, "triangle.apng")
     let out_mp4 = path_join(dir_name(here), "triangle.mp4")
     let das_root = get_das_root()
-    let daslang_exe = path_join(das_root, "bin/Release/daslang.exe")
+    let daslang_exe = find_daslang_exe(das_root)
     let music = path_join(das_root, "examples/daStrudel/features/sf2_integration_full_ambient.das")
 
     let n_frames = 120
