@@ -318,6 +318,174 @@ def public create_compute_pipeline(device : Device; layout : PipelineLayout; sha
     return <- b
 }
 
+//! Record a single-image pipeline barrier that transitions `image` from `old_layout` to `new_layout`,
+//! with the given access masks and pipeline stages (color aspect, 1 mip, 1 layer). The building block
+//! for storage-image / transfer layout moves; used by compute_to_storage_image below.
+def public transition_image(cmd : CommandBuffer; image : Image; old_layout, new_layout : VkImageLayout;
+                            src_access, dst_access : VkAccessFlags; src_stage, dst_stage : VkPipelineStageFlags) {
+    var barrier : ImageMemoryBarrier
+    barrier.srcAccessMask = src_access
+    barrier.dstAccessMask = dst_access
+    barrier.oldLayout = old_layout
+    barrier.newLayout = new_layout
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.image = weak_copy(image)
+    barrier.subresourceRange.aspectMask.color = true
+    barrier.subresourceRange.levelCount = 1u
+    barrier.subresourceRange.layerCount = 1u
+    var no_mem : array<MemoryBarrier>
+    var no_buf : array<BufferMemoryBarrier>
+    var imgs : array<ImageMemoryBarrier>
+    imgs |> emplace(barrier)
+    var no_dep : VkDependencyFlags
+    cmd_pipeline_barrier(cmd, src_stage, dst_stage, no_dep, no_mem, no_buf, imgs)
+}
+
+//! Run a compute shader that writes an Rgba8 storage image and return the w*h RGBA8 pixels. `words` is
+//! an emitted SPIR-V compute blob whose entry point binds a storage image2D at set=0/binding=0 and
+//! `imageStore`s a color per invocation over an 8x8 local size. A one-shot: it creates its own
+//! instance/device, the storage image, the descriptor set, the compute pipeline and a command pool,
+//! dispatches w/8 x h/8, and reads the image back. w and h must be positive multiples of 8 so the
+//! dispatch covers every pixel (asserted). For the canonical authoring side see dasSpirv's image2D +
+//! imageStore (e.g. dasVulkan's storage-image tests and the Mandelbrot tutorial).
+def public compute_to_storage_image(var words : array<uint>; w, h : int) : array<uint8> {
+    assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
+        "compute_to_storage_image: w/h must be positive multiples of 8")
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var pixels : array<uint8>
+    var inscope instance <- create_instance("dasVulkan compute", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    let dev = boost_value_to_vk(device)
+    let queue = get_device_queue(device, gfx, 0u)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    // the storage image (STORAGE for the compute write + TRANSFER_SRC for the readback), device-local + view
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = fmt
+    ici.extent.width = uint(w)
+    ici.extent.height = uint(h)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.storage = true
+    ici.usage.transfer_src = true
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai : MemoryAllocateInfo
+    imai.allocationSize = ireq.size
+    imai.memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant)
+    var inscope imem <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(image), boost_value_to_vk(imem), 0ul), null)
+    var vci : ImageViewCreateInfo
+    vci.image = weak_copy(image)
+    vci.viewType = VkImageViewType._2D
+    vci.format = fmt
+    vci.subresourceRange.aspectMask.color = true
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+
+    // descriptor set layout + pool: binding 0 = STORAGE_IMAGE, compute
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 : DescriptorSetLayoutBinding
+    b0.binding = 0u
+    b0.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    b0.descriptorCount = 1u
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psize : DescriptorPoolSize
+    psize.type_ = VkDescriptorType.STORAGE_IMAGE
+    psize.descriptorCount = 1u
+    dpci.pPoolSizes |> push(psize)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    // bind the storage image view (layout GENERAL, no sampler)
+    var write : WriteDescriptorSet
+    write.dstSet = vk_value_to_boost(raw_set)
+    write.dstBinding = 0u
+    write.descriptorType = VkDescriptorType.STORAGE_IMAGE
+    write.descriptorCount = 1u
+    var iinfo : DescriptorImageInfo
+    iinfo.imageView = weak_copy(view)
+    iinfo.imageLayout = VkImageLayout.GENERAL
+    write.pImageInfo |> push(iinfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    // compute pipeline from the emitted blob
+    var inscope shader <- create_shader_module(device, words)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
+
+    var inscope readback <- create_host_buffer(device, phys, uint64(w) * uint64(h) * 4ul)
+    var poolci : CommandPoolCreateInfo
+    poolci.queueFamilyIndex = gfx
+    var inscope pool <- create_command_pool(device, poolci)
+
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        var none : VkAccessFlags
+        var shader_write : VkAccessFlags
+        shader_write.shader_write = true
+        var to_read : VkAccessFlags
+        to_read.transfer_read = true
+        var top : VkPipelineStageFlags
+        top.top_of_pipe = true
+        var comp : VkPipelineStageFlags
+        comp.compute_shader = true
+        var xfer : VkPipelineStageFlags
+        xfer.transfer = true
+        // UNDEFINED -> GENERAL for the storage-image write
+        transition_image(cmd, image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
+            none, shader_write, top, comp)
+        cmd_bind_pipeline(cmd, pipeline, VkPipelineBindPoint.COMPUTE)
+        var sets : array<DescriptorSet>
+        sets |> push(vk_value_to_boost(raw_set))
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, pipe_layout, 0u, sets, no_dyn)
+        cmd_dispatch(cmd, uint(w / 8), uint(h / 8), 1u)
+        // GENERAL -> TRANSFER_SRC for the readback copy
+        transition_image(cmd, image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            shader_write, to_read, comp, xfer)
+        copy_image_to_buffer(cmd, image, readback, w, h)
+    }
+    map_memory_to_array(device, readback.memory, uint64(w) * uint64(h) * 4ul) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
 // ===== combined builders =====
 
 //! image + backing device memory + view, owned together (destroyed view->image->memory)
