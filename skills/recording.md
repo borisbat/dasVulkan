@@ -188,6 +188,28 @@ comma-separated phrases at conversational pace; a clear three-beat list like
 *"Zoom, rotation, color."* — the periods land as a deliberate beat, the
 captions still read fine, and the line ends with the intended cadence.
 
+### Quality tuning — when to push CRF higher
+
+The voiced default is `-crf 28` (the silent path is `-crf 23` — the libx264
+default). That five-step gap was tuned on the mandelbrot scene: same fixture,
+`-crf 23` produced ~13.5 MB, `-crf 28` produced 6.95 MB (768×768, 30 s, 900
+frames). Eyeballed at 100% on a 4K display — no banding in the cosine palette,
+no block artifacts on the fractal edges, no mush on the captions. Both
+`-tune animation` and `-preset slower` matter: the tune biases x264 toward
+larger blocks (good for smooth gradients, smooth pans, large flat regions —
+exactly what shader-pure tutorial content produces), and the slower preset
+gives the motion search enough headroom that smooth zooms don't stutter at the
+higher CRF.
+
+CRF is logarithmic — each `+6` ≈ half the bitrate. So `-crf 28` ≈ a third of
+`-crf 23`'s bitrate, and that's the size win. **Procedure when adding a new
+voiced recording:** start at `-crf 28`, eyeball, bump up (`30`, `32`, …) until
+artifacts appear, then back off one step. Cosine-palette shader content
+tolerates very aggressive CRF; anything with real photographic detail
+(textures from disk, blit-from-camera) won't, so default back to `-crf 23`
+there. Photographic content lives outside this pipeline today — when it shows
+up, expose the CRF as a parameter rather than hard-coding it.
+
 ## Reproduction (if it ever has to happen elsewhere)
 
 Recordings are produced on Boris's Windows PC. Moving parts:
