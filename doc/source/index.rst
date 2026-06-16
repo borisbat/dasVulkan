@@ -55,4 +55,5 @@ provides the runtime.
    :maxdepth: 2
    :caption: Contents
 
+   tutorials/index
    stdlib/index

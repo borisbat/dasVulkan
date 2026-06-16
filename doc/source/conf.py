@@ -14,7 +14,20 @@ import time
 # Make the vendored `daslang` Sphinx domain importable.
 sys.path.insert(0, os.path.abspath('.'))
 
-extensions = ['daslang', 'sphinx.ext.intersphinx']
+extensions = ['daslang', 'tutorial_video', 'sphinx.ext.intersphinx']
+
+# Tutorial recordings (.mp4) live with their self-contained tutorial under
+# <repo>/tutorials/<name>/ (the tracked source). Copy them into _static/tutorials/
+# at build time so the `.. video::` directive can serve them without committing the
+# binary twice; the copies are gitignored. Runs at conf load, before the build.
+import shutil as _shutil
+import glob as _glob
+_conf_dir = os.path.abspath(os.path.dirname(__file__))
+_repo_root = os.path.abspath(os.path.join(_conf_dir, '..', '..'))
+_video_dst = os.path.join(_conf_dir, '_static', 'tutorials')
+os.makedirs(_video_dst, exist_ok=True)
+for _mp4 in _glob.glob(os.path.join(_repo_root, 'tutorials', '**', '*.mp4'), recursive=True):
+    _shutil.copy2(_mp4, os.path.join(_video_dst, os.path.basename(_mp4)))
 
 # Resolve cross-refs to daslang core (VkResult, JsonValue, etc.) against the
 # published daslang documentation. Sphinx fetches objects.inv at build time.

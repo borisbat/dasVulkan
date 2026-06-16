@@ -29,3 +29,14 @@ doc/source/stdlib/generated/
 
 # daspkg install dir + index cache (created by `daspkg install` / `daspkg introduce`)
 modules/
+
+# tutorial recording intermediates -- only the .mp4 doc figure is tracked; the
+# APNG, the strudel music-bed wav, and any scratch frames are regenerated locally
+# by tutorials/*/recording/record_*.das (which need stbimage + audio, absent in CI).
+tutorials/**/recording/*.apng
+tutorials/**/recording/*.wav
+tutorials/**/recording/*.png
+
+# Sphinx build-time copies of tutorial recordings (the tracked source is
+# tutorials/<name>/*.mp4; conf.py copies them here at build).
+doc/source/_static/tutorials/
