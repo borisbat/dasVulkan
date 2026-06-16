@@ -80,6 +80,8 @@ def main {
     pcr.size = 4u
     plci.pPushConstantRanges |> emplace(pcr)
     var inscope layout <- create_pipeline_layout(device, plci)
+    delete plci.pPushConstantRanges   // owned input array; the layout copied the ranges, so free it now
+
     // dynamic viewport/scissor so the one pipeline survives every resize
     var inscope pipeline <- create_graphics_pipeline_simple(device, render_pass, layout, vert, frag, swap.width, swap.height, true)
 

@@ -51,6 +51,7 @@ def public render_spin_triangle(angle : float) : array<uint8> {
     pcr.size = 4u
     plci.pPushConstantRanges |> emplace(pcr)
     var inscope layout <- create_pipeline_layout(device, plci)
+    delete plci.pPushConstantRanges   // owned input array; the layout copied the ranges, so free it now
     var inscope pipeline <- create_graphics_pipeline_simple(device, render_pass, layout, vert, frag, TRI_W, TRI_H)
 
     let buf_size = uint64(TRI_W * TRI_H * 4)
