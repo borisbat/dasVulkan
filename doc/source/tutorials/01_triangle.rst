@@ -25,7 +25,7 @@ lives in a ``window/`` subfolder that the tutorial's CI gate skips (CI is headle
 and built without GLFW); it is the run-and-watch companion to the headless oracle.
 
 .. literalinclude:: ../../../tutorials/01_triangle/window/show_triangle.das
-   :start-at: [export]
+   :start-at: require glfw/glfw_boost
 
 The shader
 ----------
