@@ -9,6 +9,24 @@ recording has a real per-frame GPU parameter to drive.
 
 .. video:: triangle.mp4
 
+The clip above is the offscreen render -- the same pixels the CI test checks --
+recorded to a video. To watch it spin live in a resizable window on your own GPU,
+run the windowed viewer (see `See it live`_ below).
+
+See it live
+-----------
+
+``window/show_triangle.das`` opens a GLFW window with a Vulkan swapchain and
+presents the spinning triangle every frame (FIFO present), driving the same
+``SpinPush`` angle from wall-clock time. It reuses the exact ``tri_spin_*_spv``
+blobs the offscreen render and the CI test use -- the only additions are the
+window, surface and swapchain. It needs a display and the ``glfw`` module, so it
+lives in a ``window/`` subfolder that the tutorial's CI gate skips (CI is headless
+and built without GLFW); it is the run-and-watch companion to the headless oracle.
+
+.. literalinclude:: ../../../tutorials/01_triangle/window/show_triangle.das
+   :start-at: [export]
+
 The shader
 ----------
 
@@ -54,6 +72,10 @@ Running it
    # the CI pixel-oracle gate (lavapipe in CI, real GPU locally)
    daslang -load_module <dasVulkan> <daslang>/dastest/dastest.das -- \
        --test <dasVulkan>/tutorials/01_triangle
+
+   # watch it live in a window (needs the glfw module + a display)
+   daslang -load_module <dasVulkan> \
+       <dasVulkan>/tutorials/01_triangle/window/show_triangle.das
 
    # regenerate the recording (needs stbimage + audio + ffmpeg locally)
    daslang -load_module <dasVulkan> \
