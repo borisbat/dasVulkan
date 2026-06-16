@@ -25,6 +25,7 @@ lives in a ``window/`` subfolder that the tutorial's CI gate skips (CI is headle
 and built without GLFW); it is the run-and-watch companion to the headless oracle.
 
 .. literalinclude:: ../../../tutorials/01_triangle/window/show_triangle.das
+   :language: das
    :start-at: require glfw/glfw_boost
 
 The shader
@@ -38,6 +39,7 @@ a 2D rotation, and spins the hardcoded clip-space positions; the fragment stage
 just writes the interpolated varying.
 
 .. literalinclude:: ../../../tutorials/01_triangle/triangle_tut_shaders.das
+   :language: das
 
 The render
 ----------
@@ -49,6 +51,7 @@ with ``vkCmdPushConstants``. ``render_spin_triangle(angle)`` returns the RGBA8
 pixels, a pure parametric ``frame(angle) -> image``.
 
 .. literalinclude:: ../../../tutorials/01_triangle/triangle_tut.das
+   :language: das
    :start-at: def public render_spin_triangle
 
 Self-verifying
@@ -62,6 +65,7 @@ bottom-center and leave the top sample, proving the push-constant actually drive
 the vertex shader on the GPU.
 
 .. literalinclude:: ../../../tutorials/01_triangle/test_triangle.das
+   :language: das
    :start-at: [test]
 
 Running it

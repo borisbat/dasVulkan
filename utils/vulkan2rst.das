@@ -65,9 +65,9 @@ def document_module_vulkan_boost() {
         group_by_regex("Instance & device", mod, %regex~^(create_instance|create_device|get_device_queue)$%%),
         group_by_regex("Shaders & pipelines", mod, %regex~^(create_shader_module|create_pipeline_layout|create_graphics_pipeline_simple|create_compute_pipeline)$%%),
         group_by_regex("Render passes",    mod, %regex~^create_render_pass_single_color$%%),
-        group_by_regex("Builders",         mod, %regex~^(build_offscreen_target|create_host_buffer)$%%),
+        group_by_regex("Builders",         mod, %regex~^(build_offscreen_target|create_host_buffer|compute_to_storage_image)$%%),
         group_by_regex("Memory & brackets", mod, %regex~^(run_cmd_sync|record_render_pass|map_memory_to_array|read_memory)$%%),
-        group_by_regex("Command recording", mod, %regex~^(cmd_bind_pipeline|cmd_draw|copy_image_to_buffer)$%%),
+        group_by_regex("Command recording", mod, %regex~^(cmd_bind_pipeline|cmd_draw|copy_image_to_buffer|transition_image)$%%),
         group_by_regex("Conveniences",     mod, %regex~^(full_area|clear_color)$%%),
         hide_group(group_by_regex("Finalizers", mod, %regex~^finalize$%%))
     )
@@ -80,7 +80,7 @@ def document_module_vulkan_window() {
         group_by_regex("Surfaces",   mod, %regex~^(create_surface|queue_family_supports_present)$%%),
         group_by_regex("Swapchain",  mod, %regex~^(create_swapchain|recreate_swapchain|build_swapchain_framebuffers)$%%),
         group_by_regex("Frame sync", mod, %regex~^create_frame_sync$%%),
-        group_by_regex("Frame loop", mod, %regex~^draw_frame$%%),
+        group_by_regex("Frame loop", mod, %regex~^(draw_frame|present_frame)$%%),
         hide_group(group_by_regex("Finalizers", mod, %regex~^finalize$%%))
     )
     document("Window — surface, swapchain, frame sync, and the present loop", mod, "vulkan_window.rst", groups)

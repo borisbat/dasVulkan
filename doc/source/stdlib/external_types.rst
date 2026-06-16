@@ -78,6 +78,33 @@ Owned by the device; no separate destroy.
 Bitfield of memory-property bits (``DEVICE_LOCAL``, ``HOST_VISIBLE``,
 ``HOST_COHERENT``, …) used by ``find_memory_type`` to pick a heap.
 
+.. _alias-vkimage:
+
+``vulkan::VkImage``
+-------------------
+
+Raw non-owning handle for an image. The owning RAII wrapper is ``Image``;
+the swapchain's images and the raw handle handed to ``present_frame``'s
+record block are bare ``VkImage`` handles.
+
+.. _alias-vkaccessflags:
+
+``vulkan::VkAccessFlags``
+-------------------------
+
+Bitfield of memory-access bits (``shader_write``, ``transfer_read``,
+``transfer_write``, …). The source/destination access masks of a pipeline
+barrier; consumed by ``transition_image``.
+
+.. _alias-vkpipelinestageflags:
+
+``vulkan::VkPipelineStageFlags``
+--------------------------------
+
+Bitfield of pipeline-stage bits (``top_of_pipe``, ``compute_shader``,
+``transfer``, ``fragment_shader``, …). The source/destination stage masks of
+a pipeline barrier; consumed by ``transition_image``.
+
 .. _handle-vulkan-vkclearvalue:
 
 ``vulkan::VkClearValue``
