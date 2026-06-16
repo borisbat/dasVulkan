@@ -21,7 +21,8 @@ setup; nothing is engineered for portability.
 ```
 tutorials/
   recording/
-    tutorial_record.das         shared utility (capture_apng + convert_to_mp4)
+    tutorial_record.das         silent-path utility (capture_apng + convert_to_mp4)
+    tutorial_record_voiced.das  voiced extension (say + prepare_voiceover + convert_to_mp4_voiced)
   <NN>_<scene>/
     <scene>_tut.das             the tutorial itself — never edited for recording
     <NN>_<scene>.rst            uses `.. video:: <scene>.mp4`
@@ -131,14 +132,17 @@ That's the entire pipeline today — one command per tutorial.
 ## Voice + captions
 
 Layered on top of the existing utility, **without changing how the driver
-looks** — `record_triangle.das` keeps working unchanged. The voiced path adds
-three calls in `tutorial_record.das`:
+looks** — `record_triangle.das` keeps working unchanged. The voiced extension
+lives in a **separate file** (`tutorial_record_voiced.das`) so the silent
+file's compile-check in CI stays clean even when dasHV (the dasOPENAI HTTP
+backend) is not loaded; voiced drivers just `require` the voiced file, which
+re-exports the silent path. The voiced module adds three calls:
 
 | Function | Role |
 |---|---|
 | `say(frame : int; caption : string)` / `say(frame, caption, voice)` | Register a caption + voice anchor at frame index `frame` (matches `capture_apng`'s deterministic frame model). Defaults voice to caption. Lines accumulate in a module-private array; recordings run one at a time so a global is the simplest fit (matches dasImgui's `prepare_recording`) |
 | `prepare_voiceover(apng_path [, base_url, voice_id, model]) : bool` | For each registered line: hit Kokoro TTS at `http://127.0.0.1:8880/v1` with voice `bf_emma`, write `<apng_dir>/voiceover/line_<i>.wav` (skipped if already on disk, so re-runs are cheap), measure duration |
-| `convert_to_mp4_voiced(apng_path, music_feature, daslang_exe, out_mp4, dur_s, fps, bed_db, fade_ms [, font_file]) : bool` | Same shape as `convert_to_mp4` but also mixes each voiceover wav (delayed via ffmpeg `adelay` to its frame's seconds) under the music bed and renders each caption via ffmpeg `drawtext` (timed `enable=between(t, t_start, t_start + dur + 0.4s)`). `font_file` defaults to the Windows `arial.ttf` (ffmpeg-escaped form); pass another path on Linux |
+| `convert_to_mp4_voiced(apng_path, music_feature, daslang_exe, out_mp4, dur_s, fps, bed_db, fade_ms [, font_file]) : bool` | Same shape as `convert_to_mp4` but also mixes each voiceover wav (delayed via ffmpeg `adelay` to its frame's seconds) under the music bed and renders each caption via ffmpeg `drawtext` (timed `enable=between(t, t_start, t_start + dur + 0.4s)`). Codec is tuned for smooth shader-pure content: `-c:v libx264 -tune animation -preset slower -crf 25 -pix_fmt yuv420p -movflags +faststart` (a notch over the silent path's `-crf 23 -preset medium`: meaningfully smaller for the slow-pan zoom recordings, visually invisible because there's no skin / film grain). `font_file` defaults to the Windows `arial.ttf` (ffmpeg-escaped form); pass another path on Linux |
 
 A driver that adds voice + captions then looks like:
 
@@ -177,6 +181,12 @@ phonetically for Kokoro / `bf_emma`:
 but get spelled out by the TTS — strip them from voice text. ASCII-only
 applies to both (the Windows / Linux fallback fonts ffmpeg `drawtext` resolves
 to don't carry em-dash / arrow / smart-quote glyphs).
+
+**Use periods, not commas, to force pauses.** Kokoro's `bf_emma` runs through
+comma-separated phrases at conversational pace; a clear three-beat list like
+*"Zoom. Rotation. Color."* (three sentences) sits much better than
+*"Zoom, rotation, color."* — the periods land as a deliberate beat, the
+captions still read fine, and the line ends with the intended cadence.
 
 ## Reproduction (if it ever has to happen elsewhere)
 

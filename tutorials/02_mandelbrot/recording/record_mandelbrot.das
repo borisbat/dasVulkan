@@ -10,7 +10,7 @@ options indenting = 4
 
 require ../window/mandelbrot_compute.das
 require ../window/mandelbrot_zoom_shaders.das
-require ../../recording/tutorial_record.das
+require ../../recording/tutorial_record_voiced.das    // re-exports tutorial_record's silent path
 require vulkan
 require vulkan/vulkan_boost
 require daslib/fio
@@ -119,7 +119,7 @@ def main {
     say( 30, "dasVulkan tutorial 2 -- Mandelbrot zoom",
             "das Vulkan tutorial two. The Mandelbrot zoom.")
     say(360, "Time drives the animation",
-            "One time push constant drives the whole animation. Zoom, rotation, color.")
+            "One time push constant drives the whole animation. Zoom. Rotation. Color.")
     say(720, "daslang to SPIR-V",
             "Authored in daslang. Lowered to Spear V.")
 
