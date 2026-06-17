@@ -71,14 +71,8 @@ different-DPI display mid-session keeps its original scale — a proper fix need
 display-change hook reconciling `contentsScale` alongside the existing
 swapchain-extent recreation. Deferred (single-display is the common case).
 
-Not yet done: a macOS CI lane (see below).
-
-## macOS CI
-
-No macOS test lane yet. GitHub macOS runners are real Macs with Metal, so MoltenVK
-offscreen render should work: `brew install molten-vk vulkan-loader vulkan-tools`,
-then run the same `tests/integration` + `tutorials` suites as Linux. Worth wiring
-once the surface work has soaked.
+A macOS CI lane is wired (`tests.yml` `integration_macos`, MoltenVK on an
+Apple-Silicon runner), so the offscreen suite now regression-gates on macOS too.
 
 ## Windows CI
 

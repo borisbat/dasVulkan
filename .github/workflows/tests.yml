@@ -7,9 +7,10 @@ name: Integration tests
 # GPU. The package vendors volk + Vulkan-Headers and the generated bindings are
 # committed, so the build needs no Vulkan SDK.
 #
-# Linux-first (lavapipe is the most reliable software Vulkan in CI). Windows
-# (lavapipe/swiftshader via jakoch/install-vulkan-sdk-action) is a follow-on;
-# macOS headless Vulkan is impractical and skipped.
+# Two lanes: Linux on Mesa lavapipe (the llvmpipe software Vulkan ICD), and macOS
+# on MoltenVK (Vulkan-over-Metal) via a stock `brew install molten-vk vulkan-loader
+# vulkan-tools` -- the same offscreen suite on both. Windows (lavapipe/swiftshader
+# via jakoch/install-vulkan-sdk-action) is still a follow-on.
 on:
   push:
     branches: [master]
@@ -143,6 +144,111 @@ jobs:
         # [test] that is its regression gate. The recording drivers live in each
         # tutorial's recording/ subdir and are skipped here by tutorials/.das_test
         # (they need stbimage + audio, which this daslang build does not load).
+        working-directory: ${{ github.workspace }}/dasVulkan
+        run: |
+          set -eux
+          "${GITHUB_WORKSPACE}/daslang-src/${BIN_DIR}/daslang" \
+            -load_module "${GITHUB_WORKSPACE}/dasVulkan" \
+            "${GITHUB_WORKSPACE}/daslang-src/dastest/dastest.das" -- \
+            --test "${GITHUB_WORKSPACE}/dasVulkan/tutorials" \
+            --timeout 600 \
+            --isolated-mode \
+            --isolated-mode-threads 4
+
+  integration_macos:
+    # MoltenVK (Vulkan-over-Metal) on an Apple-Silicon runner. The same in-process
+    # offscreen suite as the Linux lane -- no window, no display needed (Metal
+    # offscreen render works headless on the runner's virtualized GPU).
+    runs-on: macos-14
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: "Checkout daslang"
+        uses: actions/checkout@v4
+        with:
+          repository: GaijinEntertainment/daScript
+          path: daslang-src
+          ref: master
+
+      - name: "Checkout dasVulkan"
+        uses: actions/checkout@v4
+        with:
+          path: dasVulkan
+
+      - name: "Install MoltenVK + Vulkan loader + tools"
+        # macOS has no native Vulkan driver; MoltenVK translates to Metal. The
+        # Homebrew loader auto-discovers MoltenVK's ICD (its SYSCONFDIR is the
+        # Homebrew prefix), and dasVulkan's das_volkInitialize finds the Homebrew
+        # loader off volk's default dlopen search -- so no VK_ICD_FILENAMES / DYLD_*
+        # override is needed (this is exactly the "just works" path users get).
+        run: brew install molten-vk vulkan-loader vulkan-tools
+
+      - name: "Install CMake and Ninja"
+        uses: lukka/get-cmake@latest
+
+      - name: "Set up sccache"
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: "Build daslang"
+        working-directory: daslang-src
+        # Only the daslang binary + its shared runtime dylibs are needed; the module
+        # links lib/liblibDaScriptDyn{,_runtime}.dylib. Generated dasVulkan C++ is
+        # committed, so no generator run -- pugixml/LLVM/HV/GLFW are unnecessary.
+        run: |
+          set -eux
+          cmake --no-warn-unused-cli -B./build \
+            -DCMAKE_BUILD_TYPE:STRING=Release \
+            -DDAS_HV_DISABLED=ON \
+            -DDAS_PUGIXML_DISABLED=ON \
+            -DDAS_LLVM_DISABLED=ON \
+            -DDAS_GLFW_DISABLED=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -G Ninja
+          cmake --build ./build --parallel --target daslang
+          sccache --show-stats
+          echo "BIN_DIR=bin" >> "$GITHUB_ENV"
+
+      - name: "Build the dasVulkan native module"
+        # The CMake APPLE branch compiles src/dasVULKAN.metal.mm (the CAMetalLayer
+        # bridge) and links Cocoa + QuartzCore. Bounded --parallel 2 over Ninja +
+        # sccache (the ~55 generated TUs are template-heavy).
+        run: |
+          set -eux
+          cmake -S "${GITHUB_WORKSPACE}/dasVulkan" -B "${GITHUB_WORKSPACE}/dasVulkan/_build" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDASLANG_DIR="${GITHUB_WORKSPACE}/daslang-src" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          cmake --build "${GITHUB_WORKSPACE}/dasVulkan/_build" --config Release --parallel 2
+          sccache --show-stats
+          ls -la "${GITHUB_WORKSPACE}/dasVulkan"/*.shared_module
+
+      - name: "Verify MoltenVK is visible to the loader"
+        # Fail loudly here if no device enumerates (e.g. Metal unavailable on the
+        # runner) rather than letting the suite report a confusing
+        # ERROR_INCOMPATIBLE_DRIVER. vulkaninfo handles portability internally.
+        run: vulkaninfo --summary | grep -iE "deviceName|MoltenVK|apiVersion"
+
+      - name: "Run integration tests (offscreen, MoltenVK)"
+        # Same in-process offscreen suite as the Linux lane. create_instance
+        # auto-enables VK_KHR_portability_enumeration on MoltenVK; no env vars.
+        working-directory: ${{ github.workspace }}/dasVulkan
+        run: |
+          set -eux
+          "${GITHUB_WORKSPACE}/daslang-src/${BIN_DIR}/daslang" \
+            -load_module "${GITHUB_WORKSPACE}/dasVulkan" \
+            "${GITHUB_WORKSPACE}/daslang-src/dastest/dastest.das" -- \
+            --test "${GITHUB_WORKSPACE}/dasVulkan/tests/integration" \
+            --timeout 600 \
+            --isolated-mode \
+            --isolated-mode-threads 4
+
+      - name: "Run tutorial pixel-oracle gates (offscreen, MoltenVK)"
         working-directory: ${{ github.workspace }}/dasVulkan
         run: |
           set -eux
