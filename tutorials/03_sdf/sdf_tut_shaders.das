@@ -101,21 +101,29 @@ def private get_normal(p : float3; t : float) : float3 {
     return normalize(float3(nx, ny, nz))
 }
 
-// March from ro toward rd. Returns (t_hit, material). t_hit >= MAX_DIST means miss (sky).
+// March from ro toward rd. Returns (t_hit, material). t_hit >= MAX_DIST means miss (sky). The
+// three exit cases are: (1) HIT_EPS hit -> set mat + break, (2) far-plane escape -> break, (3)
+// step-budget exhausted without either -> force a miss (without this, dist could land just under
+// MAX_DIST and the caller would shade garbage at material 0).
 def private march(ro, rd : float3; t : float) : float2 {
     var dist = 0.0f
     var mat = 0.0f
+    var hit = 0       // 1 once HIT_EPS is satisfied; dasSpirv doesn't expose bool consts in shaders
     for (_i in range(MAX_STEPS)) {
         let p = ro + rd * dist
         let m = map(p, t)
         if (m.x < HIT_EPS) {
             mat = m.y
+            hit = 1
             break
         }
         dist = dist + m.x
         if (dist > MAX_DIST) {
             break
         }
+    }
+    if (hit == 0) {
+        dist = MAX_DIST + 1.0f
     }
     return float2(dist, mat)
 }
