@@ -1,0 +1,199 @@
+options gen2
+options indenting = 4
+
+// Tutorial 03 render path: build the resident Vulkan resources for the SDF compute shader once, then
+// drive a per-frame redispatch with a single float push constant (wall-clock time). The shader does
+// all the rendering -- camera, raymarch, lighting, shadows, fog -- and the host just shuttles bytes
+// back. The CI gate uses render_sdf at a fixed time, the recording driver advances time per frame.
+
+module sdf_tut
+
+require vulkan public
+require vulkan/vulkan_boost public
+require sdf_tut_shaders public
+
+//! Resident compute resources for the SDF tutorial: an Rgba8 storage image + the descriptor and
+//! pipeline that fill it. A single float push constant (animation time) re-drives the dispatch each
+//! frame. Owns every handle it creates; render_sdf_frame re-runs the dispatch without rebuilding.
+struct public SdfRenderer {
+    instance    : Instance
+    device      : Device
+    queue       : VkQueue                //!< raw handle, owned by device
+    pool        : CommandPool
+    image       : Image
+    memory      : DeviceMemory
+    view        : ImageView
+    set_layout  : DescriptorSetLayout
+    desc_pool   : DescriptorPool
+    pipe_layout : PipelineLayout
+    pipeline    : Pipeline
+    set         : VkDescriptorSet        //!< raw handle, owned by desc_pool (freed with it)
+    readback    : HostBuffer
+    buf_size    : uint64
+}
+
+def public finalize(var r : SdfRenderer) {
+    unsafe {
+        delete r.readback
+        delete r.pipeline
+        delete r.pipe_layout
+        delete r.desc_pool       // frees the descriptor set allocated from it
+        delete r.set_layout
+        delete r.view
+        delete r.image
+        delete r.memory
+        delete r.pool
+        delete r.device
+        delete r.instance
+    }
+}
+
+//! Initialize Vulkan, build the storage image + compute pipeline for sdf_spv, and allocate a host
+//! readback buffer. Long-lived across frames -- call render_sdf_frame to redispatch with a new time.
+def public build_sdf_renderer() : SdfRenderer {
+    if (volkInitialize() != 0) {
+        panic("no Vulkan loader")
+    }
+    var inscope instance <- create_instance("dasVulkan tutorial 03", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    let phys = select_physical_device(instance)
+    let gfx  = select_graphics_queue_family(phys)
+    var inscope device <- create_device(phys, gfx)
+    volkLoadDevice(boost_value_to_vk(device))
+    var queue = get_device_queue(device, gfx, 0u)
+
+    var poolci : CommandPoolCreateInfo
+    poolci.queueFamilyIndex = gfx
+    var inscope pool <- create_command_pool(device, poolci)
+
+    let dev = boost_value_to_vk(device)
+    let fmt = VkFormat.R8G8B8A8_UNORM
+
+    // storage image: STORAGE (compute writes) + TRANSFER_SRC (the readback path)
+    var ici = ImageCreateInfo(imageType = VkImageType._2D, format = fmt, mipLevels = 1u,
+        arrayLayers = 1u, tiling = VkImageTiling.OPTIMAL, initialLayout = VkImageLayout.UNDEFINED)
+    ici.extent.width = uint(SDF_DIM)
+    ici.extent.height = uint(SDF_DIM)
+    ici.extent.depth = 1u
+    ici.samples._1 = true
+    ici.usage.storage = true
+    ici.usage.transfer_src = true
+    var inscope image <- create_image(device, ici)
+    var ireq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(image), ireq)
+    var iwant : VkMemoryPropertyFlags
+    iwant.device_local = true
+    var imai = MemoryAllocateInfo(allocationSize = ireq.size,
+        memoryTypeIndex = find_memory_type(phys, ireq.memoryTypeBits, iwant))
+    var inscope imem <- allocate_memory(device, imai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(image), boost_value_to_vk(imem), 0ul), null)
+    var vci = ImageViewCreateInfo(image = weak_copy(image), viewType = VkImageViewType._2D, format = fmt)
+    vci.subresourceRange.aspectMask.color = true
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+
+    // descriptor set: binding 0 = STORAGE_IMAGE, compute stage
+    var dslci : DescriptorSetLayoutCreateInfo
+    var b0 = DescriptorSetLayoutBinding(binding = 0u, descriptorType = VkDescriptorType.STORAGE_IMAGE, descriptorCount = 1u)
+    b0.stageFlags.compute = true
+    dslci.pBindings |> emplace(b0)
+    var inscope set_layout <- create_descriptor_set_layout(device, dslci)
+
+    var dpci : DescriptorPoolCreateInfo
+    dpci.maxSets = 1u
+    var psize = DescriptorPoolSize(type_ = VkDescriptorType.STORAGE_IMAGE, descriptorCount = 1u)
+    dpci.pPoolSizes |> push(psize)
+    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+
+    var dsai = VkDescriptorSetAllocateInfo()
+    dsai.descriptorPool = boost_value_to_vk(desc_pool)
+    dsai.descriptorSetCount = 1u
+    var raw_set_layout = boost_value_to_vk(set_layout)
+    var raw_set : VkDescriptorSet
+    unsafe {
+        dsai.pSetLayouts = addr(raw_set_layout)
+        vk_check(vkAllocateDescriptorSets(dev, dsai, addr(raw_set)), null)
+    }
+
+    var write = WriteDescriptorSet(dstSet = vk_value_to_boost(raw_set), dstBinding = 0u,
+        descriptorType = VkDescriptorType.STORAGE_IMAGE, descriptorCount = 1u)
+    var iinfo = DescriptorImageInfo(imageView = weak_copy(view), imageLayout = VkImageLayout.GENERAL)
+    write.pImageInfo |> push(iinfo)
+    var writes : array<WriteDescriptorSet>
+    writes |> emplace(write)
+    var no_copies : array<CopyDescriptorSet>
+    update_descriptor_sets(device, writes, no_copies)
+
+    // compute pipeline + a 4-byte (one float) compute push constant for time
+    var inscope shader <- create_shader_module(device, sdf_spv)
+    var plci : PipelineLayoutCreateInfo
+    plci.pSetLayouts <- [weak_copy(set_layout)]
+    var pcr : PushConstantRange
+    pcr.stageFlags.compute = true
+    pcr.offset = 0u
+    pcr.size = 4u
+    plci.pPushConstantRanges |> emplace(pcr)
+    var inscope pipe_layout <- create_pipeline_layout(device, plci)
+    delete plci.pPushConstantRanges
+    var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
+
+    let buf_size = uint64(SDF_DIM * SDF_DIM * 4)
+    var inscope readback <- create_host_buffer(device, phys, buf_size)
+
+    return <- SdfRenderer(
+        instance <- instance, device <- device, queue = queue, pool <- pool,
+        image <- image, memory <- imem, view <- view,
+        set_layout <- set_layout, desc_pool <- desc_pool,
+        pipe_layout <- pipe_layout, pipeline <- pipeline, set = raw_set,
+        readback <- readback, buf_size = buf_size)
+}
+
+//! Dispatch one frame at `time`, read back RGBA8 pixels. Deterministic: same time -> same pixels.
+def public render_sdf_frame(var r : SdfRenderer; time : float) : array<uint8> {
+    var pixels : array<uint8>
+    run_cmd_sync(r.device, r.pool, r.queue) $(cmd) {
+        let none          : VkAccessFlags
+        var shader_write  : VkAccessFlags; shader_write.shader_write  = true
+        var transfer_read : VkAccessFlags; transfer_read.transfer_read = true
+        var top           : VkPipelineStageFlags; top.top_of_pipe       = true
+        var comp          : VkPipelineStageFlags; comp.compute_shader   = true
+        var xfer          : VkPipelineStageFlags; xfer.transfer         = true
+        transition_image(cmd, r.image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
+            none, shader_write, top, comp)
+
+        cmd_bind_pipeline(cmd, r.pipeline, VkPipelineBindPoint.COMPUTE)
+        let sets <- [vk_value_to_boost(r.set)]
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, r.pipe_layout, 0u, sets, no_dyn)
+        var pcf : VkShaderStageFlags
+        pcf.compute = true
+        var t = time
+        unsafe {
+            vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(r.pipe_layout), pcf, 0u, 4u,
+                reinterpret<void?>(addr(t)))
+        }
+        cmd_dispatch(cmd, uint(SDF_DIM / 8), uint(SDF_DIM / 8), 1u)
+
+        transition_image(cmd, r.image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            shader_write, transfer_read, comp, xfer)
+        copy_image_to_buffer(cmd, r.image, r.readback, SDF_DIM, SDF_DIM)
+    }
+    map_memory_to_array(r.device, r.readback.memory, r.buf_size) $(m) {
+        pixels := m
+    }
+    return <- pixels
+}
+
+//! One-shot render at `time`. Builds Vulkan resources, dispatches once, tears down. Convenient for
+//! the CI oracle; the recording driver builds an SdfRenderer once and calls render_sdf_frame N times.
+def public render_sdf(time : float) : array<uint8> {
+    var inscope r <- build_sdf_renderer()
+    return <- render_sdf_frame(r, time)
+}
+
+//! Sample the RGB of pixel (x,y) from an SDF_DIM*SDF_DIM RGBA8 buffer.
+def public px(pixels : array<uint8>; x, y : int) : int3 {
+    let p = (y * SDF_DIM + x) * 4
+    return int3(int(pixels[p]), int(pixels[p + 1]), int(pixels[p + 2]))
+}
