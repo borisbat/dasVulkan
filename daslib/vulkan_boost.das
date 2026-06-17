@@ -142,6 +142,23 @@ def public create_instance(application_name : string = ""; api_version : uint = 
 }
 
 def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>) : Device {
+    var no_features : VkPhysicalDeviceFeatures
+    return <- create_device(phys, queue_family, extensions, no_features)
+}
+
+def public create_device(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    let no_ext : array<string>
+    var no_features : VkPhysicalDeviceFeatures
+    return <- create_device(phys, queue_family, no_ext, no_features)
+}
+
+//! Create a device with a caller-supplied ``VkPhysicalDeviceFeatures`` block. Use this when the
+//! pipeline needs an opt-in feature -- e.g. ``largePoints`` so a vertex shader's ``gl_PointSize``
+//! takes effect (POINT_LIST topology), or ``wideLines`` for line-list topology. Verify the device
+//! actually advertises the feature via ``vkGetPhysicalDeviceFeatures`` before passing it in;
+//! enabling an unsupported feature fails ``vkCreateDevice``. The other two overloads pass a
+//! zero-initialised features block, identical to the prior behaviour.
+def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>; var features : VkPhysicalDeviceFeatures) : Device {
     var prio = 1.0f
     var qci = VkDeviceQueueCreateInfo()
     qci.queueFamilyIndex = queue_family
@@ -153,6 +170,7 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     ci.queueCreateInfoCount = 1u
     unsafe {
         ci.pQueueCreateInfos = addr(qci)
+        ci.pEnabledFeatures = addr(features)
     }
     if (!empty(extensions)) {
         ci.enabledExtensionCount = uint(length(extensions))
@@ -165,11 +183,6 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     var b = vk_value_to_boost(h)
     b._needs_delete = true
     return <- b
-}
-
-def public create_device(phys : VkPhysicalDevice; queue_family : uint) : Device {
-    let no_ext : array<string>
-    return <- create_device(phys, queue_family, no_ext)
 }
 
 def public get_device_queue(device : Device; queue_family, index : uint) : VkQueue {
