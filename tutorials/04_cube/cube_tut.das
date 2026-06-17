@@ -575,7 +575,6 @@ def public update_cube_uniforms(res : CubeResources; device : Device; time, came
 //! transition. Caller must have run update_cube_uniforms first so the UBO + push-constant globals
 //! carry the desired frame data.
 def public record_cube_render_pass(res : CubeResources; cmd : CommandBuffer) {
-    let raw_cmd = boost_value_to_vk(cmd)
     var clears <- [clear_color(0.02f, 0.0f, 0.06f, 1.0f), clear_depth(1.0f)]
     record_render_pass(cmd, res.render_pass, res.framebuffer, full_area(CUBE_W, CUBE_H), clears) {
         cmd_bind_pipeline(cmd, res.pipeline)
@@ -583,13 +582,12 @@ def public record_cube_render_pass(res : CubeResources; cmd : CommandBuffer) {
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.pipe_layout, 0u, sets, no_dyn)
         cube_vs_push_constants(cmd, res.pipe_layout)
-        unsafe {
-            var raw_vb = boost_value_to_vk(res.vb.buffer)
-            var zero_off = 0ul
-            vkCmdBindVertexBuffers(raw_cmd, 0u, 1u, addr(raw_vb), addr(zero_off))
-            vkCmdBindIndexBuffer(raw_cmd, boost_value_to_vk(res.ib.buffer), 0ul, VkIndexType.UINT16)
-            vkCmdDrawIndexed(raw_cmd, uint(N_INDICES), 1u, 0u, 0, 0u)
-        }
+        let vbufs <- [weak_copy(res.vb.buffer)]
+        var voffs : array<uint64>
+        voffs |> push(0ul)
+        cmd_bind_vertex_buffers(cmd, 0u, vbufs, voffs)
+        cmd_bind_index_buffer(cmd, weak_copy(res.ib.buffer), 0ul, VkIndexType.UINT16)
+        cmd_draw_indexed(cmd, uint(N_INDICES), 1u, 0u, 0, 0u)
     }
     delete clears
 }
