@@ -23,11 +23,13 @@ compute pipeline rewrites it every frame via 1/r² gravity, then a
   ``srcAccessMask=SHADER_WRITE``, ``dstAccessMask=VERTEX_ATTRIBUTE_READ``,
   scoped to the particle buffer. The canonical compute → graphics handoff;
   without it the graphics pipeline can race the compute and read stale values;
-- **``POINT_LIST`` topology** -- one screen-space pixel per particle. The
-  pipeline is built inline (v3d hard-codes ``TRIANGLE_LIST``) so each particle
-  rasterises as a single point with no billboard math. Single-pixel splats are
-  on every Vulkan implementation by default; billboarded quads would need the
-  ``largePoints`` feature handling or a manual clip-space orientation pass.
+- **``POINT_LIST`` topology + ``gl_PointSize``** -- one screen-space splat per
+  particle, ``PARTICLE_PX`` pixels wide. The vertex shader writes
+  ``gl_PointSize`` (BuiltIn ``PointSize`` Output) and the host enables the
+  ``largePoints`` physical-device feature so sizes > 1 take effect; the
+  graphics pipeline is built inline (v3d hard-codes ``TRIANGLE_LIST``) and
+  uses ``VkPrimitiveTopology.POINT_LIST`` with no cull. No billboard math,
+  no clip-space orientation pass against the projection-matrix Y-flip.
 
 Every line of the shader is daslang, lowered to SPIR-V at compile time by dasSpirv.
 

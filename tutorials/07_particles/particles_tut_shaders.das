@@ -75,17 +75,18 @@ def particles_compute {
 // ===== vertex shader -- point sprite per particle =====
 
 //! View + projection. POINT_LIST topology means each particle is a single GL point; the rasteriser
-//! draws it as a single-pixel splat (default gl_PointSize=1, which lavapipe and every real GPU
-//! support). Billboarded quads are the more flexible alternative -- they let you set a particle
-//! size and shape -- but they require Vulkan's largePoints feature handling and add a quad-winding
-//! orientation dance against the projection-matrix Y-flip. For tutorial 07's headline rail
-//! (compute->graphics handoff) the single-pixel point form is plenty: 1024 coloured dots animate
-//! visibly even at one pixel each.
+//! draws it as a screen-space splat ``PARTICLE_PX`` pixels wide. ``gl_PointSize`` is a vertex-stage
+//! Output builtin (BuiltIn PointSize) that the rasteriser reads when the topology is POINT_LIST;
+//! values > 1 require the ``largePoints`` device feature, which the host enables on the device.
 struct Camera {
     view : float4x4
     proj : float4x4
 }
 var @uniform @set = 0 @binding = 0 cam : Camera
+
+//! Screen-space point size in pixels. 10 px reads cleanly at 768x768 and is well under every
+//! desktop GPU's pointSizeRange max (lavapipe advertises [1, 64]).
+let public PARTICLE_PX = 10.0
 
 // per-instance attributes (binding 0, INPUT_RATE_INSTANCE) -- the SAME bytes the compute shader
 // wrote to the SSBO, re-interpreted as vertex inputs with stride 32 + matching offsets.
@@ -99,6 +100,7 @@ var @out @location = 1 v_life    : float           // 0..1, drives intensity
 [vulkan_vertex_shader(name="particles_vert_spv")]
 def particles_vs {
     gl_Position = cam.proj * cam.view * float4(a_pos, 1.0)
+    gl_PointSize = PARTICLE_PX                       // BuiltIn PointSize write -> rasteriser splat width
     v_speed = sqrt(dot(a_vel, a_vel))
     v_life = a_life
 }

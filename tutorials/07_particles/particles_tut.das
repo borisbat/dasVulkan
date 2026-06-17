@@ -462,7 +462,10 @@ def public build_particles_context() : ParticlesContext {
     volkLoadInstance(boost_value_to_vk(instance))
     let phys = select_physical_device(instance)
     let gfx = select_graphics_queue_family(phys)
-    var inscope device <- create_device(phys, gfx)
+    var no_ext : array<string>
+    var features : VkPhysicalDeviceFeatures
+    features.largePoints = VK_TRUE                   // gl_PointSize > 1 (POINT_LIST splat width)
+    var inscope device <- create_device(phys, gfx, no_ext, features)
     volkLoadDevice(boost_value_to_vk(device))
     var queue = get_device_queue(device, gfx, 0u)
     var poolci : CommandPoolCreateInfo

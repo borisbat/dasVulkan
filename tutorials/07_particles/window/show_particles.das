@@ -57,7 +57,9 @@ def main {
     if (!queue_family_supports_present(phys, gfx, surface)) {
         panic("graphics queue family does not support presentation")
     }
-    var inscope device <- create_device(phys, gfx, ["VK_KHR_swapchain"])
+    var features : VkPhysicalDeviceFeatures
+    features.largePoints = VK_TRUE                   // gl_PointSize > 1 (POINT_LIST splat width)
+    var inscope device <- create_device(phys, gfx, ["VK_KHR_swapchain"], features)
     volkLoadDevice(boost_value_to_vk(device))
     let queue = get_device_queue(device, gfx, 0u)
 
