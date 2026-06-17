@@ -43,7 +43,7 @@ def public finalize(var mc : MandelCompute) {
 //! (compute write) + TRANSFER_SRC (the blit path) + SAMPLED (the texture path) usage, and starts in the
 //! UNDEFINED layout -- call record_compute each frame to fill it. w and h must be positive multiples of 8.
 def public build_mandel_compute(device : Device; phys : VkPhysicalDevice; var words : array<uint>;
-        w, h : int) : MandelCompute {
+                                w, h : int) : MandelCompute {
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
         "build_mandel_compute: w/h must be positive multiples of 8")
     let dev = boost_value_to_vk(device)
@@ -116,6 +116,7 @@ def public build_mandel_compute(device : Device; phys : VkPhysicalDevice; var wo
     plci.pPushConstantRanges |> emplace(pcr)
     var inscope pipe_layout <- create_pipeline_layout(device, plci)
     delete plci.pPushConstantRanges   // owned input freed once the layout has copied the range
+    unsafe { delete plci.pSetLayouts }   // the [weak_copy(set_layout)] literal we built above (handles non-owning)
     var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
 
     return <- MandelCompute(image <- image, memory <- imem, view <- view, set_layout <- set_layout,
