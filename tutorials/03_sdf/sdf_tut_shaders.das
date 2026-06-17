@@ -11,9 +11,10 @@ options indenting = 4
 // the raymarch exercises user-defined function calls, 3-vector swizzle, and a wide GLSL.std.450
 // breadth (length / normalize / cross / dot / floor / pow / exp / cos / sin / clamp / FAbs / FMix).
 
-module sdf_tut_shaders shared public
+module sdf_tut_shaders public
 
-require spirv/spirv_shader
+require vulkan/vulkan_boost public  // CommandBuffer + PipelineLayout for the generated push_constants function
+require vulkan/spirv_vulkan_shader public
 require spirv/spirv_builtins public
 require math
 
@@ -191,7 +192,7 @@ def private tonemap(c : float3) : float3 {
     return pow(mapped, float3(inv_gamma, inv_gamma, inv_gamma))
 }
 
-[compute_shader(local_size_x=8, local_size_y=8, name="sdf_spv")]
+[vulkan_compute_shader(local_size_x=8, local_size_y=8, name="sdf_spv")]
 def sdf_main {
     let gid = gl_GlobalInvocationID
     let dim = imageSize(out_img)

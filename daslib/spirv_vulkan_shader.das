@@ -23,6 +23,7 @@ require spirv/spirv_shader public
 require spirv/spirv_emit
 require daslib/ast
 require daslib/ast_boost
+require daslib/templates_boost
 
 class SpirvVulkanShader : SpirvShader {
     def override generate_bind_uniform_dummy(var func : FunctionPtr) {
@@ -30,6 +31,12 @@ class SpirvVulkanShader : SpirvShader {
     }
     def override generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
         spirv_vulkan_shader::generate_bind_uniform(fnMain, fn)
+    }
+    def override generate_push_constants_dummy(var func : FunctionPtr) {
+        spirv_vulkan_shader::generate_push_constants_dummy(func)
+    }
+    def override generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr) {
+        spirv_vulkan_shader::generate_push_constants(fnMain, fn, shader_stage())
     }
 }
 
@@ -57,14 +64,13 @@ def private generate_bind_uniform_dummy(fnMain : FunctionPtr) {
     fn.flags.generated = true
     fn.flags.exports = true
     fn.result = new TypeDecl(at = fnMain.at, baseType = Type.tVoid)
-    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at,
-        name := "device",
-        _type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "Device")
-    )
-    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at,
-        name := "memory",
-        _type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "DeviceMemory")
-    )
+    // const: caller's `ctx.device` / `ctx.ubo.memory` may be const in scope; this lets either form bind.
+    var dev_type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "Device")
+    dev_type.flags.constant = true
+    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at, name := "device", _type <- dev_type)
+    var mem_type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "DeviceMemory")
+    mem_type.flags.constant = true
+    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at, name := "memory", _type <- mem_type)
     fn.body = new ExprBlock(at = fnMain.at)
     if (!(compiling_module() |> add_function(fn))) {
         panic("can't reserve bind_uniform dummy function for {fnMain.name}")
@@ -132,5 +138,78 @@ def private generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
 
     var body = new ExprBlock(at = fn.at)
     body.list |> emplace(wmm)
+    fn.body = body
+}
+
+// Map ShaderStage to the underlying VkShaderStageFlagBits integer. The push-constants codegen
+// emits VkShaderStageFlags(<this_value>) as a const bitfield-from-uint construction -- field-name
+// assignment (e.g. `flags.vertex = true`) doesn't work through qmacro $i splicing, but the integer
+// ctor is straightforward. Values from VK_SHADER_STAGE_*_BIT in the Vulkan spec.
+def private stage_to_uint(stage : ShaderStage) : uint {
+    if (stage == ShaderStage.Vertex) return 0x1u
+    if (stage == ShaderStage.Fragment) return 0x10u
+    return 0x20u  // compute
+}
+
+// Reserve an empty push_constants_<shader>(cb : CommandBuffer; layout : PipelineLayout) function.
+// Mirrors generate_bind_uniform_dummy.
+[macro_function]
+def private generate_push_constants_dummy(fnMain : FunctionPtr) {
+    var fn = new Function(at = fnMain.at, atDecl = fnMain.at, name := push_constants_function_name(fnMain))
+    fn.flags.generated = true
+    fn.flags.exports = true
+    fn.result = new TypeDecl(at = fnMain.at, baseType = Type.tVoid)
+    // cb and layout are taken const -- block-captured `cmd` is naturally const, and the function
+    // never mutates either handle; reads through boost_value_to_vk are const.
+    var cb_type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "CommandBuffer")
+    cb_type.flags.constant = true
+    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at, name := "cb", _type <- cb_type)
+    var layout_type <- new TypeDecl(at = fnMain.at, baseType = Type.alias, alias := "PipelineLayout")
+    layout_type.flags.constant = true
+    fn.arguments |> emplace_new() <| new Variable(at = fnMain.at, name := "layout", _type <- layout_type)
+    fn.body = new ExprBlock(at = fnMain.at)
+    if (!(compiling_module() |> add_function(fn))) {
+        panic("can't reserve push_constants dummy function for {fnMain.name}")
+    }
+}
+
+// Fill the push_constants function body: for every @push_constant struct global reachable from
+// fnMain, emit one vkCmdPushConstants(cb, layout, stage_flags, 0u, sizeof_struct, addr(pc_var)).
+// stage_flags is the shader's own stage -- if a push constant is read by multiple stages, the
+// caller will run each stage's push function. Vulkan accepts updates from any subset of the
+// declared range's stages.
+[macro_function]
+def private generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr; stage : ShaderStage) {
+    let stage_uint = stage_to_uint(stage)
+    var stmt_list : array<Expression?>
+    collect_dependencies(fnMain) $(vfun, vvar) {
+        for (vv in vvar) {
+            if (!(vv.annotation |> find_arg("push_constant") is tBool)) continue
+            if (vv._type == null || vv._type.baseType != Type.tStructure || vv._type.structType == null) continue
+            // size = std140 layout size of the push block. The user's daslang struct should match
+            // this byte-for-byte (no float3-followed-by-scalar surprises) -- the bytes are uploaded
+            // direct from addr(pc_var); if the layouts diverge the shader reads garbage.
+            var errs : array<string>
+            var fields : array<BlockField>
+            let layout_info = compute_block_layout(string(vv.name), vv._type.structType, fields, errs)
+            delete fields
+            delete errs
+            if (!layout_info.ok) continue
+            let var_name = string(vv.name)
+            let size_expr <- new ExprConstUInt(at = vv.at, value = uint(layout_info.size))
+            let stage_expr <- new ExprConstUInt(at = vv.at, value = stage_uint)
+            stmt_list |> push_block_list <| qmacro_block() {
+                unsafe {
+                    vkCmdPushConstants(boost_value_to_vk(cb), boost_value_to_vk(layout),
+                        VkShaderStageFlags($e(stage_expr)), 0u, $e(size_expr),
+                        reinterpret<void?>(addr($i(var_name))))
+                }
+            }
+        }
+    }
+    var body = new ExprBlock(at = fn.at)
+    for (s in stmt_list) {
+        body.list |> emplace(s)
+    }
     fn.body = body
 }

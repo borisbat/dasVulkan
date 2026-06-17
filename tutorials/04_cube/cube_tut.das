@@ -110,14 +110,15 @@ def look_at_rh(eye, center, up : float3) : float4x4 {
 
 //! Uniform-scale rotation around the Y axis. Pure rotation+scale only -- the vertex shader uses a
 //! transposed-cofactor-free normal transform that assumes this.
-def model_matrix(angle, scale : float) : array<float> {
+def model_matrix(angle, scale : float) : float4x4 {
     let c = cos(angle) * scale
     let s = sin(angle) * scale
-    return <- [
-        c,    0.0f, -s,   0.0f,    // column 0
-        0.0f, scale, 0.0f, 0.0f,   // column 1
-        s,    0.0f,  c,    0.0f,   // column 2
-        0.0f, 0.0f,  0.0f, 1.0f]   // column 3
+    var m : float4x4
+    m[0] = float4(c, 0.0f, -s, 0.0f)
+    m[1] = float4(0.0f, scale, 0.0f, 0.0f)
+    m[2] = float4(s, 0.0f, c, 0.0f)
+    m[3] = float4(0.0f, 0.0f, 0.0f, 1.0f)
+    return m
 }
 
 // ===== procedural synthwave texture =====
@@ -540,7 +541,7 @@ def public render_cube_frame(var ctx : CubeContext; time, camera_t : float) : ar
 
     let breathe = 1.0f + 0.05f * sin(time * 2.0f * PI / 5.0f)
     let spin = time * 0.5f
-    var model = model_matrix(spin, breathe)
+    pc.model = model_matrix(spin, breathe)
 
     var pixels : array<uint8>
     run_cmd_sync(ctx.device, ctx.pool, ctx.queue) $(cmd) {
@@ -551,11 +552,8 @@ def public render_cube_frame(var ctx : CubeContext; time, camera_t : float) : ar
             let sets <- [vk_value_to_boost(ctx.desc_set)]
             var no_dyn : array<uint>
             cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, ctx.pipe_layout, 0u, sets, no_dyn)
-            var pcf : VkShaderStageFlags
-            pcf.vertex = true
+            cube_vs_push_constants(cmd, ctx.pipe_layout)
             unsafe {
-                vkCmdPushConstants(raw_cmd, boost_value_to_vk(ctx.pipe_layout), pcf, 0u, ctx.push_size,
-                    reinterpret<void?>(addr(model[0])))
                 var raw_vb = boost_value_to_vk(ctx.vb.buffer)
                 var zero_off = 0ul
                 vkCmdBindVertexBuffers(raw_cmd, 0u, 1u, addr(raw_vb), addr(zero_off))
@@ -566,7 +564,6 @@ def public render_cube_frame(var ctx : CubeContext; time, camera_t : float) : ar
         delete clears
         copy_image_to_buffer(cmd, ctx.color.image, ctx.readback, CUBE_W, CUBE_H)
     }
-    delete model
     map_memory_to_array(ctx.device, ctx.readback.memory, ctx.buf_size) $(m) {
         pixels := m
     }

@@ -13,9 +13,10 @@ options indenting = 4
 // returns the iteration count and writes the exit magnitude back through a `var float&` ref param --
 // the canonical dasSpirv ref-param case (Function-storage copy-in / copy-out around OpFunctionCall).
 
-module mandelbrot_zoom_shaders shared public
+module mandelbrot_zoom_shaders public
 
-require spirv/spirv_shader
+require vulkan/vulkan_boost public  // CommandBuffer + PipelineLayout for the generated push_constants function
+require vulkan/spirv_vulkan_shader public
 require spirv/spirv_builtins public
 require math
 
@@ -85,7 +86,7 @@ def private sample_at(c : float2) : float3 {
     return float3(0.0f, 0.0f, 0.0f)
 }
 
-[compute_shader(local_size_x=8, local_size_y=8, name="mandelbrot_zoom_spv")]
+[vulkan_compute_shader(local_size_x=8, local_size_y=8, name="mandelbrot_zoom_spv")]
 def mandelbrot_zoom {
     let gid = gl_GlobalInvocationID
     let dim = imageSize(out_img)

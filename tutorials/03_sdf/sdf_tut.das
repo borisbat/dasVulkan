@@ -179,13 +179,8 @@ def public render_sdf_frame(var r : SdfRenderer; time : float) : array<uint8> {
         let sets <- [vk_value_to_boost(r.set)]
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, r.pipe_layout, 0u, sets, no_dyn)
-        var pcf : VkShaderStageFlags
-        pcf.compute = true
-        var t = time
-        unsafe {
-            vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(r.pipe_layout), pcf, 0u, 4u,
-                reinterpret<void?>(addr(t)))
-        }
+        pc.time = time
+        sdf_main_push_constants(cmd, r.pipe_layout)
         cmd_dispatch(cmd, uint(SDF_DIM / 8), uint(SDF_DIM / 8), 1u)
 
         transition_image(cmd, r.image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,

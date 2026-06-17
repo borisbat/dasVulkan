@@ -12,6 +12,7 @@ module mandelbrot_compute
 
 require vulkan public
 require vulkan/vulkan_boost public
+require mandelbrot_zoom_shaders public  // pc + mandelbrot_zoom_push_constants come from here
 
 //! resident compute resources: an Rgba8 storage image + the descriptor/pipeline that fill it. Driven by
 //! a single float push constant (the animation time). All handles owned here; record_compute re-runs it.
@@ -132,12 +133,7 @@ def public record_compute(cmd : CommandBuffer; mc : MandelCompute; time : float)
     sets |> push(vk_value_to_boost(mc.set))
     var no_dyn : array<uint>
     cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, mc.pipe_layout, 0u, sets, no_dyn)
-    var pcf : VkShaderStageFlags
-    pcf.compute = true
-    var t = time
-    unsafe {
-        vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(mc.pipe_layout), pcf, 0u, 4u,
-            reinterpret<void?>(addr(t)))
-    }
+    pc.time = time
+    mandelbrot_zoom_push_constants(cmd, mc.pipe_layout)
     cmd_dispatch(cmd, uint(mc.width / 8), uint(mc.height / 8), 1u)
 }
