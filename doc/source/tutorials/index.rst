@@ -21,3 +21,4 @@ stbimage + audio + ffmpeg, so it does not run in CI).
    02_mandelbrot
    03_sdf
    04_cube
+   05_instancing
