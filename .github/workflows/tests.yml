@@ -156,12 +156,16 @@ jobs:
             --isolated-mode-threads 4
 
   integration_macos:
-    # MoltenVK (Vulkan-over-Metal) on an Apple-Silicon runner. The same in-process
-    # offscreen suite as the Linux lane -- no window, no display needed (Metal
-    # offscreen render works headless on the runner's virtualized GPU).
+    # MoltenVK (Vulkan-over-Metal) on an Apple-Silicon runner, same in-process
+    # offscreen suite as the Linux lane. GitHub's macOS runners expose only a
+    # paravirtualized GPU (AppleParavirtGPU); stock MoltenVK crashes on it during
+    # vkCreateInstance -> initMetalFeatures (newArgumentEncoder... unrecognized
+    # selector). MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=0 tells MoltenVK never to
+    # use Metal argument buffers, which avoids that probe path on the virtual GPU.
     runs-on: macos-14
     env:
       SCCACHE_GHA_ENABLED: "true"
+      MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS: "0"
     defaults:
       run:
         shell: bash
