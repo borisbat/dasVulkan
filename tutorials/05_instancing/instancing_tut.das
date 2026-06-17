@@ -428,28 +428,21 @@ def public update_instancing_uniforms(res : InstancingResources; device : Device
 //! attachment in TRANSFER_SRC_OPTIMAL (boost default), so the windowed driver can blit straight
 //! onto the swap target.
 def public record_instancing_render_pass(res : InstancingResources; cmd : CommandBuffer) {
-    let raw_cmd = boost_value_to_vk(cmd)
     var clears <- [clear_color(0.02f, 0.0f, 0.04f, 1.0f), clear_depth(1.0f)]
     record_render_pass(cmd, res.render_pass, res.framebuffer, full_area(INSTANCE_W, INSTANCE_H), clears) {
         cmd_bind_pipeline(cmd, res.pipeline)
         let sets <- [vk_value_to_boost(res.desc_set)]
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.pipe_layout, 0u, sets, no_dyn)
-        unsafe {
-            // bind binding 0 (per-vertex) and binding 1 (per-instance) in one call
-            var raw_bufs : array<VkBuffer>
-            raw_bufs |> push(boost_value_to_vk(res.vb.buffer))
-            raw_bufs |> push(boost_value_to_vk(res.inst_buf.buffer))
-            var offsets : array<uint64>
-            offsets |> push(0ul)
-            offsets |> push(0ul)
-            vkCmdBindVertexBuffers(raw_cmd, 0u, 2u, addr(raw_bufs[0]), addr(offsets[0]))
-            vkCmdBindIndexBuffer(raw_cmd, boost_value_to_vk(res.ib.buffer), 0ul, VkIndexType.UINT16)
-            // the instancing call: 36 indices fanned over N_INSTANCES instances
-            vkCmdDrawIndexed(raw_cmd, uint(N_INDICES), uint(N_INSTANCES), 0u, 0, 0u)
-            delete raw_bufs
-            delete offsets
-        }
+        // bind binding 0 (per-vertex) and binding 1 (per-instance) in one call
+        let vbufs <- [weak_copy(res.vb.buffer), weak_copy(res.inst_buf.buffer)]
+        var voffs : array<uint64>
+        voffs |> push(0ul)
+        voffs |> push(0ul)
+        cmd_bind_vertex_buffers(cmd, 0u, vbufs, voffs)
+        cmd_bind_index_buffer(cmd, weak_copy(res.ib.buffer), 0ul, VkIndexType.UINT16)
+        // the instancing call: 36 indices fanned over N_INSTANCES instances
+        cmd_draw_indexed(cmd, uint(N_INDICES), uint(N_INSTANCES), 0u, 0, 0u)
     }
     delete clears
 }
