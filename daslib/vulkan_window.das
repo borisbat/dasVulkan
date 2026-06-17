@@ -119,6 +119,7 @@ def public create_swapchain(device : Device; phys : VkPhysicalDevice; surface : 
     ci.imageExtent = extent
     ci.imageArrayLayers = 1u
     ci.imageUsage.color_attachment = true
+    ci.imageUsage.transfer_dst = true   // the blit-present path (present_frame + vkCmdBlitImage) writes the swapchain image as a transfer dst
     ci.imageSharingMode = VkSharingMode.EXCLUSIVE
     ci.preTransform = caps.currentTransform
     ci.compositeAlpha.opaque_khr = true
@@ -153,7 +154,7 @@ def public create_swapchain(device : Device; phys : VkPhysicalDevice; surface : 
 //! present). Waits for the device to idle, then replaces `sc` in place (the move-assign
 //! finalizes the old swapchain's framebuffers, views and handle).
 def public recreate_swapchain(var sc : Swapchain; device : Device; phys : VkPhysicalDevice;
-        surface : SurfaceKHR; render_pass : RenderPass; width, height : int) {
+                              surface : SurfaceKHR; render_pass : RenderPass; width, height : int) {
     vkDeviceWaitIdle(boost_value_to_vk(device))
     delete sc       // release the old swapchain (and the surface) before making a new one
     sc <- create_swapchain(device, phys, surface, width, height)
@@ -220,8 +221,8 @@ def private set_dynamic_viewport(cmd : CommandBuffer; width, height : int) {
 //! `dynamic_viewport` is true, a full-extent viewport+scissor is set each frame (pairs
 //! with create_graphics_pipeline_simple(..., dynamic_viewport = true) for resize).
 def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_pass : RenderPass;
-        pool : CommandPool; sync : FrameSync; clear : VkClearValue; dynamic_viewport : bool = false;
-        blk : block<(cmd : CommandBuffer) : void>) : bool {
+                      pool : CommandPool; sync : FrameSync; clear : VkClearValue; dynamic_viewport : bool = false;
+                      blk : block<(cmd : CommandBuffer) : void>) : bool {
     let dev = boost_value_to_vk(device)
 
     var image_index = 0u
@@ -292,7 +293,7 @@ def public draw_frame(device : Device; queue : VkQueue; sc : Swapchain; render_p
 //! `PRESENT_SRC_KHR` by the block. Waits at the transfer stage (the typical blit/copy consumer).
 //! Returns false if the swapchain is out of date (caller should recreate). Sibling of draw_frame.
 def public present_frame(device : Device; queue : VkQueue; sc : Swapchain; pool : CommandPool;
-        sync : FrameSync; blk : block<(cmd : CommandBuffer; target : VkImage; image_index : uint) : void>) : bool {
+                         sync : FrameSync; blk : block<(cmd : CommandBuffer; target : VkImage; image_index : uint) : void>) : bool {
     let dev = boost_value_to_vk(device)
 
     var image_index = 0u

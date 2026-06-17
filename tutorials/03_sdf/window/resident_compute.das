@@ -1,22 +1,22 @@
 options gen2
 options indenting = 4
 
-// Shared compute resources for both animated Mandelbrot viewers. Unlike vulkan_boost's one-shot
-// compute_to_storage_image (create -> dispatch -> read back -> tear down), this keeps the storage image,
-// descriptor set and compute pipeline RESIDENT so the window can re-dispatch every frame with a new
-// `time` push constant -- that per-frame recompute is what makes the zoom reveal new fractal detail
-// rather than just scaling a static texture. Kept tutorial-local; promote to the library if a later
-// compute tutorial needs it too.
+// Resident single-float-push-constant compute resources: an Rgba8 storage image plus the descriptor set
+// and compute pipeline that fill it, kept RESIDENT so a window can re-dispatch every frame with a new
+// `time` push constant (vs vulkan_boost's one-shot compute_to_storage_image, which tears down per call).
+// Generic over the compute blob -- any dasSpirv shader binding a storage image2D at set=0/binding=0 and
+// reading one float at push-constant offset 0 (the Mandelbrot and SDF tutorials share this shape).
+// Tutorial-local; the same builder also lives in tutorials/02_mandelbrot/window (as build_mandel_compute)
+// -- factor to a shared module if a third windowed compute tutorial appears.
 
-module mandelbrot_compute
+module resident_compute
 
 require vulkan public
 require vulkan/vulkan_boost public
-require mandelbrot_zoom_shaders public  // pc + mandelbrot_zoom_push_constants come from here
 
 //! resident compute resources: an Rgba8 storage image + the descriptor/pipeline that fill it. Driven by
 //! a single float push constant (the animation time). All handles owned here; record_compute re-runs it.
-struct public MandelCompute {
+struct public ComputeImage {
     image       : Image
     memory      : DeviceMemory
     view        : ImageView
@@ -29,24 +29,24 @@ struct public MandelCompute {
     height      : int
 }
 
-def public finalize(var mc : MandelCompute) {
-    delete mc.pipeline
-    delete mc.pipe_layout
-    delete mc.desc_pool         // frees the descriptor set allocated from it
-    delete mc.set_layout
-    delete mc.view
-    delete mc.image
-    delete mc.memory
+def public finalize(var comp : ComputeImage) {
+    delete comp.pipeline
+    delete comp.pipe_layout
+    delete comp.desc_pool         // frees the descriptor set allocated from it
+    delete comp.set_layout
+    delete comp.view
+    delete comp.image
+    delete comp.memory
 }
 
 //! Build the resident compute resources for `words` (a dasSpirv compute blob binding a storage image2D
 //! at set=0/binding=0 and reading a `float` push constant at offset 0). The image is Rgba8 with STORAGE
 //! (compute write) + TRANSFER_SRC (the blit path) + SAMPLED (the texture path) usage, and starts in the
 //! UNDEFINED layout -- call record_compute each frame to fill it. w and h must be positive multiples of 8.
-def public build_mandel_compute(device : Device; phys : VkPhysicalDevice; var words : array<uint>;
-                                w, h : int) : MandelCompute {
+def public build_compute_image(device : Device; phys : VkPhysicalDevice; var words : array<uint>;
+                               w, h : int) : ComputeImage {
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
-        "build_mandel_compute: w/h must be positive multiples of 8")
+        "build_compute_image: w/h must be positive multiples of 8")
     let dev = boost_value_to_vk(device)
     let fmt = VkFormat.R8G8B8A8_UNORM
 
@@ -120,7 +120,7 @@ def public build_mandel_compute(device : Device; phys : VkPhysicalDevice; var wo
     unsafe { delete plci.pSetLayouts }   // the [weak_copy(set_layout)] literal we built above (handles non-owning)
     var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
 
-    return <- MandelCompute(image <- image, memory <- imem, view <- view, set_layout <- set_layout,
+    return <- ComputeImage(image <- image, memory <- imem, view <- view, set_layout <- set_layout,
         desc_pool <- desc_pool, pipe_layout <- pipe_layout, pipeline <- pipeline, set = raw_set,
         width = w, height = h)
 }
@@ -128,13 +128,18 @@ def public build_mandel_compute(device : Device; phys : VkPhysicalDevice; var wo
 //! Record a compute dispatch into `cmd`: push `time`, bind the pipeline + descriptor set, and dispatch
 //! one invocation per pixel (w/8 x h/8). The caller is responsible for having the image in the GENERAL
 //! layout and for the barriers around this call (compute write -> the consumer's read).
-def public record_compute(cmd : CommandBuffer; mc : MandelCompute; time : float) {
-    cmd_bind_pipeline(cmd, mc.pipeline, VkPipelineBindPoint.COMPUTE)
+def public record_compute(cmd : CommandBuffer; comp : ComputeImage; time : float) {
+    cmd_bind_pipeline(cmd, comp.pipeline, VkPipelineBindPoint.COMPUTE)
     var sets : array<DescriptorSet>
-    sets |> push(vk_value_to_boost(mc.set))
+    sets |> push(vk_value_to_boost(comp.set))
     var no_dyn : array<uint>
-    cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, mc.pipe_layout, 0u, sets, no_dyn)
-    pc.time = time
-    mandelbrot_zoom_push_constants(cmd, mc.pipe_layout)
-    cmd_dispatch(cmd, uint(mc.width / 8), uint(mc.height / 8), 1u)
+    cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, comp.pipe_layout, 0u, sets, no_dyn)
+    var pcf : VkShaderStageFlags
+    pcf.compute = true
+    var t = time
+    unsafe {
+        vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(comp.pipe_layout), pcf, 0u, 4u,
+            reinterpret<void?>(addr(t)))
+    }
+    cmd_dispatch(cmd, uint(comp.width / 8), uint(comp.height / 8), 1u)
 }
