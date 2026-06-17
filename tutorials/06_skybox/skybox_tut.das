@@ -171,42 +171,6 @@ def gen_skybox_pixels() : array<uint8> {
     return <- pixels
 }
 
-// ===== host helpers (local; mirror cube_tut's private versions) =====
-
-def private mhb(device : Device; phys : VkPhysicalDevice; size : uint64; usage : VkBufferUsageFlags) : HostBuffer {
-    var bci : BufferCreateInfo
-    bci.size = size
-    bci.usage = usage
-    var inscope buffer <- create_buffer(device, bci)
-    var req : VkMemoryRequirements
-    vkGetBufferMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(buffer), req)
-    var want : VkMemoryPropertyFlags
-    want.host_visible = true
-    want.host_coherent = true
-    var mai : MemoryAllocateInfo
-    mai.allocationSize = req.size
-    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
-    var inscope memory <- allocate_memory(device, mai)
-    vk_check(vkBindBufferMemory(boost_value_to_vk(device), boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
-    var hb : HostBuffer
-    hb.buffer <- buffer
-    hb.memory <- memory
-    hb.size = size
-    return <- hb
-}
-
-def private upload_bytes(device : Device; memory : DeviceMemory; var data : array<auto(TT)>) {
-    if (empty(data)) return
-    let nbytes = length(data) * typeinfo sizeof(type<TT>)
-    var mapped : void? = null
-    let mf : VkMemoryMapFlags
-    unsafe {
-        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, uint64(nbytes), mf, addr(mapped)), null)
-        memcpy(mapped, reinterpret<void?>(addr(data[0])), nbytes)
-    }
-    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
-}
-
 // ===== reusable per-frame context =====
 
 //! Long-lived skybox state: offscreen color + depth, render pass + framebuffer, cube geometry
@@ -289,31 +253,28 @@ def public build_skybox_resources(device : Device; phys : VkPhysicalDevice; queu
 
     var vb_usage : VkBufferUsageFlags
     vb_usage.vertex_buffer = true
-    var inscope vb <- mhb(device, phys, uint64(length(cube_vertices) * 4), vb_usage)
     var verts_copy : array<float>
     verts_copy |> push_from(cube_vertices)
-    upload_bytes(device, vb.memory, verts_copy)
+    var inscope vb <- create_host_buffer_from_bytes(device, phys, vb_usage, verts_copy)
     delete verts_copy
 
     var ib_usage : VkBufferUsageFlags
     ib_usage.index_buffer = true
-    var inscope ib <- mhb(device, phys, uint64(length(cube_indices) * 2), ib_usage)
     var indices_copy : array<uint16>
     indices_copy |> push_from(cube_indices)
-    upload_bytes(device, ib.memory, indices_copy)
+    var inscope ib <- create_host_buffer_from_bytes(device, phys, ib_usage, indices_copy)
     delete indices_copy
 
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
-    var inscope ubo <- mhb(device, phys, 128ul, ubo_usage)        // view (64) + proj (64) = 128 bytes
+    var inscope ubo <- create_host_buffer(device, phys, 128ul, ubo_usage)        // view (64) + proj (64) = 128 bytes
 
     // 6-face cubemap: build the procedural sky on the host and stage it through one
     // HOST_VISIBLE/HOST_COHERENT buffer into a device-local cube image.
     var sky_pixels <- gen_skybox_pixels()
     var staging_usage : VkBufferUsageFlags
     staging_usage.transfer_src = true
-    var inscope staging <- mhb(device, phys, uint64(length(sky_pixels)), staging_usage)
-    upload_bytes(device, staging.memory, sky_pixels)
+    var inscope staging <- create_host_buffer_from_bytes(device, phys, staging_usage, sky_pixels)
     delete sky_pixels
 
     var ici : ImageCreateInfo

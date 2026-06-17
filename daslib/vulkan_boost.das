@@ -854,6 +854,60 @@ def public create_host_buffer(device : Device; phys : VkPhysicalDevice; size : u
     return <- hb
 }
 
+//! HostBuffer with caller-chosen usage flags (vertex/index/uniform/storage/transfer_src/...). The
+//! `(device, phys, size)` overload above hardcodes `transfer_dst` for the readback-buffer role;
+//! this overload is the path tutorials reach for when they want a host-visible buffer with
+//! arbitrary usage. Memory is still HOST_VISIBLE | HOST_COHERENT.
+def public create_host_buffer(device : Device; phys : VkPhysicalDevice; size : uint64; usage : VkBufferUsageFlags) : HostBuffer {
+    var bci : BufferCreateInfo
+    bci.size = size
+    bci.usage = usage
+    var inscope buffer <- create_buffer(device, bci)
+    var req : VkMemoryRequirements
+    vkGetBufferMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(buffer), req)
+    var want : VkMemoryPropertyFlags
+    want.host_visible = true
+    want.host_coherent = true
+    var mai : MemoryAllocateInfo
+    mai.allocationSize = req.size
+    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
+    var inscope memory <- allocate_memory(device, mai)
+    vk_check(vkBindBufferMemory(boost_value_to_vk(device), boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
+    var hb : HostBuffer
+    hb.buffer <- buffer
+    hb.memory <- memory
+    hb.size = size
+    return <- hb
+}
+
+//! Typed upload of `array<TT>` into a HostBuffer: maps `length * sizeof<TT>` bytes, memcpys, unmaps.
+//! Memory must be HOST_COHERENT (true for `create_host_buffer` allocations). No-op on an empty array.
+def public upload_bytes(buf : HostBuffer; device : Device; var data : array<auto(TT)>) {
+    if (empty(data)) return
+    let nbytes = length(data) * typeinfo sizeof(type<TT>)
+    assert(uint64(nbytes) <= buf.size, "upload_bytes: data exceeds destination HostBuffer.size")
+    var mapped : void? = null
+    let mf : VkMemoryMapFlags
+    unsafe {
+        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(buf.memory), 0ul, uint64(nbytes), mf, addr(mapped)), null)
+        memcpy(mapped, reinterpret<void?>(addr(data[0])), nbytes)
+    }
+    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(buf.memory))
+}
+
+//! Create a host-visible buffer sized to fit `data` and upload it in one call. The single-line
+//! "vertex/index buffer from typed array" the tutorials all reach for. Panics on empty input:
+//! Vulkan requires `VkBufferCreateInfo.size > 0` (VUID-VkBufferCreateInfo-size-00912), so an
+//! empty array can't produce a valid buffer here.
+def public create_host_buffer_from_bytes(device : Device; phys : VkPhysicalDevice;
+                                         usage : VkBufferUsageFlags; var data : array<auto(TT)>) : HostBuffer {
+    assert(!empty(data), "create_host_buffer_from_bytes: empty data — VkBuffer.size must be > 0")
+    let nbytes = uint64(length(data) * typeinfo sizeof(type<TT>))
+    var hb <- create_host_buffer(device, phys, nbytes, usage)
+    hb |> upload_bytes(device, data)
+    return <- hb
+}
+
 // ===== block brackets =====
 
 //! allocate a one-shot primary command buffer, record the block, submit, wait idle
@@ -1022,6 +1076,36 @@ def public cmd_bind_pipeline(cmd : CommandBuffer; pipeline : Pipeline; bind_poin
 //! draw (convenience over the generated cmd_draw: defaults instance/first to 0)
 def public cmd_draw(cmd : CommandBuffer; vertex_count : uint; instance_count : uint = 1u) {
     vkCmdDraw(boost_value_to_vk(cmd), vertex_count, instance_count, 0u, 0u)
+}
+
+//! Bind one vertex buffer at the given binding slot (offset 0 by default). The generated
+//! `cmd_bind_vertex_buffers` takes `array<Buffer>` + `array<uint64>` which forces a per-frame
+//! allocation for single-binding draws; this overload avoids it.
+def public cmd_bind_vertex_buffer(cmd : CommandBuffer; binding : uint; buffer : Buffer; offset : uint64 = 0ul) {
+    var raw_buf = boost_value_to_vk(buffer)
+    var off = offset
+    unsafe {
+        vkCmdBindVertexBuffers(boost_value_to_vk(cmd), binding, 1u, addr(raw_buf), addr(off))
+    }
+}
+
+//! Typed push-constant upload: writes `sizeof<TT>` bytes from `value` into the pipeline's push
+//! block at `offset`, for shader stages `stages`. The size is derived from the daslang value, so
+//! the call site no longer carries a hand-counted byte size or a `reinterpret<void?>(addr(...))`.
+//! TT's daslang layout must match the shader's std430 push-constant layout (true for scalar /
+//! vec4 / mat4 packs without vec3 padding surprises). Vulkan requires both `offset` and the
+//! resolved size to be multiples of 4 (VUID-vkCmdPushConstants-offset-00370 /
+//! VUID-vkCmdPushConstants-size-00369), so this asserts both — using e.g. a `bool` or `uint8`
+//! TT silently trips driver validation otherwise.
+def public cmd_push_constants(cmd : CommandBuffer; layout : PipelineLayout; stages : VkShaderStageFlags;
+                              offset : uint; var value : auto(TT) const) {
+    let sz = uint(typeinfo sizeof(type<TT>))
+    assert((offset & 3u) == 0u, "cmd_push_constants: offset must be a multiple of 4")
+    assert((sz & 3u) == 0u, "cmd_push_constants: sizeof<TT> must be a multiple of 4")
+    unsafe {
+        vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(layout), stages,
+            offset, sz, reinterpret<void?>(addr(value)))
+    }
 }
 
 def public copy_image_to_buffer(cmd : CommandBuffer; image : Image; buffer : HostBuffer; width, height : int) {

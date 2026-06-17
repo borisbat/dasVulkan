@@ -136,10 +136,6 @@ def public record_compute(cmd : CommandBuffer; comp : ComputeImage; time : float
     cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.COMPUTE, comp.pipe_layout, 0u, sets, no_dyn)
     var pcf : VkShaderStageFlags
     pcf.compute = true
-    var t = time
-    unsafe {
-        vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(comp.pipe_layout), pcf, 0u, 4u,
-            reinterpret<void?>(addr(t)))
-    }
+    cmd_push_constants(cmd, comp.pipe_layout, pcf, 0u, time)
     cmd_dispatch(cmd, uint(comp.width / 8), uint(comp.height / 8), 1u)
 }

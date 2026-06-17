@@ -195,39 +195,6 @@ def private build_points_pipeline(device : Device; render_pass : RenderPass; lay
     return <- vk_value_to_boost(h)
 }
 
-def private mhb(device : Device; phys : VkPhysicalDevice; size : uint64; usage : VkBufferUsageFlags) : HostBuffer {
-    var bci : BufferCreateInfo
-    bci.size = size
-    bci.usage = usage
-    var inscope buffer <- create_buffer(device, bci)
-    var req : VkMemoryRequirements
-    vkGetBufferMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(buffer), req)
-    var want : VkMemoryPropertyFlags
-    want.host_visible = true
-    want.host_coherent = true
-    var mai : MemoryAllocateInfo
-    mai.allocationSize = req.size
-    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
-    var inscope memory <- allocate_memory(device, mai)
-    vk_check(vkBindBufferMemory(boost_value_to_vk(device), boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
-    var hb : HostBuffer
-    hb.buffer <- buffer
-    hb.memory <- memory
-    hb.size = size
-    return <- hb
-}
-
-def private upload_bytes(device : Device; memory : DeviceMemory; var data : array<auto(TT)>) {
-    if (empty(data)) return
-    let nbytes = length(data) * typeinfo sizeof(type<TT>)
-    var mapped : void? = null
-    let mf : VkMemoryMapFlags
-    unsafe {
-        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, uint64(nbytes), mf, addr(mapped)), null)
-        memcpy(mapped, reinterpret<void?>(addr(data[0])), nbytes)
-    }
-    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
-}
 
 // ===== reusable per-frame context =====
 
@@ -323,15 +290,14 @@ def public build_particles_resources(device : Device; phys : VkPhysicalDevice; q
     var part_usage : VkBufferUsageFlags
     part_usage.storage_buffer = true
     part_usage.vertex_buffer = true
-    var inscope particle_buf <- mhb(device, phys, uint64(N_PARTICLES * int(PARTICLE_STRIDE)), part_usage)
     var part_seed <- gen_initial_particles(N_PARTICLES)
-    upload_bytes(device, particle_buf.memory, part_seed)
+    var inscope particle_buf <- create_host_buffer_from_bytes(device, phys, part_usage, part_seed)
     delete part_seed
 
     // graphics UBO: view (64) + proj (64) = 128 bytes
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
-    var inscope ubo <- mhb(device, phys, 128ul, ubo_usage)
+    var inscope ubo <- create_host_buffer(device, phys, 128ul, ubo_usage)
 
     // ===== compute pipeline + descriptors =====
     var creflections <- [decode_reflection(particles_compute_spv_reflect)]
@@ -517,11 +483,8 @@ def public record_particles_render_pass(res : ParticlesResources; cmd : CommandB
     cpc.dt = dt
     var cstage : VkShaderStageFlags
     cstage.compute = true
-    unsafe {
-        vkCmdPushConstants(raw_cmd, boost_value_to_vk(res.cpipe_layout),
-            cstage, 0u, 8u, reinterpret<void?>(addr(cpc)))
-        vkCmdDispatch(raw_cmd, uint(N_PARTICLES / 64), 1u, 1u)
-    }
+    cmd_push_constants(cmd, res.cpipe_layout, cstage, 0u, cpc)
+    cmd_dispatch(cmd, uint(N_PARTICLES / 64), 1u, 1u)
 
     // 2) Compute -> graphics barrier: the integrator's last write (SHADER_WRITE in COMPUTE_SHADER)
     //    must be visible to the vertex-input fetch (VERTEX_ATTRIBUTE_READ in VERTEX_INPUT) before
@@ -559,12 +522,8 @@ def public record_particles_render_pass(res : ParticlesResources; cmd : CommandB
         let gsets <- [vk_value_to_boost(res.gdesc_set)]
         var no_gdyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.gpipe_layout, 0u, gsets, no_gdyn)
-        unsafe {
-            var raw_buf = boost_value_to_vk(res.particle_buf.buffer)
-            var zero_off = 0ul
-            vkCmdBindVertexBuffers(raw_cmd, 0u, 1u, addr(raw_buf), addr(zero_off))
-            vkCmdDraw(raw_cmd, uint(N_PARTICLES), 1u, 0u, 0u)
-        }
+        cmd_bind_vertex_buffer(cmd, 0u, weak_copy(res.particle_buf.buffer))
+        cmd_draw(cmd, uint(N_PARTICLES))
     }
     delete clears
 }

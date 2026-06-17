@@ -116,6 +116,25 @@ Bitfield of pipeline-stage bits (``top_of_pipe``, ``compute_shader``,
 ``transfer``, ``fragment_shader``, …). The source/destination stage masks of
 a pipeline barrier; consumed by ``transition_image``.
 
+.. _alias-vkbufferusageflags:
+
+``vulkan::VkBufferUsageFlags``
+------------------------------
+
+Bitfield of buffer-usage bits (``vertex_buffer``, ``index_buffer``,
+``uniform_buffer``, ``storage_buffer``, ``transfer_src``, ``transfer_dst``, …).
+Picks how the GPU consumes a ``VkBuffer``; consumed by ``create_host_buffer``
+and ``create_host_buffer_from_bytes``.
+
+.. _alias-vkshaderstageflags:
+
+``vulkan::VkShaderStageFlags``
+------------------------------
+
+Bitfield of shader-stage bits (``vertex``, ``fragment``, ``compute``, …). The
+stage mask telling Vulkan which shader stages read a push-constant update;
+consumed by ``cmd_push_constants``.
+
 .. _handle-vulkan-vkclearvalue:
 
 ``vulkan::VkClearValue``

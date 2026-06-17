@@ -144,42 +144,6 @@ def gen_instance_data(n : int) : array<float> {
     return <- data
 }
 
-// ===== host helpers (local; mirror cube_tut's private versions) =====
-
-def private mhb(device : Device; phys : VkPhysicalDevice; size : uint64; usage : VkBufferUsageFlags) : HostBuffer {
-    var bci : BufferCreateInfo
-    bci.size = size
-    bci.usage = usage
-    var inscope buffer <- create_buffer(device, bci)
-    var req : VkMemoryRequirements
-    vkGetBufferMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(buffer), req)
-    var want : VkMemoryPropertyFlags
-    want.host_visible = true
-    want.host_coherent = true
-    var mai : MemoryAllocateInfo
-    mai.allocationSize = req.size
-    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
-    var inscope memory <- allocate_memory(device, mai)
-    vk_check(vkBindBufferMemory(boost_value_to_vk(device), boost_value_to_vk(buffer), boost_value_to_vk(memory), 0ul), null)
-    var hb : HostBuffer
-    hb.buffer <- buffer
-    hb.memory <- memory
-    hb.size = size
-    return <- hb
-}
-
-def private upload_bytes(device : Device; memory : DeviceMemory; var data : array<auto(TT)>) {
-    if (empty(data)) return
-    let nbytes = length(data) * typeinfo sizeof(type<TT>)
-    var mapped : void? = null
-    let mf : VkMemoryMapFlags
-    unsafe {
-        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, uint64(nbytes), mf, addr(mapped)), null)
-        memcpy(mapped, reinterpret<void?>(addr(data[0])), nbytes)
-    }
-    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
-}
-
 // ===== reusable per-frame context =====
 
 //! All instancing-render state that depends only on (device, phys, queue, pool). Same shape as
@@ -260,30 +224,27 @@ def public build_instancing_resources(device : Device; phys : VkPhysicalDevice; 
 
     var vb_usage : VkBufferUsageFlags
     vb_usage.vertex_buffer = true
-    var inscope vb <- mhb(device, phys, uint64(length(cube_vertices) * 4), vb_usage)
     var verts_copy : array<float>
     verts_copy |> push_from(cube_vertices)
-    upload_bytes(device, vb.memory, verts_copy)
+    var inscope vb <- create_host_buffer_from_bytes(device, phys, vb_usage, verts_copy)
     delete verts_copy
 
     var ib_usage : VkBufferUsageFlags
     ib_usage.index_buffer = true
-    var inscope ib <- mhb(device, phys, uint64(length(cube_indices) * 2), ib_usage)
     var indices_copy : array<uint16>
     indices_copy |> push_from(cube_indices)
-    upload_bytes(device, ib.memory, indices_copy)
+    var inscope ib <- create_host_buffer_from_bytes(device, phys, ib_usage, indices_copy)
     delete indices_copy
 
     var inst_usage : VkBufferUsageFlags
     inst_usage.vertex_buffer = true
-    var inscope inst_buf <- mhb(device, phys, uint64(N_INSTANCES * INST_FLOATS_PER * 4), inst_usage)
     var inst_data <- gen_instance_data(N_INSTANCES)
-    upload_bytes(device, inst_buf.memory, inst_data)
+    var inscope inst_buf <- create_host_buffer_from_bytes(device, phys, inst_usage, inst_data)
     delete inst_data
 
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
-    var inscope ubo <- mhb(device, phys, 144ul, ubo_usage)        // view + proj + cam_time
+    var inscope ubo <- create_host_buffer(device, phys, 144ul, ubo_usage)        // view + proj + cam_time
 
     var reflections <- [decode_reflection(instancing_vert_spv_reflect), decode_reflection(instancing_frag_spv_reflect)]
     var inscope set_layouts <- build_descriptor_set_layouts(device, reflections)
