@@ -76,14 +76,15 @@ let private cube_indices : array<uint16> <- [
 
 //! Vulkan-style perspective: maps view-space z in (-near .. -far) to clip-space z in (0 .. 1) after
 //! the perspective divide, and flips Y so the framebuffer is right-side-up. fov_y is in radians.
-def perspective_vk(fov_y, aspect, znear, zfar : float) : array<float> {
+def perspective_vk(fov_y, aspect, znear, zfar : float) : float4x4 {
     let f = 1.0f / tan(fov_y * 0.5f)
     let nf = 1.0f / (znear - zfar)
-    return <- [
-        f / aspect, 0.0f, 0.0f, 0.0f,           // column 0
-        0.0f,      -f,    0.0f, 0.0f,           // column 1 (Y flip)
-        0.0f, 0.0f, zfar * nf, -1.0f,           // column 2
-        0.0f, 0.0f, znear * zfar * nf, 0.0f]    // column 3
+    var m : float4x4
+    m[0] = float4(f / aspect, 0.0f, 0.0f, 0.0f)
+    m[1] = float4(0.0f, -f, 0.0f, 0.0f)                 // Y flip -- Vulkan NDC has +Y down
+    m[2] = float4(0.0f, 0.0f, zfar * nf, -1.0f)
+    m[3] = float4(0.0f, 0.0f, znear * zfar * nf, 0.0f)
+    return m
 }
 
 def vec3_sub(a, b : float3) : float3 => float3(a.x - b.x, a.y - b.y, a.z - b.z)
@@ -95,15 +96,16 @@ def vec3_normalize(v : float3) : float3 {
 }
 
 //! Right-handed lookAt, column-major.
-def look_at_rh(eye, center, up : float3) : array<float> {
+def look_at_rh(eye, center, up : float3) : float4x4 {
     let f = vec3_normalize(vec3_sub(center, eye))
     let s = vec3_normalize(vec3_cross(f, up))
     let u = vec3_cross(s, f)
-    return <- [
-        s.x, u.x, -f.x, 0.0f,                                                // column 0
-        s.y, u.y, -f.y, 0.0f,                                                // column 1
-        s.z, u.z, -f.z, 0.0f,                                                // column 2
-        -vec3_dot(s, eye), -vec3_dot(u, eye), vec3_dot(f, eye), 1.0f]        // column 3 (translation)
+    var m : float4x4
+    m[0] = float4(s.x, u.x, -f.x, 0.0f)
+    m[1] = float4(s.y, u.y, -f.y, 0.0f)
+    m[2] = float4(s.z, u.z, -f.z, 0.0f)
+    m[3] = float4(-vec3_dot(s, eye), -vec3_dot(u, eye), vec3_dot(f, eye), 1.0f)
+    return m
 }
 
 //! Uniform-scale rotation around the Y axis. Pure rotation+scale only -- the vertex shader uses a
@@ -531,17 +533,10 @@ def public render_cube_frame(var ctx : CubeContext; time, camera_t : float) : ar
     // angle, only graze the view instead of dominating it.
     let cam_y = sin(camera_angle * 2.0f) * 0.4f
     let cam_pos = float3(cam_x, cam_y, cam_z)
-    let view = look_at_rh(cam_pos, float3(0.0f, 0.0f, 0.0f), float3(0.0f, 1.0f, 0.0f))
-    let proj = perspective_vk(60.0f * PI / 180.0f, float(CUBE_W) / float(CUBE_H), 0.1f, 10.0f)
-    var ubo_data : array<float>
-    ubo_data |> push_from(view)
-    ubo_data |> push_from(proj)
-    ubo_data |> push(cam_pos.x)
-    ubo_data |> push(cam_pos.y)
-    ubo_data |> push(cam_pos.z)
-    ubo_data |> push(time)
-    upload_bytes(ctx.device, ctx.ubo.memory, ubo_data)
-    delete ubo_data
+    cam.view = look_at_rh(cam_pos, float3(0.0f, 0.0f, 0.0f), float3(0.0f, 1.0f, 0.0f))
+    cam.proj = perspective_vk(60.0f * PI / 180.0f, float(CUBE_W) / float(CUBE_H), 0.1f, 10.0f)
+    cam.cam_time = float4(cam_pos.x, cam_pos.y, cam_pos.z, time)
+    cube_vs_bind_uniform(ctx.device, ctx.ubo.memory)
 
     let breathe = 1.0f + 0.05f * sin(time * 2.0f * PI / 5.0f)
     let spin = time * 0.5f

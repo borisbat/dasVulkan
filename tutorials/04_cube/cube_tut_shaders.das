@@ -12,9 +12,10 @@ options indenting = 4
 // (std140 column-major), push-constant matrix, combined image sampler in the fragment, and the
 // GLSL.std.450 math used by the lighting (`normalize`, `dot`, `max`, `pow`).
 
-module cube_tut_shaders shared public
+module cube_tut_shaders public
 
-require spirv/spirv_shader
+require vulkan/vulkan_boost public  // Device + DeviceMemory types used by the generated bind_uniform_<shader> functions
+require vulkan/spirv_vulkan_shader public
 require spirv/spirv_builtins public
 require math
 
@@ -46,7 +47,7 @@ var @out @location = 0 v_world_pos    : float3
 var @out @location = 1 v_world_normal : float3
 var @out @location = 2 v_uv           : float2
 
-[vertex_shader(name="cube_vert_spv")]
+[vulkan_vertex_shader(name="cube_vert_spv")]
 def cube_vs {
     let world = pc.model * float4(a_pos, 1.0)
     gl_Position = cam.proj * cam.view * world
@@ -67,7 +68,7 @@ var @in @location = 1 f_world_normal : float3
 var @in @location = 2 f_uv           : float2
 var @out @location = 0 frag_color    : float4
 
-[fragment_shader(name="cube_frag_spv")]
+[vulkan_fragment_shader(name="cube_frag_spv")]
 def cube_fs {
     let n = normalize(f_world_normal)
     let v = normalize(cam.cam_time.xyz - f_world_pos)

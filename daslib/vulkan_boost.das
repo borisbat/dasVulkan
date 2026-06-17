@@ -910,6 +910,32 @@ def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; fra
     vkCmdEndRenderPass(raw_cmd)
 }
 
+//! Block-form device-memory mapping. Maps the whole allocation (VK_WHOLE_SIZE), invokes the block
+//! with the raw mapped pointer, unmaps on block return. Used by the SpirvVulkanShader bind_uniform
+//! macro for one-shot UBO upload: the block writes typed fields at known std140 offsets via
+//! `write_field` and the unmap on exit commits everything.
+def public with_mapped_memory(device : Device; memory : DeviceMemory; blk : block<(ptr : void?) : void>) {
+    var mapped : void? = null
+    var flags : VkMemoryMapFlags
+    unsafe {
+        vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, VK_WHOLE_SIZE, flags, addr(mapped)), null)
+    }
+    invoke(blk, mapped)
+    vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
+}
+
+//! Write a single typed value at a byte offset into mapped device memory (one memcpy of sizeof<TT>
+//! bytes). Designed for std140 field writes: the bind_uniform macro emits one call per @uniform-block
+//! field at its compile-time-computed offset. TT = any 32-bit scalar / vec / float4x4 / float3x4 with
+//! the daslang storage matching std140 directly. float3x3 needs per-column writes (not this).
+[unused_argument(value)]
+def public write_field(ptr : void?; offset : uint; var value : auto(TT) const) {
+    unsafe {
+        let dst = reinterpret<void?>(intptr(ptr) + uint64(offset))
+        memcpy(dst, reinterpret<void?>(addr(value)), typeinfo sizeof(type<TT>))
+    }
+}
+
 //! map a device-memory range, expose it as an array<uint8>, unmap after the block
 def public map_memory_to_array(device : Device; memory : DeviceMemory; size : uint64; blk : block<(data : array<uint8>) : void>) {
     var mapped : void? = null
