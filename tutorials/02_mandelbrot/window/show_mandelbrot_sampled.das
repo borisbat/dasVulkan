@@ -26,13 +26,17 @@ require daslib/defer
 
 [export]
 def main {
+    if (volkInitialize() != 0) {
+        panic("no vulkan loader")
+    }
+    // Hand GLFW the loader volk just found, so glfwVulkanSupported /
+    // glfwGetRequiredInstanceExtensions work even where GLFW's own loader discovery
+    // would miss it (e.g. the Homebrew prefix on macOS). Must precede glfwInit.
+    glfwInitVulkanLoader(vk_get_instance_proc_addr())
     if (glfwInit() == 0) {
         panic("can't init glfw")
     }
     defer() { glfwTerminate() }
-    if (volkInitialize() != 0) {
-        panic("no vulkan loader")
-    }
     if (glfwVulkanSupported() == 0) {
         panic("glfw reports no vulkan support")
     }

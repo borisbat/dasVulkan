@@ -19,6 +19,11 @@ SET(DAS_VULKAN_SRC
     ${DAS_VULKAN_GEN_SRC}
     ${VOLK_DIR}/volk.c
 )
+if(APPLE)
+    # Objective-C++ TU: bridges the NSWindow to a CAMetalLayer for the MoltenVK
+    # surface. Isolated here so Cocoa/QuartzCore stay out of the plain-C++ TUs.
+    list(APPEND DAS_VULKAN_SRC ${DAS_VULKAN_DIR}/src/dasVULKAN.metal.mm)
+endif()
 
 add_library(dasModuleVulkan SHARED ${DAS_VULKAN_SRC})
 target_compile_features(dasModuleVulkan PRIVATE cxx_std_17)
@@ -58,6 +63,8 @@ elseif(APPLE)
     target_link_libraries(dasModuleVulkan PRIVATE
         ${DASLANG_DIR}/lib/liblibDaScriptDyn.dylib
         ${DASLANG_DIR}/lib/liblibDaScriptDyn_runtime.dylib
+        "-framework Cocoa"
+        "-framework QuartzCore"
     )
 else()
     target_link_libraries(dasModuleVulkan PRIVATE
