@@ -19,4 +19,5 @@ stbimage + audio + ffmpeg, so it does not run in CI).
 
    01_triangle
    02_mandelbrot
+   03_sdf
    04_cube
