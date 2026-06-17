@@ -178,13 +178,22 @@ jobs:
         with:
           path: dasVulkan
 
-      - name: "Install MoltenVK + Vulkan loader + tools"
+      - name: "Install MoltenVK + Vulkan loader + tools (+ modern bison)"
         # macOS has no native Vulkan driver; MoltenVK translates to Metal. The
         # Homebrew loader auto-discovers MoltenVK's ICD (its SYSCONFDIR is the
         # Homebrew prefix), and dasVulkan's das_volkInitialize finds the Homebrew
         # loader off volk's default dlopen search -- so no VK_ICD_FILENAMES / DYLD_*
         # override is needed (this is exactly the "just works" path users get).
-        run: brew install molten-vk vulkan-loader vulkan-tools
+        #
+        # bison: macOS ships GNU bison 2.3, too old for daslang's parser grammar
+        # (`expecting string`). Install Homebrew bison 3.x and prepend it to PATH
+        # for the later build step via $GITHUB_PATH (the default non-login shell
+        # does not source ~/.bash_profile). `brew --prefix bison` resolves the keg
+        # path regardless of the Homebrew prefix (/opt/homebrew vs /usr/local).
+        run: |
+          set -eux
+          brew install molten-vk vulkan-loader vulkan-tools bison
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 
       - name: "Install CMake and Ninja"
         uses: lukka/get-cmake@latest
@@ -199,6 +208,7 @@ jobs:
         # committed, so no generator run -- pugixml/LLVM/HV/GLFW are unnecessary.
         run: |
           set -eux
+          bison --version | head -1   # must be Homebrew 3.x, not the macOS system 2.3
           cmake --no-warn-unused-cli -B./build \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DDAS_HV_DISABLED=ON \
