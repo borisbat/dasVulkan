@@ -37,17 +37,6 @@ struct Push {
 }
 var @push_constant pc : Push
 
-// vec3 linear interpolation. daslang math has no mix(vec3,vec3,scalar) overload yet, so we inline
-// the lerp. GLSL's mix(a,b,t) = a*(1-t) + b*t = a + (b-a)*t.
-def private lerp3(a, b : float3; t : float) : float3 {
-    return a + (b - a) * t
-}
-
-// vec3 channel-wise power -- workaround for daslang's pow(scalar, scalar) only signature.
-def private pow3(v : float3; e : float) : float3 {
-    return float3(pow(v.x, e), pow(v.y, e), pow(v.z, e))
-}
-
 // IQ's polynomial smooth union: blends two SDFs over a soft radius k. Reduces to min(a,b) when the
 // two surfaces are far apart, but produces a curved meeting band where they overlap -- the visual
 // signature of distance-field rendering.
@@ -156,7 +145,7 @@ def private sky_color(rd, sun_dir : float3) : float3 {
     let h = clamp(rd.y * 0.5f + 0.5f, 0.0f, 1.0f)
     let horizon = float3(0.94f, 0.78f, 0.62f)    // warm peach
     let zenith = float3(0.45f, 0.62f, 0.85f)     // soft blue
-    var col = lerp3(horizon, zenith, h)
+    var col = lerp(horizon, zenith, float3(h, h, h))
     let sun = max(dot(rd, sun_dir), 0.0f)
     col = col + float3(1.0f, 0.85f, 0.6f) * pow(sun, 64.0f)
     return col
@@ -170,7 +159,7 @@ def private ground_color(p : float3) : float3 {
     let parity = sum - 2.0f * floor(0.5f * sum)        // (cx + cz) mod 2 as a float
     let a = float3(0.95f, 0.92f, 0.85f)
     let b = float3(0.30f, 0.34f, 0.38f)
-    return lerp3(a, b, parity)
+    return lerp(a, b, float3(parity, parity, parity))
 }
 
 // Blob albedo: IQ-style cosine palette pulsing with time, brightened slightly toward the top of the
@@ -189,7 +178,8 @@ def private blob_color(p : float3; t : float) : float3 {
 def private tonemap(c : float3) : float3 {
     let one = float3(1.0f, 1.0f, 1.0f)
     let mapped = c / (one + c)
-    return pow3(mapped, 1.0f / 2.2f)
+    let inv_gamma = 1.0f / 2.2f
+    return pow(mapped, float3(inv_gamma, inv_gamma, inv_gamma))
 }
 
 [compute_shader(local_size_x=8, local_size_y=8, name="sdf_spv")]
@@ -241,7 +231,7 @@ def sdf_main {
         let lit = albedo * (amb + key * sh * 0.85f) + float3(1.0f, 0.9f, 0.75f) * rim * 0.2f
         // atmospheric fog: scene fades into the sky color with distance (exponential falloff)
         let f = clamp(1.0f - exp(-0.02f * hit.x * hit.x), 0.0f, 1.0f)
-        col = lerp3(lit, sky_color(rd, sun_dir), f)
+        col = lerp(lit, sky_color(rd, sun_dir), float3(f, f, f))
     }
 
     col = tonemap(col)
