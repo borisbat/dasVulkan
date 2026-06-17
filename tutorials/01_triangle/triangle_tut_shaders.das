@@ -7,9 +7,10 @@ options indenting = 4
 // authored in daslang and lowered to SPIR-V at compile time by dasSpirv (require spirv/spirv_shader):
 // the emitted tri_spin_vert_spv / tri_spin_frag_spv : array<uint> globals feed create_shader_module.
 
-module triangle_tut_shaders shared public
+module triangle_tut_shaders public
 
-require spirv/spirv_shader
+require vulkan/vulkan_boost public  // CommandBuffer + PipelineLayout for the generated push_constants function
+require vulkan/spirv_vulkan_shader public
 require spirv/spirv_builtins public
 require math
 
@@ -21,7 +22,7 @@ struct SpinPush {
 var @push_constant pc : SpinPush
 
 var @out @location = 0 v_color : float3
-[vertex_shader(name="tri_spin_vert_spv")]
+[vulkan_vertex_shader(name="tri_spin_vert_spv")]
 def tri_spin_vert {
     let positions = fixed_array(float2(0.0, -0.6), float2(0.6, 0.6), float2(-0.6, 0.6))
     let colors = fixed_array(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(0.0, 0.0, 1.0))
@@ -34,7 +35,7 @@ def tri_spin_vert {
 
 var @in @location = 0 fi_color : float3
 var @out @location = 0 frag_color : float4
-[fragment_shader(name="tri_spin_frag_spv")]
+[vulkan_fragment_shader(name="tri_spin_frag_spv")]
 def tri_spin_frag {
     frag_color = float4(fi_color, 1.0)
 }

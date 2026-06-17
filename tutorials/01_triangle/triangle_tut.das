@@ -60,15 +60,11 @@ def public render_spin_triangle(angle : float) : array<uint8> {
     poolci.queueFamilyIndex = gfx
     var inscope pool <- create_command_pool(device, poolci)
 
-    var ang = angle
+    pc.angle = angle
     run_cmd_sync(device, pool, queue) $(cmd) {
         record_render_pass(cmd, render_pass, framebuffer, full_area(TRI_W, TRI_H), clear_color(0.1f, 0.1f, 0.15f, 1.0f)) {
             cmd_bind_pipeline(cmd, pipeline)
-            var pcf : VkShaderStageFlags
-            pcf.vertex = true
-            unsafe {
-                vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(layout), pcf, 0u, 4u, reinterpret<void?>(addr(ang)))
-            }
+            tri_spin_vert_push_constants(cmd, layout)
             cmd_draw(cmd, 3u)
         }
         copy_image_to_buffer(cmd, target.image, readback, TRI_W, TRI_H)
