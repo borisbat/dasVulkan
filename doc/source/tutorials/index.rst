@@ -23,3 +23,4 @@ stbimage + audio + ffmpeg, so it does not run in CI).
    04_cube
    05_instancing
    06_skybox
+   07_particles
