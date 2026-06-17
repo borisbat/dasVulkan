@@ -96,6 +96,31 @@ daslang -load_module <repo> <daslang-root>/dastest/dastest.das -- \
 Run from the repo root so the cwd-relative shader paths resolve. Test bodies must
 call `volkInitialize()` themselves.
 
+## Tutorials
+
+Each tutorial is a self-contained unit under `tutorials/<NN_name>/`: the offscreen
+module + its `[compute_shader]`/`[shader]` blob + a pixel-oracle `[test]` (the CI
+gate) + a `recording/` driver.
+
+**Every rendering tutorial MUST also ship a windowed mode** at
+`tutorials/<NN_name>/window/show_<name>.das` — a real GLFW window presenting the
+live animation (compute→blit→present, or a swapchain render pass). The offscreen
+`[test]` proves correctness; the windowed driver is how a human actually *sees* it
+(01_triangle, 02_mandelbrot, 03_sdf all have one). The windowed driver:
+
+- calls `glfwInitVulkanLoader(vk_get_instance_proc_addr())` **before** `glfwInit`
+  so GLFW finds the same loader on every platform (see the macOS gotcha below);
+- lives in `window/` so the tutorials `.das_test` skips it in CI (the lavapipe CI
+  daslang build is `-DDAS_GLFW_DISABLED=ON` — no display, no GLFW).
+
+**Cross-tutorial requires don't work**: daslang `require` can't parse an unquoted
+path segment starting with a digit, so `require ../../02_mandelbrot/window/x.das`
+fails with `error[30151] unexpected integer constant`. Keep shared helpers
+tutorial-local — 02's `mandelbrot_compute` and 03's `resident_compute` are the same
+generic resident single-float-pushconstant compute-to-image builder, copied per
+tutorial. Factor to a non-digit shared path (e.g. `tutorials/common/`) only if a
+third windowed compute tutorial appears.
+
 ## Key gotchas / API truths
 
 - **Handles are stored as `uint64` inside wrappers**, not the pointer type.
