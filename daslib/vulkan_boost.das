@@ -76,6 +76,30 @@ def public find_memory_type(phys : VkPhysicalDevice; type_bits : uint; want : Vk
 
 // ===== composite creators (CreateInfo skipped by the generator) =====
 
+//! is `name` advertised among the loader's available instance extensions?
+def public instance_extension_available(name : string) : bool {
+    var count = 0u
+    if (vkEnumerateInstanceExtensionProperties("", count, null) != VkResult.SUCCESS || count == 0u) {
+        return false
+    }
+    var props : array<VkExtensionProperties>
+    props |> resize(int(count))
+    let rc = vkEnumerateInstanceExtensionProperties("", count, unsafe(addr(props[0])))
+    if (rc != VkResult.SUCCESS) {
+        return false
+    }
+    var found = false
+    for (p in props) {
+        unsafe {
+            if ("{reinterpret<string>(addr(p.extensionName[0]))}" == name) {
+                found = true
+                break
+            }
+        }
+    }
+    return found
+}
+
 def public create_instance(application_name : string; api_version : uint; extensions : array<string>) : Instance {
     var ai = VkApplicationInfo()
     ai.apiVersion = api_version
@@ -86,12 +110,23 @@ def public create_instance(application_name : string; api_version : uint; extens
     unsafe {
         ci.pApplicationInfo = addr(ai)
     }
+    // On portability drivers (MoltenVK on macOS) the loader rejects vkCreateInstance
+    // with ERROR_INCOMPATIBLE_DRIVER unless VK_KHR_portability_enumeration is enabled
+    // and the matching create flag is set. Add it transparently when the loader
+    // advertises it, so the same user code runs unchanged on every platform.
+    var exts <- [for (e in extensions); e]
+    if (instance_extension_available("VK_KHR_portability_enumeration")) {
+        if (find_index(exts, "VK_KHR_portability_enumeration") < 0) {
+            exts |> push("VK_KHR_portability_enumeration")
+        }
+        ci.flags.enumerate_portability_khr = true
+    }
     // array<string> is contiguous `const char*` pointers == const char* const* (what
     // Vulkan wants); ppEnabledExtensionNames is bound as void? so reinterpret to it.
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = reinterpret<void?>(addr(extensions[0]))
+            ci.ppEnabledExtensionNames = reinterpret<void?>(addr(exts[0]))
         }
     }
     var h : VkInstance

@@ -62,7 +62,7 @@ def document_module_vulkan_boost() {
     var mod = find_module("vulkan_boost")
     var groups <- array<DocGroup>(
         group_by_regex("Device selection", mod, %regex~^(select_physical_device|select_graphics_queue_family|find_memory_type)$%%),
-        group_by_regex("Instance & device", mod, %regex~^(create_instance|create_device|get_device_queue)$%%),
+        group_by_regex("Instance & device", mod, %regex~^(create_instance|create_device|get_device_queue|instance_extension_available)$%%),
         group_by_regex("Shaders & pipelines", mod, %regex~^(create_shader_module|create_pipeline_layout|create_graphics_pipeline_simple|create_graphics_pipeline_v3d|create_compute_pipeline)$%%),
         group_by_regex("Render passes",    mod, %regex~^create_render_pass_(single_color|color_depth)$%%),
         group_by_regex("Builders",         mod, %regex~^(build_offscreen_target|build_offscreen_depth|create_host_buffer|compute_to_storage_image)$%%),

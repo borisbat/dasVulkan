@@ -47,12 +47,38 @@ typed API needs the `structextends` data wired through the emitter, a
 scratch/lifetime mechanism for chained structs, and an API-shape decision
 (fluent builder vs. array-of-variant).
 
-## macOS Metal surface — **owned by Boris (needs a Mac to test)**
+## macOS — **DONE** (MoltenVK)
 
-`vk_surface_from_native` in `src/dasVULKAN.main.cpp` covers Win32 (via the
-`extern "C" char __ImageBase;` linker trick for HINSTANCE) and X11. The macOS
-path (MoltenVK / `VK_EXT_metal_surface`, `CAMetalLayer` from the `NSWindow`) is
-stubbed. Boris will implement and test this on his Mac laptop.
+macOS works with no opt-in: `brew install molten-vk vulkan-loader vulkan-tools`
+and the offscreen suite + windowed examples run on Apple GPUs via MoltenVK. Three
+pieces made it work, all platform-agnostic:
+
+- **Loader discovery** — `das_volkInitialize` (`src/dasVULKAN.main.cpp`, `__APPLE__`)
+  falls back to dlopen'ing the loader from `$VULKAN_SDK` / the Homebrew prefix when
+  volk's built-in search misses it, then wires volk via `volkInitializeCustom`.
+- **Portability** — `create_instance` (`daslib/vulkan_boost.das`) auto-enables
+  `VK_KHR_portability_enumeration` + the create flag when the loader advertises it
+  (else MoltenVK returns `ERROR_INCOMPATIBLE_DRIVER`). No-op on Win/Linux.
+- **Metal surface** — `vk_surface_from_native` creates a `VkSurfaceKHR` from a
+  `CAMetalLayer` (`vkCreateMetalSurfaceEXT`); the Cocoa/QuartzCore code is isolated
+  to `src/dasVULKAN.metal.mm`. Windowed apps call
+  `glfwInitVulkanLoader(vk_get_instance_proc_addr())` before `glfwInit` so GLFW
+  finds the same loader (dasGlfw binds `glfwInitVulkanLoader`).
+
+Known limitation: the `CAMetalLayer.contentsScale` is set once at attach time
+(retina-correct for the window's current display). A window dragged to a
+different-DPI display mid-session keeps its original scale — a proper fix needs a
+display-change hook reconciling `contentsScale` alongside the existing
+swapchain-extent recreation. Deferred (single-display is the common case).
+
+Not yet done: a macOS CI lane (see below).
+
+## macOS CI
+
+No macOS test lane yet. GitHub macOS runners are real Macs with Metal, so MoltenVK
+offscreen render should work: `brew install molten-vk vulkan-loader vulkan-tools`,
+then run the same `tests/integration` + `tutorials` suites as Linux. Worth wiring
+once the surface work has soaked.
 
 ## Windows CI
 

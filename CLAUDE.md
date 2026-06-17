@@ -126,8 +126,14 @@ call `volkInitialize()` themselves.
   `addr(h)`). The boost creators/commands hide this.
 - **Block trailing syntax** is `f(...) $(cmd) { ... }` or `f(...) { ... }` — NO
   `<|` (STYLE001).
-- **macOS surface is stubbed** — Win32 + X11 only (`vk_surface_from_native` in
-  `src/dasVULKAN.main.cpp`). See `ROADMAP.md`.
+- **macOS works via MoltenVK** (no opt-in). One-time host setup:
+  `brew install molten-vk vulkan-loader vulkan-tools`. `vk_surface_from_native`
+  has a Metal arm (`src/dasVULKAN.metal.mm`, `vkCreateMetalSurfaceEXT` from a
+  `CAMetalLayer`); `das_volkInitialize` finds the Homebrew/SDK loader off volk's
+  default search; and `create_instance` auto-enables
+  `VK_KHR_portability_enumeration`. Windowed apps call
+  `glfwInitVulkanLoader(vk_get_instance_proc_addr())` before `glfwInit`. See
+  `ROADMAP.md`.
 - **Commit messages:** the Bash-tool shell wrapper eval's backticks in a
   `git commit -F -` heredoc body. Write the message to a temp file and
   `git commit -F file`.
