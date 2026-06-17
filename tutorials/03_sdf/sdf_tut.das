@@ -148,6 +148,7 @@ def public build_sdf_renderer() : SdfRenderer {
     plci.pPushConstantRanges |> emplace(pcr)
     var inscope pipe_layout <- create_pipeline_layout(device, plci)
     delete plci.pPushConstantRanges
+    unsafe { delete plci.pSetLayouts }   // the [weak_copy(set_layout)] literal we built above (handles are non-owning)
     var inscope pipeline <- create_compute_pipeline(device, pipe_layout, shader)
 
     let buf_size = uint64(SDF_DIM * SDF_DIM * 4)
