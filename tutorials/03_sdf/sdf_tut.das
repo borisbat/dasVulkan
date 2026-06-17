@@ -93,6 +93,18 @@ def public build_sdf_renderer() : SdfRenderer {
     vci.subresourceRange.layerCount = 1u
     var inscope view <- create_image_view(device, vci)
 
+    // One-time post-create layout transition UNDEFINED -> TRANSFER_SRC_OPTIMAL so render_sdf_frame
+    // can assume a stable starting layout across all frames (first frame and every subsequent one
+    // transition TRANSFER_SRC_OPTIMAL -> GENERAL -> TRANSFER_SRC_OPTIMAL, never UNDEFINED).
+    run_cmd_sync(device, pool, queue) $(cmd) {
+        let none            : VkAccessFlags
+        var transfer_read   : VkAccessFlags; transfer_read.transfer_read = true
+        var top             : VkPipelineStageFlags; top.top_of_pipe       = true
+        var xfer            : VkPipelineStageFlags; xfer.transfer         = true
+        transition_image(cmd, image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            none, transfer_read, top, xfer)
+    }
+
     // descriptor set: binding 0 = STORAGE_IMAGE, compute stage
     var dslci : DescriptorSetLayoutCreateInfo
     var b0 = DescriptorSetLayoutBinding(binding = 0u, descriptorType = VkDescriptorType.STORAGE_IMAGE, descriptorCount = 1u)
@@ -153,14 +165,14 @@ def public build_sdf_renderer() : SdfRenderer {
 def public render_sdf_frame(var r : SdfRenderer; time : float) : array<uint8> {
     var pixels : array<uint8>
     run_cmd_sync(r.device, r.pool, r.queue) $(cmd) {
-        let none          : VkAccessFlags
         var shader_write  : VkAccessFlags; shader_write.shader_write  = true
         var transfer_read : VkAccessFlags; transfer_read.transfer_read = true
-        var top           : VkPipelineStageFlags; top.top_of_pipe       = true
         var comp          : VkPipelineStageFlags; comp.compute_shader   = true
         var xfer          : VkPipelineStageFlags; xfer.transfer         = true
-        transition_image(cmd, r.image, VkImageLayout.UNDEFINED, VkImageLayout.GENERAL,
-            none, shader_write, top, comp)
+        // image enters this command buffer in TRANSFER_SRC_OPTIMAL (set up at create-time on the
+        // first frame, left there by the previous frame's final transition on every subsequent one)
+        transition_image(cmd, r.image, VkImageLayout.TRANSFER_SRC_OPTIMAL, VkImageLayout.GENERAL,
+            transfer_read, shader_write, xfer, comp)
 
         cmd_bind_pipeline(cmd, r.pipeline, VkPipelineBindPoint.COMPUTE)
         let sets <- [vk_value_to_boost(r.set)]

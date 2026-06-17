@@ -13,7 +13,7 @@ let TEST_TIME = 1.2f                    // chosen so the scene is mid-orbit and 
 
 [test]
 def test_sdf(t : T?) {
-    let p <- render_sdf(TEST_TIME)
+    var p <- render_sdf(TEST_TIME)
 
     // ----- corners: top-left and top-right should be sky (always above horizon at this camera)
     let tl = px(p, 4, 4)
@@ -49,4 +49,6 @@ def test_sdf(t : T?) {
         }
     }
     t |> success(blob_hits >= 10, "central band hits the blob (warm-toned hero): {blob_hits}/100")
+
+    delete p
 }

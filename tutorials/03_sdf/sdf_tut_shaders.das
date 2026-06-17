@@ -8,8 +8,8 @@ options indenting = 4
 // RGBA8 to a storage image. No vertex buffer, no triangles, no textures -- the whole scene is math.
 // Same compute path as the Mandelbrot zoom (storage image + push-constant time + per-frame redispatch);
 // the novelty is the shader. Authored in daslang, lowered to SPIR-V at compile time by dasSpirv --
-// the raymarch exercises user-defined function calls, ref-param out-args (the central-difference
-// normal helper), 3-vector swizzle, and a wide GLSL.std.450 cross/normalize/length/mix breadth.
+// the raymarch exercises user-defined function calls, 3-vector swizzle, and a wide GLSL.std.450
+// breadth (length / normalize / cross / dot / floor / pow / exp / cos / sin / clamp / FAbs / FMix).
 
 module sdf_tut_shaders shared public
 
@@ -89,8 +89,9 @@ def private map_d(p : float3; t : float) : float {
     return map(p, t).x
 }
 
-// Central-difference normal at p. The classic 6-tap forward-difference would also work; central is
-// twice as expensive but symmetric (no bias toward +eps).
+// Forward-difference normal at p: 4 SDF taps (1 baseline + 3 axis-displaced), normalized. Cheaper
+// than the 6-tap symmetric central difference; the slight +eps bias is invisible at this eps and at
+// our distance threshold. Upgrade to central if normals look skewed under stronger lighting.
 def private get_normal(p : float3; t : float) : float3 {
     let eps = 0.001f
     let d = map_d(p, t)

@@ -16,8 +16,10 @@ pixel. The headline rails:
   -- the raymarcher reads like CPU code;
 - **3-vector swizzle and arithmetic** (``p.xz``, ``p - float3(...)``, ``ro + rd * dist``);
 - a wide **GLSL.std.450** breadth: ``length`` / ``normalize`` / ``cross`` /
-  ``dot`` / ``floor`` / ``mix`` / ``smin`` / ``clamp`` / ``cos`` / ``sin`` /
-  ``pow`` / ``exp`` -- everything the IQ-style raymarch recipe needs.
+  ``dot`` / ``floor`` / ``lerp`` (lowered to ``FMix``) / ``clamp`` / ``cos`` /
+  ``sin`` / ``pow`` / ``exp`` -- everything the IQ-style raymarch recipe needs.
+  The smooth-union ``smin`` is a private polynomial helper in the shader, not
+  a GLSL.std.450 instruction; it lowers to ``OpFunctionCall``.
 
 Every line of the shader is daslang, lowered to SPIR-V at compile time by dasSpirv.
 
@@ -35,8 +37,10 @@ The shader
 
 The whole pipeline lives in one ``[compute_shader]`` function plus a handful
 of private helpers. ``map(p, t)`` returns ``(distance_to_nearest_surface, material_id)``
-for any point in world space; ``march`` walks the ray; ``get_normal`` does the
-classic 6-tap central difference; ``soft_shadow`` is IQ's penumbra estimate.
+for any point in world space; ``march`` walks the ray; ``get_normal`` does a
+4-tap forward difference (1 baseline + 3 axis-displaced taps -- the cheaper
+asymmetric cousin of the classic 6-tap central difference, visually identical
+at this eps + lighting); ``soft_shadow`` is IQ's penumbra estimate.
 
 .. literalinclude:: ../../../tutorials/03_sdf/sdf_tut_shaders.das
    :language: das
