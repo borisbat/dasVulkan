@@ -1742,6 +1742,35 @@ def vk_view_destroy(var b : CommandBufferInheritanceInfo) {
     pass
 }
 
+struct CommandBufferBeginInfo {
+    next : void?
+    flags : VkCommandBufferUsageFlags
+    pInheritanceInfo : CommandBufferInheritanceInfo?
+    _vk_view_pInheritanceInfo_value : CommandBufferInheritanceInfo
+    _vk_view_pInheritanceInfo_vk : VkCommandBufferInheritanceInfo
+    _vk_view_pInheritanceInfo_present : bool
+}
+def vk_view_create_unsafe(var b : CommandBufferBeginInfo) : VkCommandBufferBeginInfo {
+    var vk = VkCommandBufferBeginInfo()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    unsafe {
+        if (b.pInheritanceInfo != null) {
+            b._vk_view_pInheritanceInfo_value := *b.pInheritanceInfo
+            b._vk_view_pInheritanceInfo_vk = vk_view_create_unsafe(b._vk_view_pInheritanceInfo_value)
+            b._vk_view_pInheritanceInfo_present = true
+            vk.pInheritanceInfo = addr(b._vk_view_pInheritanceInfo_vk)
+        }
+    }
+    return <- vk
+}
+def vk_view_destroy(var b : CommandBufferBeginInfo) {
+    if (b._vk_view_pInheritanceInfo_present) {
+        vk_view_destroy(b._vk_view_pInheritanceInfo_value)
+        b._vk_view_pInheritanceInfo_present = false
+    }
+}
+
 struct ClearDepthStencilValue {
     depth : float
     stencil : uint
@@ -1814,6 +1843,76 @@ def vk_view_destroy(var b : AttachmentReference) {
     pass
 }
 
+struct SubpassDescription {
+    flags : VkSubpassDescriptionFlags
+    pipelineBindPoint : VkPipelineBindPoint
+    pInputAttachments : array<AttachmentReference>
+    pColorAttachments : array<AttachmentReference>
+    pResolveAttachments : array<AttachmentReference>
+    pDepthStencilAttachment : AttachmentReference?
+    pPreserveAttachments : array<uint>
+    _vk_view_pInputAttachments : array<VkAttachmentReference>
+    _vk_view_pColorAttachments : array<VkAttachmentReference>
+    _vk_view_pResolveAttachments : array<VkAttachmentReference>
+    _vk_view_pPreserveAttachments : array<uint>
+    _vk_view_pDepthStencilAttachment_value : AttachmentReference
+    _vk_view_pDepthStencilAttachment_vk : VkAttachmentReference
+    _vk_view_pDepthStencilAttachment_present : bool
+}
+def vk_view_create_unsafe(var b : SubpassDescription) : VkSubpassDescription {
+    var vk = VkSubpassDescription()
+    vk.flags = b.flags
+    vk.pipelineBindPoint = b.pipelineBindPoint
+    b._vk_view_pInputAttachments |> resize(length(b.pInputAttachments))
+    for (vki in range(length(b.pInputAttachments))) {
+        b._vk_view_pInputAttachments[vki] = vk_view_create_unsafe(b.pInputAttachments[vki])
+    }
+    vk.pInputAttachments = array_addr(b._vk_view_pInputAttachments)
+    b._vk_view_pColorAttachments |> resize(length(b.pColorAttachments))
+    for (vki in range(length(b.pColorAttachments))) {
+        b._vk_view_pColorAttachments[vki] = vk_view_create_unsafe(b.pColorAttachments[vki])
+    }
+    vk.pColorAttachments = array_addr(b._vk_view_pColorAttachments)
+    b._vk_view_pResolveAttachments |> resize(length(b.pResolveAttachments))
+    for (vki in range(length(b.pResolveAttachments))) {
+        b._vk_view_pResolveAttachments[vki] = vk_view_create_unsafe(b.pResolveAttachments[vki])
+    }
+    vk.pResolveAttachments = array_addr(b._vk_view_pResolveAttachments)
+    unsafe {
+        if (b.pDepthStencilAttachment != null) {
+            b._vk_view_pDepthStencilAttachment_value := *b.pDepthStencilAttachment
+            b._vk_view_pDepthStencilAttachment_vk = vk_view_create_unsafe(b._vk_view_pDepthStencilAttachment_value)
+            b._vk_view_pDepthStencilAttachment_present = true
+            vk.pDepthStencilAttachment = addr(b._vk_view_pDepthStencilAttachment_vk)
+        }
+    }
+    b._vk_view_pPreserveAttachments := b.pPreserveAttachments
+    vk.pPreserveAttachments = array_addr(b._vk_view_pPreserveAttachments)
+    vk.inputAttachmentCount = uint(length(b.pInputAttachments))
+    vk.colorAttachmentCount = uint(length(b.pColorAttachments))
+    vk.preserveAttachmentCount = uint(length(b.pPreserveAttachments))
+    return <- vk
+}
+def vk_view_destroy(var b : SubpassDescription) {
+    for (vki in range(length(b.pInputAttachments))) {
+        vk_view_destroy(b.pInputAttachments[vki])
+    }
+    delete b._vk_view_pInputAttachments
+    for (vki in range(length(b.pColorAttachments))) {
+        vk_view_destroy(b.pColorAttachments[vki])
+    }
+    delete b._vk_view_pColorAttachments
+    for (vki in range(length(b.pResolveAttachments))) {
+        vk_view_destroy(b.pResolveAttachments[vki])
+    }
+    delete b._vk_view_pResolveAttachments
+    if (b._vk_view_pDepthStencilAttachment_present) {
+        vk_view_destroy(b._vk_view_pDepthStencilAttachment_value)
+        b._vk_view_pDepthStencilAttachment_present = false
+    }
+    delete b._vk_view_pPreserveAttachments
+}
+
 struct SubpassDependency {
     srcSubpass : uint
     dstSubpass : uint
@@ -1836,6 +1935,55 @@ def vk_view_create_unsafe(var b : SubpassDependency) : VkSubpassDependency {
 }
 def vk_view_destroy(var b : SubpassDependency) {
     pass
+}
+
+struct RenderPassCreateInfo {
+    next : void?
+    flags : VkRenderPassCreateFlags
+    pAttachments : array<AttachmentDescription>
+    pSubpasses : array<SubpassDescription>
+    pDependencies : array<SubpassDependency>
+    _vk_view_pAttachments : array<VkAttachmentDescription>
+    _vk_view_pSubpasses : array<VkSubpassDescription>
+    _vk_view_pDependencies : array<VkSubpassDependency>
+}
+def vk_view_create_unsafe(var b : RenderPassCreateInfo) : VkRenderPassCreateInfo {
+    var vk = VkRenderPassCreateInfo()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    b._vk_view_pAttachments |> resize(length(b.pAttachments))
+    for (vki in range(length(b.pAttachments))) {
+        b._vk_view_pAttachments[vki] = vk_view_create_unsafe(b.pAttachments[vki])
+    }
+    vk.pAttachments = array_addr(b._vk_view_pAttachments)
+    b._vk_view_pSubpasses |> resize(length(b.pSubpasses))
+    for (vki in range(length(b.pSubpasses))) {
+        b._vk_view_pSubpasses[vki] = vk_view_create_unsafe(b.pSubpasses[vki])
+    }
+    vk.pSubpasses = array_addr(b._vk_view_pSubpasses)
+    b._vk_view_pDependencies |> resize(length(b.pDependencies))
+    for (vki in range(length(b.pDependencies))) {
+        b._vk_view_pDependencies[vki] = vk_view_create_unsafe(b.pDependencies[vki])
+    }
+    vk.pDependencies = array_addr(b._vk_view_pDependencies)
+    vk.attachmentCount = uint(length(b.pAttachments))
+    vk.subpassCount = uint(length(b.pSubpasses))
+    vk.dependencyCount = uint(length(b.pDependencies))
+    return <- vk
+}
+def vk_view_destroy(var b : RenderPassCreateInfo) {
+    for (vki in range(length(b.pAttachments))) {
+        vk_view_destroy(b.pAttachments[vki])
+    }
+    delete b._vk_view_pAttachments
+    for (vki in range(length(b.pSubpasses))) {
+        vk_view_destroy(b.pSubpasses[vki])
+    }
+    delete b._vk_view_pSubpasses
+    for (vki in range(length(b.pDependencies))) {
+        vk_view_destroy(b.pDependencies[vki])
+    }
+    delete b._vk_view_pDependencies
 }
 
 struct EventCreateInfo {
@@ -6514,6 +6662,80 @@ def vk_view_destroy(var b : AttachmentReference2) {
     pass
 }
 
+struct SubpassDescription2 {
+    next : void?
+    flags : VkSubpassDescriptionFlags
+    pipelineBindPoint : VkPipelineBindPoint
+    viewMask : uint
+    pInputAttachments : array<AttachmentReference2>
+    pColorAttachments : array<AttachmentReference2>
+    pResolveAttachments : array<AttachmentReference2>
+    pDepthStencilAttachment : AttachmentReference2?
+    pPreserveAttachments : array<uint>
+    _vk_view_pInputAttachments : array<VkAttachmentReference2>
+    _vk_view_pColorAttachments : array<VkAttachmentReference2>
+    _vk_view_pResolveAttachments : array<VkAttachmentReference2>
+    _vk_view_pPreserveAttachments : array<uint>
+    _vk_view_pDepthStencilAttachment_value : AttachmentReference2
+    _vk_view_pDepthStencilAttachment_vk : VkAttachmentReference2
+    _vk_view_pDepthStencilAttachment_present : bool
+}
+def vk_view_create_unsafe(var b : SubpassDescription2) : VkSubpassDescription2 {
+    var vk = VkSubpassDescription2()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    vk.pipelineBindPoint = b.pipelineBindPoint
+    vk.viewMask = b.viewMask
+    b._vk_view_pInputAttachments |> resize(length(b.pInputAttachments))
+    for (vki in range(length(b.pInputAttachments))) {
+        b._vk_view_pInputAttachments[vki] = vk_view_create_unsafe(b.pInputAttachments[vki])
+    }
+    vk.pInputAttachments = array_addr(b._vk_view_pInputAttachments)
+    b._vk_view_pColorAttachments |> resize(length(b.pColorAttachments))
+    for (vki in range(length(b.pColorAttachments))) {
+        b._vk_view_pColorAttachments[vki] = vk_view_create_unsafe(b.pColorAttachments[vki])
+    }
+    vk.pColorAttachments = array_addr(b._vk_view_pColorAttachments)
+    b._vk_view_pResolveAttachments |> resize(length(b.pResolveAttachments))
+    for (vki in range(length(b.pResolveAttachments))) {
+        b._vk_view_pResolveAttachments[vki] = vk_view_create_unsafe(b.pResolveAttachments[vki])
+    }
+    vk.pResolveAttachments = array_addr(b._vk_view_pResolveAttachments)
+    unsafe {
+        if (b.pDepthStencilAttachment != null) {
+            b._vk_view_pDepthStencilAttachment_value := *b.pDepthStencilAttachment
+            b._vk_view_pDepthStencilAttachment_vk = vk_view_create_unsafe(b._vk_view_pDepthStencilAttachment_value)
+            b._vk_view_pDepthStencilAttachment_present = true
+            vk.pDepthStencilAttachment = addr(b._vk_view_pDepthStencilAttachment_vk)
+        }
+    }
+    b._vk_view_pPreserveAttachments := b.pPreserveAttachments
+    vk.pPreserveAttachments = array_addr(b._vk_view_pPreserveAttachments)
+    vk.inputAttachmentCount = uint(length(b.pInputAttachments))
+    vk.colorAttachmentCount = uint(length(b.pColorAttachments))
+    vk.preserveAttachmentCount = uint(length(b.pPreserveAttachments))
+    return <- vk
+}
+def vk_view_destroy(var b : SubpassDescription2) {
+    for (vki in range(length(b.pInputAttachments))) {
+        vk_view_destroy(b.pInputAttachments[vki])
+    }
+    delete b._vk_view_pInputAttachments
+    for (vki in range(length(b.pColorAttachments))) {
+        vk_view_destroy(b.pColorAttachments[vki])
+    }
+    delete b._vk_view_pColorAttachments
+    for (vki in range(length(b.pResolveAttachments))) {
+        vk_view_destroy(b.pResolveAttachments[vki])
+    }
+    delete b._vk_view_pResolveAttachments
+    if (b._vk_view_pDepthStencilAttachment_present) {
+        vk_view_destroy(b._vk_view_pDepthStencilAttachment_value)
+        b._vk_view_pDepthStencilAttachment_present = false
+    }
+    delete b._vk_view_pPreserveAttachments
+}
+
 struct SubpassDependency2 {
     next : void?
     srcSubpass : uint
@@ -6540,6 +6762,61 @@ def vk_view_create_unsafe(var b : SubpassDependency2) : VkSubpassDependency2 {
 }
 def vk_view_destroy(var b : SubpassDependency2) {
     pass
+}
+
+struct RenderPassCreateInfo2 {
+    next : void?
+    flags : VkRenderPassCreateFlags
+    pAttachments : array<AttachmentDescription2>
+    pSubpasses : array<SubpassDescription2>
+    pDependencies : array<SubpassDependency2>
+    pCorrelatedViewMasks : array<uint>
+    _vk_view_pAttachments : array<VkAttachmentDescription2>
+    _vk_view_pSubpasses : array<VkSubpassDescription2>
+    _vk_view_pDependencies : array<VkSubpassDependency2>
+    _vk_view_pCorrelatedViewMasks : array<uint>
+}
+def vk_view_create_unsafe(var b : RenderPassCreateInfo2) : VkRenderPassCreateInfo2 {
+    var vk = VkRenderPassCreateInfo2()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    b._vk_view_pAttachments |> resize(length(b.pAttachments))
+    for (vki in range(length(b.pAttachments))) {
+        b._vk_view_pAttachments[vki] = vk_view_create_unsafe(b.pAttachments[vki])
+    }
+    vk.pAttachments = array_addr(b._vk_view_pAttachments)
+    b._vk_view_pSubpasses |> resize(length(b.pSubpasses))
+    for (vki in range(length(b.pSubpasses))) {
+        b._vk_view_pSubpasses[vki] = vk_view_create_unsafe(b.pSubpasses[vki])
+    }
+    vk.pSubpasses = array_addr(b._vk_view_pSubpasses)
+    b._vk_view_pDependencies |> resize(length(b.pDependencies))
+    for (vki in range(length(b.pDependencies))) {
+        b._vk_view_pDependencies[vki] = vk_view_create_unsafe(b.pDependencies[vki])
+    }
+    vk.pDependencies = array_addr(b._vk_view_pDependencies)
+    b._vk_view_pCorrelatedViewMasks := b.pCorrelatedViewMasks
+    vk.pCorrelatedViewMasks = array_addr(b._vk_view_pCorrelatedViewMasks)
+    vk.attachmentCount = uint(length(b.pAttachments))
+    vk.subpassCount = uint(length(b.pSubpasses))
+    vk.dependencyCount = uint(length(b.pDependencies))
+    vk.correlatedViewMaskCount = uint(length(b.pCorrelatedViewMasks))
+    return <- vk
+}
+def vk_view_destroy(var b : RenderPassCreateInfo2) {
+    for (vki in range(length(b.pAttachments))) {
+        vk_view_destroy(b.pAttachments[vki])
+    }
+    delete b._vk_view_pAttachments
+    for (vki in range(length(b.pSubpasses))) {
+        vk_view_destroy(b.pSubpasses[vki])
+    }
+    delete b._vk_view_pSubpasses
+    for (vki in range(length(b.pDependencies))) {
+        vk_view_destroy(b.pDependencies[vki])
+    }
+    delete b._vk_view_pDependencies
+    delete b._vk_view_pCorrelatedViewMasks
 }
 
 struct SubpassBeginInfo {
@@ -6966,6 +7243,37 @@ def vk_view_create_unsafe(var b : PhysicalDeviceDepthStencilResolveProperties) :
 }
 def vk_view_destroy(var b : PhysicalDeviceDepthStencilResolveProperties) {
     pass
+}
+
+struct SubpassDescriptionDepthStencilResolve {
+    next : void?
+    depthResolveMode : VkResolveModeFlags
+    stencilResolveMode : VkResolveModeFlags
+    pDepthStencilResolveAttachment : AttachmentReference2?
+    _vk_view_pDepthStencilResolveAttachment_value : AttachmentReference2
+    _vk_view_pDepthStencilResolveAttachment_vk : VkAttachmentReference2
+    _vk_view_pDepthStencilResolveAttachment_present : bool
+}
+def vk_view_create_unsafe(var b : SubpassDescriptionDepthStencilResolve) : VkSubpassDescriptionDepthStencilResolve {
+    var vk = VkSubpassDescriptionDepthStencilResolve()
+    vk.pNext = b.next
+    vk.depthResolveMode = b.depthResolveMode
+    vk.stencilResolveMode = b.stencilResolveMode
+    unsafe {
+        if (b.pDepthStencilResolveAttachment != null) {
+            b._vk_view_pDepthStencilResolveAttachment_value := *b.pDepthStencilResolveAttachment
+            b._vk_view_pDepthStencilResolveAttachment_vk = vk_view_create_unsafe(b._vk_view_pDepthStencilResolveAttachment_value)
+            b._vk_view_pDepthStencilResolveAttachment_present = true
+            vk.pDepthStencilResolveAttachment = addr(b._vk_view_pDepthStencilResolveAttachment_vk)
+        }
+    }
+    return <- vk
+}
+def vk_view_destroy(var b : SubpassDescriptionDepthStencilResolve) {
+    if (b._vk_view_pDepthStencilResolveAttachment_present) {
+        vk_view_destroy(b._vk_view_pDepthStencilResolveAttachment_value)
+        b._vk_view_pDepthStencilResolveAttachment_present = false
+    }
 }
 
 struct ImageViewASTCDecodeModeEXT {
@@ -10727,6 +11035,35 @@ def vk_view_destroy(var b : PhysicalDeviceShaderImageAtomicInt64FeaturesEXT) {
     pass
 }
 
+struct FragmentShadingRateAttachmentInfoKHR {
+    next : void?
+    pFragmentShadingRateAttachment : AttachmentReference2?
+    shadingRateAttachmentTexelSize : VkExtent2D
+    _vk_view_pFragmentShadingRateAttachment_value : AttachmentReference2
+    _vk_view_pFragmentShadingRateAttachment_vk : VkAttachmentReference2
+    _vk_view_pFragmentShadingRateAttachment_present : bool
+}
+def vk_view_create_unsafe(var b : FragmentShadingRateAttachmentInfoKHR) : VkFragmentShadingRateAttachmentInfoKHR {
+    var vk = VkFragmentShadingRateAttachmentInfoKHR()
+    vk.pNext = b.next
+    unsafe {
+        if (b.pFragmentShadingRateAttachment != null) {
+            b._vk_view_pFragmentShadingRateAttachment_value := *b.pFragmentShadingRateAttachment
+            b._vk_view_pFragmentShadingRateAttachment_vk = vk_view_create_unsafe(b._vk_view_pFragmentShadingRateAttachment_value)
+            b._vk_view_pFragmentShadingRateAttachment_present = true
+            vk.pFragmentShadingRateAttachment = addr(b._vk_view_pFragmentShadingRateAttachment_vk)
+        }
+    }
+    vk.shadingRateAttachmentTexelSize = b.shadingRateAttachmentTexelSize
+    return <- vk
+}
+def vk_view_destroy(var b : FragmentShadingRateAttachmentInfoKHR) {
+    if (b._vk_view_pFragmentShadingRateAttachment_present) {
+        vk_view_destroy(b._vk_view_pFragmentShadingRateAttachment_value)
+        b._vk_view_pFragmentShadingRateAttachment_present = false
+    }
+}
+
 struct PhysicalDeviceFragmentShadingRateFeaturesKHR {
     next : void?
     pipelineFragmentShadingRate : uint
@@ -11442,6 +11779,35 @@ def vk_view_create_unsafe(var b : PhysicalDeviceDepthClampControlFeaturesEXT) : 
 }
 def vk_view_destroy(var b : PhysicalDeviceDepthClampControlFeaturesEXT) {
     pass
+}
+
+struct PipelineViewportDepthClampControlCreateInfoEXT {
+    next : void?
+    depthClampMode : VkDepthClampModeEXT
+    pDepthClampRange : DepthClampRangeEXT?
+    _vk_view_pDepthClampRange_value : DepthClampRangeEXT
+    _vk_view_pDepthClampRange_vk : VkDepthClampRangeEXT
+    _vk_view_pDepthClampRange_present : bool
+}
+def vk_view_create_unsafe(var b : PipelineViewportDepthClampControlCreateInfoEXT) : VkPipelineViewportDepthClampControlCreateInfoEXT {
+    var vk = VkPipelineViewportDepthClampControlCreateInfoEXT()
+    vk.pNext = b.next
+    vk.depthClampMode = b.depthClampMode
+    unsafe {
+        if (b.pDepthClampRange != null) {
+            b._vk_view_pDepthClampRange_value := *b.pDepthClampRange
+            b._vk_view_pDepthClampRange_vk = vk_view_create_unsafe(b._vk_view_pDepthClampRange_value)
+            b._vk_view_pDepthClampRange_present = true
+            vk.pDepthClampRange = addr(b._vk_view_pDepthClampRange_vk)
+        }
+    }
+    return <- vk
+}
+def vk_view_destroy(var b : PipelineViewportDepthClampControlCreateInfoEXT) {
+    if (b._vk_view_pDepthClampRange_present) {
+        vk_view_destroy(b._vk_view_pDepthClampRange_value)
+        b._vk_view_pDepthClampRange_present = false
+    }
 }
 
 struct PhysicalDeviceVertexInputDynamicStateFeaturesEXT {
@@ -12347,6 +12713,35 @@ def vk_view_destroy(var b : VideoPictureResourceInfoKHR) {
     pass
 }
 
+struct VideoReferenceSlotInfoKHR {
+    next : void?
+    slotIndex : int
+    pPictureResource : VideoPictureResourceInfoKHR?
+    _vk_view_pPictureResource_value : VideoPictureResourceInfoKHR
+    _vk_view_pPictureResource_vk : VkVideoPictureResourceInfoKHR
+    _vk_view_pPictureResource_present : bool
+}
+def vk_view_create_unsafe(var b : VideoReferenceSlotInfoKHR) : VkVideoReferenceSlotInfoKHR {
+    var vk = VkVideoReferenceSlotInfoKHR()
+    vk.pNext = b.next
+    vk.slotIndex = b.slotIndex
+    unsafe {
+        if (b.pPictureResource != null) {
+            b._vk_view_pPictureResource_value := *b.pPictureResource
+            b._vk_view_pPictureResource_vk = vk_view_create_unsafe(b._vk_view_pPictureResource_value)
+            b._vk_view_pPictureResource_present = true
+            vk.pPictureResource = addr(b._vk_view_pPictureResource_vk)
+        }
+    }
+    return <- vk
+}
+def vk_view_destroy(var b : VideoReferenceSlotInfoKHR) {
+    if (b._vk_view_pPictureResource_present) {
+        vk_view_destroy(b._vk_view_pPictureResource_value)
+        b._vk_view_pPictureResource_present = false
+    }
+}
+
 struct VideoDecodeCapabilitiesKHR {
     next : void?
     flags : VkVideoDecodeCapabilityFlagsKHR
@@ -12373,6 +12768,55 @@ def vk_view_create_unsafe(var b : VideoDecodeUsageInfoKHR) : VkVideoDecodeUsageI
 }
 def vk_view_destroy(var b : VideoDecodeUsageInfoKHR) {
     pass
+}
+
+struct VideoDecodeInfoKHR {
+    next : void?
+    flags : VkVideoDecodeFlagsKHR
+    srcBuffer : Buffer
+    srcBufferOffset : uint64
+    srcBufferRange : uint64
+    dstPictureResource : VkVideoPictureResourceInfoKHR
+    pSetupReferenceSlot : VideoReferenceSlotInfoKHR?
+    pReferenceSlots : array<VideoReferenceSlotInfoKHR>
+    _vk_view_pReferenceSlots : array<VkVideoReferenceSlotInfoKHR>
+    _vk_view_pSetupReferenceSlot_value : VideoReferenceSlotInfoKHR
+    _vk_view_pSetupReferenceSlot_vk : VkVideoReferenceSlotInfoKHR
+    _vk_view_pSetupReferenceSlot_present : bool
+}
+def vk_view_create_unsafe(var b : VideoDecodeInfoKHR) : VkVideoDecodeInfoKHR {
+    var vk = VkVideoDecodeInfoKHR()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    vk.srcBuffer = boost_value_to_vk(b.srcBuffer)
+    vk.srcBufferOffset = b.srcBufferOffset
+    vk.srcBufferRange = b.srcBufferRange
+    vk.dstPictureResource = b.dstPictureResource
+    unsafe {
+        if (b.pSetupReferenceSlot != null) {
+            b._vk_view_pSetupReferenceSlot_value := *b.pSetupReferenceSlot
+            b._vk_view_pSetupReferenceSlot_vk = vk_view_create_unsafe(b._vk_view_pSetupReferenceSlot_value)
+            b._vk_view_pSetupReferenceSlot_present = true
+            vk.pSetupReferenceSlot = addr(b._vk_view_pSetupReferenceSlot_vk)
+        }
+    }
+    b._vk_view_pReferenceSlots |> resize(length(b.pReferenceSlots))
+    for (vki in range(length(b.pReferenceSlots))) {
+        b._vk_view_pReferenceSlots[vki] = vk_view_create_unsafe(b.pReferenceSlots[vki])
+    }
+    vk.pReferenceSlots = array_addr(b._vk_view_pReferenceSlots)
+    vk.referenceSlotCount = uint(length(b.pReferenceSlots))
+    return <- vk
+}
+def vk_view_destroy(var b : VideoDecodeInfoKHR) {
+    if (b._vk_view_pSetupReferenceSlot_present) {
+        vk_view_destroy(b._vk_view_pSetupReferenceSlot_value)
+        b._vk_view_pSetupReferenceSlot_present = false
+    }
+    for (vki in range(length(b.pReferenceSlots))) {
+        vk_view_destroy(b.pReferenceSlots[vki])
+    }
+    delete b._vk_view_pReferenceSlots
 }
 
 struct PhysicalDeviceVideoMaintenance1FeaturesKHR {
@@ -12495,6 +12939,35 @@ def vk_view_destroy(var b : VideoEncodeSessionParametersFeedbackInfoKHR) {
     pass
 }
 
+struct VideoBeginCodingInfoKHR {
+    next : void?
+    flags : VkVideoBeginCodingFlagsKHR
+    videoSession : VideoSessionKHR
+    videoSessionParameters : VideoSessionParametersKHR
+    pReferenceSlots : array<VideoReferenceSlotInfoKHR>
+    _vk_view_pReferenceSlots : array<VkVideoReferenceSlotInfoKHR>
+}
+def vk_view_create_unsafe(var b : VideoBeginCodingInfoKHR) : VkVideoBeginCodingInfoKHR {
+    var vk = VkVideoBeginCodingInfoKHR()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    vk.videoSession = boost_value_to_vk(b.videoSession)
+    vk.videoSessionParameters = boost_value_to_vk(b.videoSessionParameters)
+    b._vk_view_pReferenceSlots |> resize(length(b.pReferenceSlots))
+    for (vki in range(length(b.pReferenceSlots))) {
+        b._vk_view_pReferenceSlots[vki] = vk_view_create_unsafe(b.pReferenceSlots[vki])
+    }
+    vk.pReferenceSlots = array_addr(b._vk_view_pReferenceSlots)
+    vk.referenceSlotCount = uint(length(b.pReferenceSlots))
+    return <- vk
+}
+def vk_view_destroy(var b : VideoBeginCodingInfoKHR) {
+    for (vki in range(length(b.pReferenceSlots))) {
+        vk_view_destroy(b.pReferenceSlots[vki])
+    }
+    delete b._vk_view_pReferenceSlots
+}
+
 struct VideoEndCodingInfoKHR {
     next : void?
     flags : VkVideoEndCodingFlagsKHR
@@ -12539,6 +13012,57 @@ def vk_view_create_unsafe(var b : VideoEncodeUsageInfoKHR) : VkVideoEncodeUsageI
 }
 def vk_view_destroy(var b : VideoEncodeUsageInfoKHR) {
     pass
+}
+
+struct VideoEncodeInfoKHR {
+    next : void?
+    flags : VkVideoEncodeFlagsKHR
+    dstBuffer : Buffer
+    dstBufferOffset : uint64
+    dstBufferRange : uint64
+    srcPictureResource : VkVideoPictureResourceInfoKHR
+    pSetupReferenceSlot : VideoReferenceSlotInfoKHR?
+    pReferenceSlots : array<VideoReferenceSlotInfoKHR>
+    precedingExternallyEncodedBytes : uint
+    _vk_view_pReferenceSlots : array<VkVideoReferenceSlotInfoKHR>
+    _vk_view_pSetupReferenceSlot_value : VideoReferenceSlotInfoKHR
+    _vk_view_pSetupReferenceSlot_vk : VkVideoReferenceSlotInfoKHR
+    _vk_view_pSetupReferenceSlot_present : bool
+}
+def vk_view_create_unsafe(var b : VideoEncodeInfoKHR) : VkVideoEncodeInfoKHR {
+    var vk = VkVideoEncodeInfoKHR()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    vk.dstBuffer = boost_value_to_vk(b.dstBuffer)
+    vk.dstBufferOffset = b.dstBufferOffset
+    vk.dstBufferRange = b.dstBufferRange
+    vk.srcPictureResource = b.srcPictureResource
+    unsafe {
+        if (b.pSetupReferenceSlot != null) {
+            b._vk_view_pSetupReferenceSlot_value := *b.pSetupReferenceSlot
+            b._vk_view_pSetupReferenceSlot_vk = vk_view_create_unsafe(b._vk_view_pSetupReferenceSlot_value)
+            b._vk_view_pSetupReferenceSlot_present = true
+            vk.pSetupReferenceSlot = addr(b._vk_view_pSetupReferenceSlot_vk)
+        }
+    }
+    b._vk_view_pReferenceSlots |> resize(length(b.pReferenceSlots))
+    for (vki in range(length(b.pReferenceSlots))) {
+        b._vk_view_pReferenceSlots[vki] = vk_view_create_unsafe(b.pReferenceSlots[vki])
+    }
+    vk.pReferenceSlots = array_addr(b._vk_view_pReferenceSlots)
+    vk.precedingExternallyEncodedBytes = b.precedingExternallyEncodedBytes
+    vk.referenceSlotCount = uint(length(b.pReferenceSlots))
+    return <- vk
+}
+def vk_view_destroy(var b : VideoEncodeInfoKHR) {
+    if (b._vk_view_pSetupReferenceSlot_present) {
+        vk_view_destroy(b._vk_view_pSetupReferenceSlot_value)
+        b._vk_view_pSetupReferenceSlot_present = false
+    }
+    for (vki in range(length(b.pReferenceSlots))) {
+        vk_view_destroy(b.pReferenceSlots[vki])
+    }
+    delete b._vk_view_pReferenceSlots
 }
 
 struct VideoEncodeQuantizationMapInfoKHR {
@@ -13984,6 +14508,69 @@ def vk_view_create_unsafe(var b : DrmFormatModifierProperties2EXT) : VkDrmFormat
 }
 def vk_view_destroy(var b : DrmFormatModifierProperties2EXT) {
     pass
+}
+
+struct RenderingInfo {
+    next : void?
+    flags : VkRenderingFlags
+    renderArea : VkRect2D
+    layerCount : uint
+    viewMask : uint
+    pColorAttachments : array<RenderingAttachmentInfo>
+    pDepthAttachment : RenderingAttachmentInfo?
+    pStencilAttachment : RenderingAttachmentInfo?
+    _vk_view_pColorAttachments : array<VkRenderingAttachmentInfo>
+    _vk_view_pDepthAttachment_value : RenderingAttachmentInfo
+    _vk_view_pDepthAttachment_vk : VkRenderingAttachmentInfo
+    _vk_view_pDepthAttachment_present : bool
+    _vk_view_pStencilAttachment_value : RenderingAttachmentInfo
+    _vk_view_pStencilAttachment_vk : VkRenderingAttachmentInfo
+    _vk_view_pStencilAttachment_present : bool
+}
+def vk_view_create_unsafe(var b : RenderingInfo) : VkRenderingInfo {
+    var vk = VkRenderingInfo()
+    vk.pNext = b.next
+    vk.flags = b.flags
+    vk.renderArea = b.renderArea
+    vk.layerCount = b.layerCount
+    vk.viewMask = b.viewMask
+    b._vk_view_pColorAttachments |> resize(length(b.pColorAttachments))
+    for (vki in range(length(b.pColorAttachments))) {
+        b._vk_view_pColorAttachments[vki] = vk_view_create_unsafe(b.pColorAttachments[vki])
+    }
+    vk.pColorAttachments = array_addr(b._vk_view_pColorAttachments)
+    unsafe {
+        if (b.pDepthAttachment != null) {
+            b._vk_view_pDepthAttachment_value := *b.pDepthAttachment
+            b._vk_view_pDepthAttachment_vk = vk_view_create_unsafe(b._vk_view_pDepthAttachment_value)
+            b._vk_view_pDepthAttachment_present = true
+            vk.pDepthAttachment = addr(b._vk_view_pDepthAttachment_vk)
+        }
+    }
+    unsafe {
+        if (b.pStencilAttachment != null) {
+            b._vk_view_pStencilAttachment_value := *b.pStencilAttachment
+            b._vk_view_pStencilAttachment_vk = vk_view_create_unsafe(b._vk_view_pStencilAttachment_value)
+            b._vk_view_pStencilAttachment_present = true
+            vk.pStencilAttachment = addr(b._vk_view_pStencilAttachment_vk)
+        }
+    }
+    vk.colorAttachmentCount = uint(length(b.pColorAttachments))
+    return <- vk
+}
+def vk_view_destroy(var b : RenderingInfo) {
+    for (vki in range(length(b.pColorAttachments))) {
+        vk_view_destroy(b.pColorAttachments[vki])
+    }
+    delete b._vk_view_pColorAttachments
+    if (b._vk_view_pDepthAttachment_present) {
+        vk_view_destroy(b._vk_view_pDepthAttachment_value)
+        b._vk_view_pDepthAttachment_present = false
+    }
+    if (b._vk_view_pStencilAttachment_present) {
+        vk_view_destroy(b._vk_view_pStencilAttachment_value)
+        b._vk_view_pStencilAttachment_present = false
+    }
 }
 
 struct RenderingEndInfoKHR {
@@ -15874,6 +16461,37 @@ def vk_view_create_unsafe(var b : PhysicalDeviceAntiLagFeaturesAMD) : VkPhysical
 }
 def vk_view_destroy(var b : PhysicalDeviceAntiLagFeaturesAMD) {
     pass
+}
+
+struct AntiLagDataAMD {
+    next : void?
+    mode : VkAntiLagModeAMD
+    maxFPS : uint
+    pPresentationInfo : AntiLagPresentationInfoAMD?
+    _vk_view_pPresentationInfo_value : AntiLagPresentationInfoAMD
+    _vk_view_pPresentationInfo_vk : VkAntiLagPresentationInfoAMD
+    _vk_view_pPresentationInfo_present : bool
+}
+def vk_view_create_unsafe(var b : AntiLagDataAMD) : VkAntiLagDataAMD {
+    var vk = VkAntiLagDataAMD()
+    vk.pNext = b.next
+    vk.mode = b.mode
+    vk.maxFPS = b.maxFPS
+    unsafe {
+        if (b.pPresentationInfo != null) {
+            b._vk_view_pPresentationInfo_value := *b.pPresentationInfo
+            b._vk_view_pPresentationInfo_vk = vk_view_create_unsafe(b._vk_view_pPresentationInfo_value)
+            b._vk_view_pPresentationInfo_present = true
+            vk.pPresentationInfo = addr(b._vk_view_pPresentationInfo_vk)
+        }
+    }
+    return <- vk
+}
+def vk_view_destroy(var b : AntiLagDataAMD) {
+    if (b._vk_view_pPresentationInfo_present) {
+        vk_view_destroy(b._vk_view_pPresentationInfo_value)
+        b._vk_view_pPresentationInfo_present = false
+    }
 }
 
 struct AntiLagPresentationInfoAMD {
@@ -18474,6 +19092,172 @@ def vk_view_destroy(var b : PushDataInfoEXT) {
     pass
 }
 
+struct DescriptorMappingSourceConstantOffsetEXT {
+    heapOffset : uint
+    heapArrayStride : uint
+    pEmbeddedSampler : SamplerCreateInfo?
+    samplerHeapOffset : uint
+    samplerHeapArrayStride : uint
+    _vk_view_pEmbeddedSampler_value : SamplerCreateInfo
+    _vk_view_pEmbeddedSampler_vk : VkSamplerCreateInfo
+    _vk_view_pEmbeddedSampler_present : bool
+}
+def vk_view_create_unsafe(var b : DescriptorMappingSourceConstantOffsetEXT) : VkDescriptorMappingSourceConstantOffsetEXT {
+    var vk = VkDescriptorMappingSourceConstantOffsetEXT()
+    vk.heapOffset = b.heapOffset
+    vk.heapArrayStride = b.heapArrayStride
+    unsafe {
+        if (b.pEmbeddedSampler != null) {
+            b._vk_view_pEmbeddedSampler_value := *b.pEmbeddedSampler
+            b._vk_view_pEmbeddedSampler_vk = vk_view_create_unsafe(b._vk_view_pEmbeddedSampler_value)
+            b._vk_view_pEmbeddedSampler_present = true
+            vk.pEmbeddedSampler = addr(b._vk_view_pEmbeddedSampler_vk)
+        }
+    }
+    vk.samplerHeapOffset = b.samplerHeapOffset
+    vk.samplerHeapArrayStride = b.samplerHeapArrayStride
+    return <- vk
+}
+def vk_view_destroy(var b : DescriptorMappingSourceConstantOffsetEXT) {
+    if (b._vk_view_pEmbeddedSampler_present) {
+        vk_view_destroy(b._vk_view_pEmbeddedSampler_value)
+        b._vk_view_pEmbeddedSampler_present = false
+    }
+}
+
+struct DescriptorMappingSourcePushIndexEXT {
+    heapOffset : uint
+    pushOffset : uint
+    heapIndexStride : uint
+    heapArrayStride : uint
+    pEmbeddedSampler : SamplerCreateInfo?
+    useCombinedImageSamplerIndex : uint
+    samplerHeapOffset : uint
+    samplerPushOffset : uint
+    samplerHeapIndexStride : uint
+    samplerHeapArrayStride : uint
+    _vk_view_pEmbeddedSampler_value : SamplerCreateInfo
+    _vk_view_pEmbeddedSampler_vk : VkSamplerCreateInfo
+    _vk_view_pEmbeddedSampler_present : bool
+}
+def vk_view_create_unsafe(var b : DescriptorMappingSourcePushIndexEXT) : VkDescriptorMappingSourcePushIndexEXT {
+    var vk = VkDescriptorMappingSourcePushIndexEXT()
+    vk.heapOffset = b.heapOffset
+    vk.pushOffset = b.pushOffset
+    vk.heapIndexStride = b.heapIndexStride
+    vk.heapArrayStride = b.heapArrayStride
+    unsafe {
+        if (b.pEmbeddedSampler != null) {
+            b._vk_view_pEmbeddedSampler_value := *b.pEmbeddedSampler
+            b._vk_view_pEmbeddedSampler_vk = vk_view_create_unsafe(b._vk_view_pEmbeddedSampler_value)
+            b._vk_view_pEmbeddedSampler_present = true
+            vk.pEmbeddedSampler = addr(b._vk_view_pEmbeddedSampler_vk)
+        }
+    }
+    vk.useCombinedImageSamplerIndex = b.useCombinedImageSamplerIndex
+    vk.samplerHeapOffset = b.samplerHeapOffset
+    vk.samplerPushOffset = b.samplerPushOffset
+    vk.samplerHeapIndexStride = b.samplerHeapIndexStride
+    vk.samplerHeapArrayStride = b.samplerHeapArrayStride
+    return <- vk
+}
+def vk_view_destroy(var b : DescriptorMappingSourcePushIndexEXT) {
+    if (b._vk_view_pEmbeddedSampler_present) {
+        vk_view_destroy(b._vk_view_pEmbeddedSampler_value)
+        b._vk_view_pEmbeddedSampler_present = false
+    }
+}
+
+struct DescriptorMappingSourceIndirectIndexEXT {
+    heapOffset : uint
+    pushOffset : uint
+    addressOffset : uint
+    heapIndexStride : uint
+    heapArrayStride : uint
+    pEmbeddedSampler : SamplerCreateInfo?
+    useCombinedImageSamplerIndex : uint
+    samplerHeapOffset : uint
+    samplerPushOffset : uint
+    samplerAddressOffset : uint
+    samplerHeapIndexStride : uint
+    samplerHeapArrayStride : uint
+    _vk_view_pEmbeddedSampler_value : SamplerCreateInfo
+    _vk_view_pEmbeddedSampler_vk : VkSamplerCreateInfo
+    _vk_view_pEmbeddedSampler_present : bool
+}
+def vk_view_create_unsafe(var b : DescriptorMappingSourceIndirectIndexEXT) : VkDescriptorMappingSourceIndirectIndexEXT {
+    var vk = VkDescriptorMappingSourceIndirectIndexEXT()
+    vk.heapOffset = b.heapOffset
+    vk.pushOffset = b.pushOffset
+    vk.addressOffset = b.addressOffset
+    vk.heapIndexStride = b.heapIndexStride
+    vk.heapArrayStride = b.heapArrayStride
+    unsafe {
+        if (b.pEmbeddedSampler != null) {
+            b._vk_view_pEmbeddedSampler_value := *b.pEmbeddedSampler
+            b._vk_view_pEmbeddedSampler_vk = vk_view_create_unsafe(b._vk_view_pEmbeddedSampler_value)
+            b._vk_view_pEmbeddedSampler_present = true
+            vk.pEmbeddedSampler = addr(b._vk_view_pEmbeddedSampler_vk)
+        }
+    }
+    vk.useCombinedImageSamplerIndex = b.useCombinedImageSamplerIndex
+    vk.samplerHeapOffset = b.samplerHeapOffset
+    vk.samplerPushOffset = b.samplerPushOffset
+    vk.samplerAddressOffset = b.samplerAddressOffset
+    vk.samplerHeapIndexStride = b.samplerHeapIndexStride
+    vk.samplerHeapArrayStride = b.samplerHeapArrayStride
+    return <- vk
+}
+def vk_view_destroy(var b : DescriptorMappingSourceIndirectIndexEXT) {
+    if (b._vk_view_pEmbeddedSampler_present) {
+        vk_view_destroy(b._vk_view_pEmbeddedSampler_value)
+        b._vk_view_pEmbeddedSampler_present = false
+    }
+}
+
+struct DescriptorMappingSourceIndirectIndexArrayEXT {
+    heapOffset : uint
+    pushOffset : uint
+    addressOffset : uint
+    heapIndexStride : uint
+    pEmbeddedSampler : SamplerCreateInfo?
+    useCombinedImageSamplerIndex : uint
+    samplerHeapOffset : uint
+    samplerPushOffset : uint
+    samplerAddressOffset : uint
+    samplerHeapIndexStride : uint
+    _vk_view_pEmbeddedSampler_value : SamplerCreateInfo
+    _vk_view_pEmbeddedSampler_vk : VkSamplerCreateInfo
+    _vk_view_pEmbeddedSampler_present : bool
+}
+def vk_view_create_unsafe(var b : DescriptorMappingSourceIndirectIndexArrayEXT) : VkDescriptorMappingSourceIndirectIndexArrayEXT {
+    var vk = VkDescriptorMappingSourceIndirectIndexArrayEXT()
+    vk.heapOffset = b.heapOffset
+    vk.pushOffset = b.pushOffset
+    vk.addressOffset = b.addressOffset
+    vk.heapIndexStride = b.heapIndexStride
+    unsafe {
+        if (b.pEmbeddedSampler != null) {
+            b._vk_view_pEmbeddedSampler_value := *b.pEmbeddedSampler
+            b._vk_view_pEmbeddedSampler_vk = vk_view_create_unsafe(b._vk_view_pEmbeddedSampler_value)
+            b._vk_view_pEmbeddedSampler_present = true
+            vk.pEmbeddedSampler = addr(b._vk_view_pEmbeddedSampler_vk)
+        }
+    }
+    vk.useCombinedImageSamplerIndex = b.useCombinedImageSamplerIndex
+    vk.samplerHeapOffset = b.samplerHeapOffset
+    vk.samplerPushOffset = b.samplerPushOffset
+    vk.samplerAddressOffset = b.samplerAddressOffset
+    vk.samplerHeapIndexStride = b.samplerHeapIndexStride
+    return <- vk
+}
+def vk_view_destroy(var b : DescriptorMappingSourceIndirectIndexArrayEXT) {
+    if (b._vk_view_pEmbeddedSampler_present) {
+        vk_view_destroy(b._vk_view_pEmbeddedSampler_value)
+        b._vk_view_pEmbeddedSampler_present = false
+    }
+}
+
 struct DescriptorMappingSourceHeapDataEXT {
     heapOffset : uint
     pushOffset : uint
@@ -18486,6 +19270,49 @@ def vk_view_create_unsafe(var b : DescriptorMappingSourceHeapDataEXT) : VkDescri
 }
 def vk_view_destroy(var b : DescriptorMappingSourceHeapDataEXT) {
     pass
+}
+
+struct DescriptorMappingSourceShaderRecordIndexEXT {
+    heapOffset : uint
+    shaderRecordOffset : uint
+    heapIndexStride : uint
+    heapArrayStride : uint
+    pEmbeddedSampler : SamplerCreateInfo?
+    useCombinedImageSamplerIndex : uint
+    samplerHeapOffset : uint
+    samplerShaderRecordOffset : uint
+    samplerHeapIndexStride : uint
+    samplerHeapArrayStride : uint
+    _vk_view_pEmbeddedSampler_value : SamplerCreateInfo
+    _vk_view_pEmbeddedSampler_vk : VkSamplerCreateInfo
+    _vk_view_pEmbeddedSampler_present : bool
+}
+def vk_view_create_unsafe(var b : DescriptorMappingSourceShaderRecordIndexEXT) : VkDescriptorMappingSourceShaderRecordIndexEXT {
+    var vk = VkDescriptorMappingSourceShaderRecordIndexEXT()
+    vk.heapOffset = b.heapOffset
+    vk.shaderRecordOffset = b.shaderRecordOffset
+    vk.heapIndexStride = b.heapIndexStride
+    vk.heapArrayStride = b.heapArrayStride
+    unsafe {
+        if (b.pEmbeddedSampler != null) {
+            b._vk_view_pEmbeddedSampler_value := *b.pEmbeddedSampler
+            b._vk_view_pEmbeddedSampler_vk = vk_view_create_unsafe(b._vk_view_pEmbeddedSampler_value)
+            b._vk_view_pEmbeddedSampler_present = true
+            vk.pEmbeddedSampler = addr(b._vk_view_pEmbeddedSampler_vk)
+        }
+    }
+    vk.useCombinedImageSamplerIndex = b.useCombinedImageSamplerIndex
+    vk.samplerHeapOffset = b.samplerHeapOffset
+    vk.samplerShaderRecordOffset = b.samplerShaderRecordOffset
+    vk.samplerHeapIndexStride = b.samplerHeapIndexStride
+    vk.samplerHeapArrayStride = b.samplerHeapArrayStride
+    return <- vk
+}
+def vk_view_destroy(var b : DescriptorMappingSourceShaderRecordIndexEXT) {
+    if (b._vk_view_pEmbeddedSampler_present) {
+        vk_view_destroy(b._vk_view_pEmbeddedSampler_value)
+        b._vk_view_pEmbeddedSampler_present = false
+    }
 }
 
 struct DescriptorMappingSourceIndirectAddressEXT {

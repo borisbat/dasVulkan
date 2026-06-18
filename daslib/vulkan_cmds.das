@@ -300,6 +300,12 @@ def reset_command_pool(device : Device; commandPool : CommandPool; flags : VkCom
     vk_check(vkResetCommandPool(boost_value_to_vk(device), boost_value_to_vk(commandPool), flags), result)
 }
 
+def begin_command_buffer(commandBuffer : CommandBuffer; var pBeginInfo : CommandBufferBeginInfo; var result : VkResult? = null) {
+    let vkview_pBeginInfo = vk_view_create_unsafe(pBeginInfo)
+    defer() { vk_view_destroy(pBeginInfo) }
+    vk_check(vkBeginCommandBuffer(boost_value_to_vk(commandBuffer), vkview_pBeginInfo), result)
+}
+
 def end_command_buffer(commandBuffer : CommandBuffer; var result : VkResult? = null) {
     vk_check(vkEndCommandBuffer(boost_value_to_vk(commandBuffer)), result)
 }
@@ -1811,6 +1817,12 @@ def get_pipeline_indirect_device_address_n_v(device : Device; var pInfo : Pipeli
     return vkret
 }
 
+def anti_lag_update_a_m_d(device : Device; var pData : AntiLagDataAMD) {
+    let vkview_pData = vk_view_create_unsafe(pData)
+    defer() { vk_view_destroy(pData) }
+    vkAntiLagUpdateAMD(boost_value_to_vk(device), vkview_pData)
+}
+
 def cmd_set_cull_mode(commandBuffer : CommandBuffer; cullMode : VkCullModeFlags) {
     vkCmdSetCullMode(boost_value_to_vk(commandBuffer), cullMode)
 }
@@ -2238,6 +2250,18 @@ def bind_video_session_memory_k_h_r(device : Device; videoSession : VideoSession
     delete vkraw_pBindSessionMemoryInfos
 }
 
+def cmd_decode_video_k_h_r(commandBuffer : CommandBuffer; var pDecodeInfo : VideoDecodeInfoKHR) {
+    let vkview_pDecodeInfo = vk_view_create_unsafe(pDecodeInfo)
+    defer() { vk_view_destroy(pDecodeInfo) }
+    vkCmdDecodeVideoKHR(boost_value_to_vk(commandBuffer), vkview_pDecodeInfo)
+}
+
+def cmd_begin_video_coding_k_h_r(commandBuffer : CommandBuffer; var pBeginInfo : VideoBeginCodingInfoKHR) {
+    let vkview_pBeginInfo = vk_view_create_unsafe(pBeginInfo)
+    defer() { vk_view_destroy(pBeginInfo) }
+    vkCmdBeginVideoCodingKHR(boost_value_to_vk(commandBuffer), vkview_pBeginInfo)
+}
+
 def cmd_control_video_coding_k_h_r(commandBuffer : CommandBuffer; var pCodingControlInfo : VideoCodingControlInfoKHR) {
     let vkview_pCodingControlInfo = vk_view_create_unsafe(pCodingControlInfo)
     defer() { vk_view_destroy(pCodingControlInfo) }
@@ -2248,6 +2272,12 @@ def cmd_end_video_coding_k_h_r(commandBuffer : CommandBuffer; var pEndCodingInfo
     let vkview_pEndCodingInfo = vk_view_create_unsafe(pEndCodingInfo)
     defer() { vk_view_destroy(pEndCodingInfo) }
     vkCmdEndVideoCodingKHR(boost_value_to_vk(commandBuffer), vkview_pEndCodingInfo)
+}
+
+def cmd_encode_video_k_h_r(commandBuffer : CommandBuffer; var pEncodeInfo : VideoEncodeInfoKHR) {
+    let vkview_pEncodeInfo = vk_view_create_unsafe(pEncodeInfo)
+    defer() { vk_view_destroy(pEncodeInfo) }
+    vkCmdEncodeVideoKHR(boost_value_to_vk(commandBuffer), vkview_pEncodeInfo)
 }
 
 def cmd_decompress_memory_n_v(commandBuffer : CommandBuffer; var pDecompressMemoryRegions : array<DecompressMemoryRegionNV>) {
@@ -2344,6 +2374,12 @@ def wait_for_present_k_h_r(device : Device; swapchain : SwapchainKHR; presentId 
     vk_check(vkWaitForPresentKHR(boost_value_to_vk(device), boost_value_to_vk(swapchain), presentId, timeout), result)
 }
 
+def cmd_begin_rendering(commandBuffer : CommandBuffer; var pRenderingInfo : RenderingInfo) {
+    let vkview_pRenderingInfo = vk_view_create_unsafe(pRenderingInfo)
+    defer() { vk_view_destroy(pRenderingInfo) }
+    vkCmdBeginRendering(boost_value_to_vk(commandBuffer), vkview_pRenderingInfo)
+}
+
 def cmd_end_rendering(commandBuffer : CommandBuffer) {
     vkCmdEndRendering(boost_value_to_vk(commandBuffer))
 }
@@ -2431,6 +2467,14 @@ def get_framebuffer_tile_properties_q_c_o_m(device : Device; framebuffer : Frame
         }
     }
     return <- vklist
+}
+
+def get_dynamic_rendering_tile_properties_q_c_o_m(device : Device; var pRenderingInfo : RenderingInfo; var result : VkResult? = null) : VkTilePropertiesQCOM {
+    let vkview_pRenderingInfo = vk_view_create_unsafe(pRenderingInfo)
+    defer() { vk_view_destroy(pRenderingInfo) }
+    var vkout : VkTilePropertiesQCOM
+    vkGetDynamicRenderingTilePropertiesQCOM(boost_value_to_vk(device), vkview_pRenderingInfo, vkout)
+    return vkout
 }
 
 def get_physical_device_optical_flow_image_formats_n_v(physicalDevice : PhysicalDevice; var pOpticalFlowImageFormatInfo : OpticalFlowImageFormatInfoNV; var result : VkResult? = null) : array<VkOpticalFlowImageFormatPropertiesNV> {
