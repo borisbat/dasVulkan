@@ -31,10 +31,10 @@ fragment is in shadow. The headline rails:
   ``colorBlendStateCreateInfo.attachmentCount = 0`` because the pass has no
   color attachments. Valid Vulkan; the rasterizer drives depth from
   fixed-function.
-- **Slope-scaled depth bias + N\xC2\xB7L-scaled fragment bias** -- the pipeline
+- **Slope-scaled depth bias + N.L-scaled fragment bias** -- the pipeline
   enables ``depthBiasEnable`` with ``slopeFactor = 3.0``. The fragment shader
-  adds a per-pixel ``(1 - N\xC2\xB7L)``-scaled bias on top of that and gates on
-  ``N\xC2\xB7L < 0.05`` to avoid the bias artifacts at grazing angles. Without
+  adds a per-pixel ``(1 - N.L)``-scaled bias on top of that and gates on
+  ``N.L < 0.05`` to avoid the bias artifacts at grazing angles. Without
   these the cube self-shadows ("acne") on every face nearly parallel to the
   sun.
 - **5x5 PCF soft shadows** -- single ``textureCompare`` is binary; averaging

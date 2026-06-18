@@ -263,9 +263,6 @@ def public create_render_pass_single_color(device : Device; format : VkFormat;
     return <- b
 }
 
-//! Two-attachment render pass: color at index 0, depth at index 1. Color clears+stores like the
-//! single-color path; depth clears+discards (no read after the pass). Framebuffers built against
-//! this must pass `[color_view, depth_view]` in attachment order.
 //! Depth-only render pass for the shadow-mapping pattern. One attachment: depth, loadOp=CLEAR,
 //! storeOp=STORE, finalLayout=DEPTH_STENCIL_READ_ONLY_OPTIMAL so the main pass can sample the
 //! produced depth without a manual barrier. Vertex-only pipelines (no fragment) are valid against
@@ -305,6 +302,9 @@ def public create_render_pass_depth_only(device : Device; depth_format : VkForma
     return <- b
 }
 
+//! Two-attachment render pass: color at index 0, depth at index 1. Color clears+stores like the
+//! single-color path; depth clears+discards (no read after the pass). Framebuffers built against
+//! this must pass `[color_view, depth_view]` in attachment order.
 def public create_render_pass_color_depth(device : Device; color_format, depth_format : VkFormat;
                                           color_final_layout : VkImageLayout = VkImageLayout.TRANSFER_SRC_OPTIMAL) : RenderPass {
     var attaches : array<VkAttachmentDescription>
@@ -1156,9 +1156,11 @@ def public clear_depth(depth : float = 1.0f; stencil : uint = 0u) : VkClearValue
     return c
 }
 
-//! Depth-compare ("shadow") sampler. Enables `compareEnable` + `compareOp = LESS` (Vulkan's "depth
-//! < reference" → return 1 = lit semantics) and uses LINEAR filtering so the hardware PCFs the 2x2
-//! footprint around the sample point. Address mode is CLAMP_TO_BORDER with a white (fully-lit)
+//! Depth-compare ("shadow") sampler. Enables `compareEnable` + `compareOp = LESS`. Vulkan's
+//! per-tap result is `reference compareOp sampledDepth`, so with `LESS` the comparison fires when
+//! `ref < sampledDepth` → the fragment's light-space depth is closer to the light than the stored
+//! depth → not occluded → return 1 = lit. LINEAR filtering so the hardware PCFs the 2x2 footprint
+//! around the sample point. Address mode is CLAMP_TO_BORDER with a white (fully-lit)
 //! border so off-shadow-map fragments default to lit, the convention every shadow-map tutorial
 //! relies on. Consumed by `sampler2DShadow` + `textureCompare(...)` in the shader.
 def public create_sampler_shadow(device : Device; compare_op : VkCompareOp = VkCompareOp.LESS) : Sampler {

@@ -18,9 +18,9 @@ options indenting = 4
 //      ``compareOp=LESS`` + LINEAR filter for hardware-PCF + white border for off-map = lit.
 //
 //   3. **Slope-scaled depth bias** on the shadow pipeline -- ``depthBiasEnable=VK_TRUE`` +
-//      ``depthBiasSlopeFactor=1.75`` + a small constant bias. Without these the cube and floor
+//      ``depthBiasSlopeFactor=3.0`` + a small constant bias. Without these the cube and floor
 //      self-shadow on every grazing fragment ("shadow acne"). The values are scene-dependent;
-//      these are the classic shadow-map-101 starting point.
+//      these were tuned alongside the fragment-side N.L bias in the main shader.
 //
 //   4. **Vertex-only graphics pipeline** for the shadow pass (no color attachments, no fragment
 //      shader). Vulkan accepts ``stageCount=1`` with just the vertex stage when there are no
