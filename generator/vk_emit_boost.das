@@ -1132,27 +1132,41 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
             // --- the call(s) ---
             let need_unsafe = plan.has_out_array
             if (plan.has_out_array) {
-                // two-call enumerate
+                // two-call enumerate. Both calls return VkResult when is_result: wrap
+                // each in vk_check so OOM / VK_INCOMPLETE surfaces through `result` and
+                // doesn't silently produce a truncated array.
                 fprint(f, "    var vkcount = {plan.count_is_64 ? "0ul" : "0u"}\n")
-                fprint(f, "    {plan.command}(")
+                let result_arg = plan.is_result ? ", result" : ""
+                let lhs_open = plan.is_result ? "vk_check(" : ""
+                let lhs_close = plan.is_result ? "{result_arg})" : ""
+                fprint(f, "    {lhs_open}{plan.command}(")
                 emit_call_args(f, plan, "null")
-                fprint(f, ")\n")
+                fprint(f, "){lhs_close}\n")
                 fprint(f, "    var vklist : array<{plan.out_array_elem}>\n")
                 fprint(f, "    vklist |> resize(int(vkcount))\n")
                 fprint(f, "    if (vkcount > 0u) {OB}\n")
                 fprint(f, "        unsafe {OB}\n")
-                fprint(f, "            {plan.command}(")
+                fprint(f, "            {lhs_open}{plan.command}(")
                 emit_call_args(f, plan, "addr(vklist[0])")
-                fprint(f, ")\n")
+                fprint(f, "){lhs_close}\n")
                 fprint(f, "        {CB}\n")
                 fprint(f, "    {CB}\n")
                 emit_scratch_cleanup(f, plan)
                 fprint(f, "    return <- vklist\n")
             } elif (plan.has_out_value) {
                 fprint(f, "    var vkout : {cmd_value_type(reg, em, plan.out_value_vktype)}\n")
-                fprint(f, "    {plan.command}(")
-                emit_call_args(f, plan, "")
-                fprint(f, ")\n")
+                if (plan.is_result) {
+                    // VkResult-returning out-value call: wrap in vk_check so callers can
+                    // see failures (OOM, device-lost) via `result` and don't silently
+                    // get an uninitialized vkout.
+                    fprint(f, "    vk_check({plan.command}(")
+                    emit_call_args(f, plan, "")
+                    fprint(f, "), result)\n")
+                } else {
+                    fprint(f, "    {plan.command}(")
+                    emit_call_args(f, plan, "")
+                    fprint(f, ")\n")
+                }
                 emit_scratch_cleanup(f, plan)
                 if (plan.out_value_is_handle) {
                     fprint(f, "    return vk_value_to_boost(vkout)\n")
