@@ -231,6 +231,7 @@ within the vertex. Consumed by ``create_graphics_pipeline_v3d`` as
 .. _struct-vulkan_structs-pipelinelayoutcreateinfo:
 .. _struct-vulkan_structs-privatedataslotcreateinfo:
 .. _struct-vulkan_structs-querypoolcreateinfo:
+.. _struct-vulkan_structs-renderingattachmentinfo:
 .. _struct-vulkan_structs-renderpasscreateinfo:
 .. _struct-vulkan_structs-renderpasscreateinfo2:
 .. _struct-vulkan_structs-samplercreateinfo:
