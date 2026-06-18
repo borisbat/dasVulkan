@@ -185,6 +185,42 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     return <- b
 }
 
+//! Create a device with Vulkan 1.3 features (e.g. ``dynamicRendering``, ``synchronization2``).
+//! Vulkan 1.3 promoted KHR_dynamic_rendering and KHR_synchronization2 to core, but the device
+//! still has to *opt in* via ``VkPhysicalDeviceVulkan13Features`` -- the 1.3 API doesn't enable
+//! anything automatically. Caller sets the needed flags (e.g. ``f13.dynamicRendering = 1u``),
+//! this helper threads the struct in via the pNext chain of ``VkDeviceCreateInfo``. The instance
+//! must be at api version 1.3; otherwise ``vkCreateDevice`` rejects the chain with
+//! ``ERROR_FEATURE_NOT_PRESENT``.
+def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>;
+                         var features13 : VkPhysicalDeviceVulkan13Features) : Device {
+    var prio = 1.0f
+    var qci = VkDeviceQueueCreateInfo()
+    qci.queueFamilyIndex = queue_family
+    qci.queueCount = 1u
+    unsafe {
+        qci.pQueuePriorities = addr(prio)
+    }
+    features13.sType = VkStructureType.PHYSICAL_DEVICE_VULKAN_1_3_FEATURES
+    var ci = VkDeviceCreateInfo()
+    ci.queueCreateInfoCount = 1u
+    unsafe {
+        ci.pQueueCreateInfos = addr(qci)
+        ci.pNext = reinterpret<void?>(addr(features13))
+    }
+    if (!empty(extensions)) {
+        ci.enabledExtensionCount = uint(length(extensions))
+        unsafe {
+            ci.ppEnabledExtensionNames = reinterpret<void?>(addr(extensions[0]))
+        }
+    }
+    var h : VkDevice
+    vk_check(vkCreateDevice(phys, ci, null, h), null)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    return <- b
+}
+
 def public get_device_queue(device : Device; queue_family, index : uint) : VkQueue {
     var q : VkQueue
     vkGetDeviceQueue(boost_value_to_vk(device), queue_family, index, q)
@@ -549,6 +585,128 @@ def public create_graphics_pipeline_v3d(device : Device; render_pass : RenderPas
     return <- b
 }
 
+//! `create_graphics_pipeline_v3d` parallel for the dynamic-rendering path (Vulkan 1.3 core).
+//! No `RenderPass` -- instead the pipeline carries a `VkPipelineRenderingCreateInfo` in its
+//! pNext chain with the color/depth format and view mask. `samples` flows into both the
+//! multisample state and the rendering create info (the spec doesn't require it in the rendering
+//! info, but matching it makes the layout self-documenting). Tutorial 09 uses this with 4x MSAA;
+//! tutorial 10 will reuse it with `samples._1 = true` + multiple color formats.
+def public create_graphics_pipeline_dyn(device : Device;
+                                        color_format, depth_format : VkFormat;
+                                        samples : VkSampleCountFlags;
+                                        layout : PipelineLayout;
+                                        vert : ShaderModule; frag : ShaderModule; width, height : int;
+                                        var vertex_bindings : array<VkVertexInputBindingDescription>;
+                                        var vertex_attributes : array<VkVertexInputAttributeDescription>;
+                                        depth_test_enable : bool = true; depth_write_enable : bool = true;
+                                        depth_compare_op : VkCompareOp = VkCompareOp.LESS_OR_EQUAL;
+                                        dynamic_viewport : bool = false) : Pipeline {
+    var stages : array<VkPipelineShaderStageCreateInfo>
+    stages |> resize(2)
+    stages[0] = VkPipelineShaderStageCreateInfo()
+    stages[0].stage.vertex = true
+    stages[0].module_ = boost_value_to_vk(vert)
+    stages[0].pName = "main"
+    stages[1] = VkPipelineShaderStageCreateInfo()
+    stages[1].stage.fragment = true
+    stages[1].module_ = boost_value_to_vk(frag)
+    stages[1].pName = "main"
+
+    var vinput = VkPipelineVertexInputStateCreateInfo()
+    vinput.vertexBindingDescriptionCount = uint(length(vertex_bindings))
+    vinput.vertexAttributeDescriptionCount = uint(length(vertex_attributes))
+    var iasm = VkPipelineInputAssemblyStateCreateInfo()
+    iasm.topology = VkPrimitiveTopology.TRIANGLE_LIST
+
+    var viewport : VkViewport
+    viewport.width = float(width)
+    viewport.height = float(height)
+    viewport.maxDepth = 1.0f
+    var scissor : VkRect2D
+    scissor.extent.width = uint(width)
+    scissor.extent.height = uint(height)
+    var vpstate = VkPipelineViewportStateCreateInfo()
+    vpstate.viewportCount = 1u
+    vpstate.scissorCount = 1u
+
+    var raster = VkPipelineRasterizationStateCreateInfo()
+    raster.polygonMode = VkPolygonMode.FILL
+    raster.cullMode.back = true
+    raster.frontFace = VkFrontFace.COUNTER_CLOCKWISE
+    raster.lineWidth = 1.0f
+    var msaa = VkPipelineMultisampleStateCreateInfo()
+    msaa.rasterizationSamples = samples
+
+    var depthstate = VkPipelineDepthStencilStateCreateInfo()
+    depthstate.depthTestEnable = depth_test_enable ? VK_TRUE : VK_FALSE
+    depthstate.depthWriteEnable = depth_write_enable ? VK_TRUE : VK_FALSE
+    depthstate.depthCompareOp = depth_compare_op
+    depthstate.minDepthBounds = 0.0f
+    depthstate.maxDepthBounds = 1.0f
+
+    var blend_att : VkPipelineColorBlendAttachmentState
+    blend_att.colorWriteMask.r = true
+    blend_att.colorWriteMask.g = true
+    blend_att.colorWriteMask.b = true
+    blend_att.colorWriteMask.a = true
+    var blend = VkPipelineColorBlendStateCreateInfo()
+    blend.attachmentCount = 1u
+
+    var dyn_states : array<VkDynamicState>
+    var dynstate = VkPipelineDynamicStateCreateInfo()
+    if (dynamic_viewport) {
+        dyn_states |> push(VkDynamicState.VIEWPORT)
+        dyn_states |> push(VkDynamicState.SCISSOR)
+        dynstate.dynamicStateCount = uint(length(dyn_states))
+    }
+
+    // dynamic-rendering pipeline carries the color/depth formats in a VkPipelineRenderingCreateInfo
+    // attached via pNext (instead of a VkRenderPass handle). We allocate the color format slot
+    // separately so addr() is valid through the call.
+    var dyn_render = VkPipelineRenderingCreateInfo()
+    var cf = color_format
+    dyn_render.depthAttachmentFormat = depth_format
+    dyn_render.colorAttachmentCount = 1u
+
+    var gp = VkGraphicsPipelineCreateInfo()
+    gp.stageCount = 2u
+    gp.layout = boost_value_to_vk(layout)
+    // no render_pass on the dynamic-rendering path; pNext carries the format info instead
+    var h : VkPipeline
+    unsafe {
+        if (!empty(vertex_bindings)) {
+            vinput.pVertexBindingDescriptions = addr(vertex_bindings[0])
+        }
+        if (!empty(vertex_attributes)) {
+            vinput.pVertexAttributeDescriptions = addr(vertex_attributes[0])
+        }
+        if (dynamic_viewport) {
+            dynstate.pDynamicStates = addr(dyn_states[0])
+            gp.pDynamicState = addr(dynstate)
+        } else {
+            vpstate.pViewports = addr(viewport)
+            vpstate.pScissors = addr(scissor)
+        }
+        blend.pAttachments = addr(blend_att)
+        dyn_render.pColorAttachmentFormats = addr(cf)
+        gp.pNext = reinterpret<void?>(addr(dyn_render))
+        gp.pStages = addr(stages[0])
+        gp.pVertexInputState = addr(vinput)
+        gp.pInputAssemblyState = addr(iasm)
+        gp.pViewportState = addr(vpstate)
+        gp.pRasterizationState = addr(raster)
+        gp.pMultisampleState = addr(msaa)
+        gp.pDepthStencilState = addr(depthstate)
+        gp.pColorBlendState = addr(blend)
+        vk_check(vkCreateGraphicsPipelines(boost_value_to_vk(device), null, 1u, addr(gp), null, addr(h)), null)
+    }
+    delete dyn_states
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
 //! create a compute pipeline from a shader module + layout (owns the VkPipeline;
 //! finalizes via vkDestroyPipeline). Wraps the batch vkCreateComputePipelines at count 1.
 def public create_compute_pipeline(device : Device; layout : PipelineLayout; shader : ShaderModule; entry : string = "main") : Pipeline {
@@ -791,6 +949,21 @@ def public finalize(var t : OffscreenTarget) {
 }
 
 def public build_offscreen_target(device : Device; phys : VkPhysicalDevice; width, height : int; format : VkFormat) : OffscreenTarget {
+    var samples : VkSampleCountFlags
+    samples._1 = true
+    var extra : VkImageUsageFlags
+    extra.transfer_src = true                   // base helper default: blittable to host readback
+    return <- build_offscreen_target(device, phys, width, height, format, samples, extra)
+}
+
+//! `build_offscreen_target` overload taking caller-supplied sample count + extra usage flags.
+//! `color_attachment` is always set; `extra_usage` adds the rest -- `transfer_src` for the
+//! offscreen-readback default, `input_attachment` for subpass-input rails (tutorial 10),
+//! `sampled` for post-processing chains (tutorial 11), `_4`/`_8` on `samples` for MSAA
+//! (tutorial 09). MSAA images CANNOT carry `transfer_src` -- the resolve target does.
+def public build_offscreen_target(device : Device; phys : VkPhysicalDevice; width, height : int;
+                                  format : VkFormat; samples : VkSampleCountFlags;
+                                  extra_usage : VkImageUsageFlags) : OffscreenTarget {
     var ici : ImageCreateInfo
     ici.imageType = VkImageType._2D
     ici.format = format
@@ -799,10 +972,10 @@ def public build_offscreen_target(device : Device; phys : VkPhysicalDevice; widt
     ici.extent.depth = 1u
     ici.mipLevels = 1u
     ici.arrayLayers = 1u
-    ici.samples._1 = true
+    ici.samples = samples
     ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage = extra_usage
     ici.usage.color_attachment = true
-    ici.usage.transfer_src = true
     ici.initialLayout = VkImageLayout.UNDEFINED
     var inscope image <- create_image(device, ici)
 
@@ -860,6 +1033,18 @@ def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width
 //! `transfer_src` for offscreen-depth readback, etc. Memory + view stay device-local D32_SFLOAT.
 def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width, height : int;
                                  format : VkFormat; extra_usage : VkImageUsageFlags) : OffscreenDepth {
+    var samples : VkSampleCountFlags
+    samples._1 = true
+    return <- build_offscreen_depth(device, phys, width, height, format, extra_usage, samples)
+}
+
+//! `build_offscreen_depth` overload taking caller-supplied sample count. Use this for MSAA depth
+//! attachments (tutorial 09): the color and depth attachments in one render pass must agree on
+//! `samples`, so a 4x color target needs a 4x depth target. The caller passes both `extra_usage`
+//! and `samples` -- samples-only callers go through the 5-arg overload with default empty extras.
+def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width, height : int;
+                                 format : VkFormat; extra_usage : VkImageUsageFlags;
+                                 samples : VkSampleCountFlags) : OffscreenDepth {
     var ici : ImageCreateInfo
     ici.imageType = VkImageType._2D
     ici.format = format
@@ -868,7 +1053,7 @@ def public build_offscreen_depth(device : Device; phys : VkPhysicalDevice; width
     ici.extent.depth = 1u
     ici.mipLevels = 1u
     ici.arrayLayers = 1u
-    ici.samples._1 = true
+    ici.samples = samples
     ici.tiling = VkImageTiling.OPTIMAL
     ici.usage = extra_usage
     ici.usage.depth_stencil_attachment = true
@@ -1063,6 +1248,44 @@ def public record_render_pass(cmd : CommandBuffer; render_pass : RenderPass; fra
     }
     invoke(blk)
     vkCmdEndRenderPass(raw_cmd)
+}
+
+//! Block-form dynamic-rendering wrapper: calls vkCmdBeginRendering before the block,
+//! vkCmdEndRendering after. Vulkan 1.3 core. Replaces the (render_pass + framebuffer) pair
+//! `record_render_pass` needs with an inline VkRenderingInfo built from `color_attachments`
+//! + optional depth/stencil. The caller owns the boost `RenderingAttachmentInfo` values --
+//! tutorial 09 uses one MSAA color attachment with a 1x resolve target wired into
+//! `resolveImageView`, no extra render pass or framebuffer object required.
+def public record_rendering(cmd : CommandBuffer; area : VkRect2D; layer_count : uint;
+                            var color_attachments : array<RenderingAttachmentInfo>;
+                            var depth_attachment : RenderingAttachmentInfo;
+                            blk : block<() : void>) {
+    var info : RenderingInfo
+    info.renderArea = area
+    info.layerCount = layer_count
+    info.viewMask = 0u
+    info.pColorAttachments <- color_attachments
+    unsafe {
+        info.pDepthAttachment = addr(depth_attachment)
+    }
+    cmd_begin_rendering(cmd, info)
+    invoke(blk)
+    cmd_end_rendering(cmd)
+}
+
+//! Color-only `record_rendering` overload -- no depth/stencil attachment. Used by post-process
+//! passes that write a fullscreen quad to an offscreen color target (tutorial 11).
+def public record_rendering(cmd : CommandBuffer; area : VkRect2D; layer_count : uint;
+                            var color_attachments : array<RenderingAttachmentInfo>;
+                            blk : block<() : void>) {
+    var info : RenderingInfo
+    info.renderArea = area
+    info.layerCount = layer_count
+    info.viewMask = 0u
+    info.pColorAttachments <- color_attachments
+    cmd_begin_rendering(cmd, info)
+    invoke(blk)
+    cmd_end_rendering(cmd)
 }
 
 //! Block-form device-memory mapping. Maps the whole allocation (VK_WHOLE_SIZE), invokes the block

@@ -145,6 +145,26 @@ which aspect of an image a layout transition or descriptor applies to;
 consumed by ``transition_image_aspect`` (the depth / stencil counterpart of
 the color-by-default ``transition_image``).
 
+.. _alias-vkimageusageflags:
+
+``vulkan::VkImageUsageFlags``
+-----------------------------
+
+Bitfield of image-usage bits (``color_attachment``, ``depth_stencil_attachment``,
+``sampled``, ``transfer_src``, ``transfer_dst``, ``input_attachment``, …). The
+``extra_usage`` parameter the offscreen-builder overloads
+(``build_offscreen_target``, ``build_offscreen_depth``) take on top of the
+helper's always-set base usage.
+
+.. _alias-vksamplecountflags:
+
+``vulkan::VkSampleCountFlags``
+------------------------------
+
+Bitfield of sample-count bits (``_1``, ``_2``, ``_4``, ``_8``, …). The MSAA
+sample count of an image or pipeline; consumed by ``build_offscreen_target``,
+``build_offscreen_depth``, and ``create_graphics_pipeline_dyn``.
+
 .. _handle-vulkan-vkclearvalue:
 
 ``vulkan::VkClearValue``
@@ -211,6 +231,7 @@ within the vertex. Consumed by ``create_graphics_pipeline_v3d`` as
 .. _struct-vulkan_structs-pipelinelayoutcreateinfo:
 .. _struct-vulkan_structs-privatedataslotcreateinfo:
 .. _struct-vulkan_structs-querypoolcreateinfo:
+.. _struct-vulkan_structs-renderingattachmentinfo:
 .. _struct-vulkan_structs-renderpasscreateinfo:
 .. _struct-vulkan_structs-renderpasscreateinfo2:
 .. _struct-vulkan_structs-samplercreateinfo:
