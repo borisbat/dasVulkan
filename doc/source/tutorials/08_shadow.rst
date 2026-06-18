@@ -86,7 +86,7 @@ shadow map (D32_SFLOAT, attachment + sampled), one shared descriptor set
 .. literalinclude:: ../../../tutorials/08_shadow/shadow_tut.das
    :language: das
    :start-at: def public build_shadow_resources
-   :end-before: //! Build the resources used by
+   :end-before: def public build_shadow_context
 
 ``record_shadow_render_pass`` is the per-frame work: pass 1 records cube +
 floor depth into the shadow map; pass 2 records cube + floor color, with the
