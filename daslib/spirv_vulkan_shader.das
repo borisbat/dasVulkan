@@ -215,8 +215,12 @@ def private generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr; 
     var pc_globals : array<Variable?>
     collect_dependencies(fnMain) $(vfun, vvar) {
         for (vv in vvar) {
+            // Same shape filter as the @uniform walk above (struct-typed with at least one field).
+            // The empty() check is defence-in-depth — sampler / image markers can't be @push_constant
+            // today, but the symmetry matches the @uniform guard and protects against a future leak.
             if (!(vv.annotation |> find_arg("push_constant") is tBool) ||
-                vv._type == null || vv._type.baseType != Type.tStructure || vv._type.structType == null) continue
+                vv._type == null || vv._type.baseType != Type.tStructure || vv._type.structType == null ||
+                empty(vv._type.structType.fields)) continue
             pc_globals |> push(vv)
         }
     }
