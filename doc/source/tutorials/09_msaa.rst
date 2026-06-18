@@ -139,3 +139,15 @@ Running it
    # regenerate the recording (needs stbimage + audio + ffmpeg locally)
    daslang -load_module <dasVulkan> \
        <dasVulkan>/tutorials/09_msaa/recording/record_msaa.das
+
+Next
+----
+
+:doc:`10_deferred` is the **putting-it-all-together** payoff scene. ONE
+multi-subpass render pass with SIX attachments and THREE subpasses:
+G-buffer (MRT writes albedo + normal + world-pos), SSAO (reads
+subpassInputs, writes AO), and lighting (composes everything plus the
+:doc:`08_shadow` shadow rail and three orbiting coloured point lights).
+Per-pixel cost stays constant in light count -- the deferred payoff. The
+M-key cycles 7 toggle states to decompose the final pixel into its
+G-buffer, SSAO, and lighting-only components.

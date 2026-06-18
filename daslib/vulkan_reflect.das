@@ -18,6 +18,7 @@ require spirv/spirv_reflect public
 def to_vk_descriptor_type(kind : SpirvDescriptorKind) : VkDescriptorType {
     if (kind == SpirvDescriptorKind.storage_buffer) return VkDescriptorType.STORAGE_BUFFER
     if (kind == SpirvDescriptorKind.combined_image_sampler) return VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    if (kind == SpirvDescriptorKind.input_attachment) return VkDescriptorType.INPUT_ATTACHMENT
     return VkDescriptorType.UNIFORM_BUFFER
 }
 

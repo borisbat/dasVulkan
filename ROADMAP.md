@@ -96,6 +96,54 @@ impl prereqs. Mark `[merged]` and the PR number inline as each lands.
 About 80% of the implementation work concentrates in PRs 3, 4, and 10. The
 others are quick. Tutorials write themselves once their impl PRs land.
 
+### Polish pass on tutorials (parked)
+
+After the arc closes (tutorial 13), revisit all of `tutorials/09_msaa` ..
+`tutorials/13_*` with a "make the WHY visible" lens. The mechanics rail
+landed correctly in each, but the demo scenes are minimal and several rails
+don't show up strongly in the rendered output. Known soft spots:
+
+- **Tutorial 10 SSAO**: visible only at grazing-angle silhouettes (the
+  curvature stand-in lights up there). A richer scene (cluttered objects /
+  concave corners / overlapping geometry) would surface the AO contribution
+  much more obviously. Could also revisit promoting the G-buffer to sampled
+  images alongside the input-attachment rail to do real screen-space
+  hemisphere sampling.
+- **Tutorial 10 normal mapping**: derivative-based TBN works but the
+  procedural bump fields are very subtle on a flat floor / box. A richer
+  texture (bricks with deeper mortar, knurled metal on the cube) would
+  push the per-fragment perturbation visibly into the lighting.
+- **Tutorial 10 point lights**: visible with the current 4×-boosted
+  intensity but only on flat ground. A scene with vertical surfaces /
+  multiple receivers would show off the per-pixel-cost-constant-in-light
+  -count payoff more obviously.
+- **Tutorials 11-13** (HDR / GPU-driven / mesh shaders): expect similar.
+  Each will land the rail correctly first; the visual polish is the second
+  pass.
+
+Two unresolved emitter / generator quirks the polish pass should clean up
+(currently worked around in tutorial 10's host code):
+
+- **Per-shader `bind_uniform` helper doesn't write the second `@uniform`
+  block.** When a module declares two `@uniform` UBO globals (e.g.
+  `xform` at set 0 + `scene` at set 1) and a single shader references both
+  or only the non-first one, the generated `<shader>_bind_uniform` helper
+  silently writes zero fields for the non-first UBO. Worked around in
+  `deferred_tut.das` with a manual `with_mapped_memory` + `write_field`
+  block (`write_scene_ubo_manual`). The `xform` UBO bound through the
+  helper works fine. Likely a `collect_dependencies` traversal that walks
+  only the first matched UBO; needs a look at
+  `daslib/spirv_vulkan_shader.das:generate_bind_uniform`.
+- **`@push_constant` struct's non-matrix fields don't propagate.**
+  Setting `op.model` (float4x4) host-side then calling the generated
+  push helper writes the matrix correctly, but a sibling `int material`
+  field reads as 0 in the fragment shader for every fragment. Worked
+  around in `gbuffer_fs` with a positional check (`world_pos.y < 0.5`
+  branches floor vs cube instead of the push-constant material tag).
+  Likely a push_constants codegen that walks fields by std140 offset and
+  skips small trailing scalars; needs `generate_push_constants` to be
+  audited for non-matrix field handling.
+
 ## p-prefix strip on boost field names
 
 The boost view structs keep Vulkan's C field names verbatim — `pAttachments`,
