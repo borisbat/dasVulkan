@@ -188,6 +188,7 @@ enum FieldKind {
     arr_scalar      //! count+ptr of scalar/enum -> array<T>
     arr_handle      //! count+ptr of handle -> array<BoostHandle>
     arr_struct      //! count+ptr of mappable struct -> array<BoostStruct> (recursive vk_view)
+    opt_struct_ptr  //! optional single const ptr to mappable struct -> BoostStruct? (caller's addr; cloned into scratch)
     count_independent //! count member whose arrays are ALL optional -> settable boost field
     hard            //! unmappable -> skip the whole struct
 }
@@ -304,7 +305,18 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
         bf.boost_type = "string"
         return <- bf
     }
-    // any remaining pointer -> hard (single struct ptr, void*, string arrays, scalar ptr)
+    // optional single const ptr to a mappable struct (e.g., VkRenderingInfo.pDepthAttachment)
+    // -> boost field is `T?`; caller passes `null` or `unsafe(addr(local))`; vk_view clones
+    // the pointee into scratch so the caller's local only has to live across the view call.
+    if (m.num_ptrs == 1 && m.is_const && empty(m.len) && m.optional_attr == "true" && key_exists(mappable, tn)) {
+        bf.kind = FieldKind.opt_struct_ptr
+        bf.elem_vktype = tn
+        bf.elem_boost = boost_name(tn)
+        bf.boost_type = "{bf.elem_boost}?"
+        bf.is_optional = true
+        return <- bf
+    }
+    // any remaining pointer -> hard (void*, string arrays, scalar ptr, non-mappable struct ptr)
     if (m.num_ptrs >= 1) {
         bf.kind = FieldKind.hard
         return <- bf
@@ -504,6 +516,16 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    _vk_view_{bf.name} : array<{bf.elem_vktype}>\n")
                 }
             }
+            // scratch slots for opt_struct_ptr fields: a boost-side clone of the pointee + its
+            // raw-struct view + a `_present` flag so vk_view_destroy only tears the clone down
+            // when it was actually populated
+            for (bf in vs.fields) {
+                if (bf.kind == FieldKind.opt_struct_ptr) {
+                    fprint(f, "    _vk_view_{bf.name}_value : {bf.elem_boost}\n")
+                    fprint(f, "    _vk_view_{bf.name}_vk : {bf.elem_vktype}\n")
+                    fprint(f, "    _vk_view_{bf.name}_present : bool\n")
+                }
+            }
             fprint(f, "\}\n")
             // vk_view_create_unsafe. Raw struct das field names are das_safe_name'd (same
             // as the boost field name). Array pointers are set here (null when empty); counts
@@ -532,6 +554,17 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "        b._vk_view_{bf.name}[vki] = vk_view_create_unsafe(b.{bf.name}[vki])\n")
                     fprint(f, "    {CB}\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
+                } elif (bf.kind == FieldKind.opt_struct_ptr) {
+                    // clone the caller's pointee into our scratch (decoupling lifetime), then
+                    // recursively view it; the raw vk pointer goes to the raw scratch slot.
+                    fprint(f, "    unsafe {OB}\n")
+                    fprint(f, "        if (b.{bf.name} != null) {OB}\n")
+                    fprint(f, "            b._vk_view_{bf.name}_value := *b.{bf.name}\n")
+                    fprint(f, "            b._vk_view_{bf.name}_vk = vk_view_create_unsafe(b._vk_view_{bf.name}_value)\n")
+                    fprint(f, "            b._vk_view_{bf.name}_present = true\n")
+                    fprint(f, "            vk.{bf.name} = addr(b._vk_view_{bf.name}_vk)\n")
+                    fprint(f, "        {CB}\n")
+                    fprint(f, "    {CB}\n")
                 }
             }
             // counts: derived (authoritative array length) or independent (caller's value,
@@ -566,6 +599,13 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "        vk_view_destroy(b.{bf.name}[vki])\n")
                     fprint(f, "    {CB}\n")
                     fprint(f, "    delete b._vk_view_{bf.name}\n")
+                    any_scratch = true
+                } elif (bf.kind == FieldKind.opt_struct_ptr) {
+                    // tear down the cloned pointee only if it was actually populated
+                    fprint(f, "    if (b._vk_view_{bf.name}_present) {OB}\n")
+                    fprint(f, "        vk_view_destroy(b._vk_view_{bf.name}_value)\n")
+                    fprint(f, "        b._vk_view_{bf.name}_present = false\n")
+                    fprint(f, "    {CB}\n")
                     any_scratch = true
                 }
             }
@@ -1092,27 +1132,41 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
             // --- the call(s) ---
             let need_unsafe = plan.has_out_array
             if (plan.has_out_array) {
-                // two-call enumerate
+                // two-call enumerate. Both calls return VkResult when is_result: wrap
+                // each in vk_check so OOM / VK_INCOMPLETE surfaces through `result` and
+                // doesn't silently produce a truncated array.
                 fprint(f, "    var vkcount = {plan.count_is_64 ? "0ul" : "0u"}\n")
-                fprint(f, "    {plan.command}(")
+                let result_arg = plan.is_result ? ", result" : ""
+                let lhs_open = plan.is_result ? "vk_check(" : ""
+                let lhs_close = plan.is_result ? "{result_arg})" : ""
+                fprint(f, "    {lhs_open}{plan.command}(")
                 emit_call_args(f, plan, "null")
-                fprint(f, ")\n")
+                fprint(f, "){lhs_close}\n")
                 fprint(f, "    var vklist : array<{plan.out_array_elem}>\n")
                 fprint(f, "    vklist |> resize(int(vkcount))\n")
                 fprint(f, "    if (vkcount > 0u) {OB}\n")
                 fprint(f, "        unsafe {OB}\n")
-                fprint(f, "            {plan.command}(")
+                fprint(f, "            {lhs_open}{plan.command}(")
                 emit_call_args(f, plan, "addr(vklist[0])")
-                fprint(f, ")\n")
+                fprint(f, "){lhs_close}\n")
                 fprint(f, "        {CB}\n")
                 fprint(f, "    {CB}\n")
                 emit_scratch_cleanup(f, plan)
                 fprint(f, "    return <- vklist\n")
             } elif (plan.has_out_value) {
                 fprint(f, "    var vkout : {cmd_value_type(reg, em, plan.out_value_vktype)}\n")
-                fprint(f, "    {plan.command}(")
-                emit_call_args(f, plan, "")
-                fprint(f, ")\n")
+                if (plan.is_result) {
+                    // VkResult-returning out-value call: wrap in vk_check so callers can
+                    // see failures (OOM, device-lost) via `result` and don't silently
+                    // get an uninitialized vkout.
+                    fprint(f, "    vk_check({plan.command}(")
+                    emit_call_args(f, plan, "")
+                    fprint(f, "), result)\n")
+                } else {
+                    fprint(f, "    {plan.command}(")
+                    emit_call_args(f, plan, "")
+                    fprint(f, ")\n")
+                }
                 emit_scratch_cleanup(f, plan)
                 if (plan.out_value_is_handle) {
                     fprint(f, "    return vk_value_to_boost(vkout)\n")

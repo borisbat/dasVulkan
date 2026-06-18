@@ -165,6 +165,17 @@ def create_framebuffer(device : Device; var create_info : FramebufferCreateInfo;
     return <- b
 }
 
+def create_render_pass(device : Device; var create_info : RenderPassCreateInfo; var result : VkResult? = null) : RenderPass {
+    var vci = vk_view_create_unsafe(create_info)
+    defer() { vk_view_destroy(create_info) }
+    var h : VkRenderPass
+    vk_check(vkCreateRenderPass(boost_value_to_vk(device), vci, null, h), result)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
 def create_command_pool(device : Device; var create_info : CommandPoolCreateInfo; var result : VkResult? = null) : CommandPool {
     var vci = vk_view_create_unsafe(create_info)
     defer() { vk_view_destroy(create_info) }
@@ -246,6 +257,17 @@ def create_sampler_ycbcr_conversion(device : Device; var create_info : SamplerYc
     defer() { vk_view_destroy(create_info) }
     var h : VkSamplerYcbcrConversion
     vk_check(vkCreateSamplerYcbcrConversion(boost_value_to_vk(device), vci, null, h), result)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
+def create_render_pass2(device : Device; var create_info : RenderPassCreateInfo2; var result : VkResult? = null) : RenderPass {
+    var vci = vk_view_create_unsafe(create_info)
+    defer() { vk_view_destroy(create_info) }
+    var h : VkRenderPass
+    vk_check(vkCreateRenderPass2(boost_value_to_vk(device), vci, null, h), result)
     var b = vk_value_to_boost(h)
     b._needs_delete = true
     b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))

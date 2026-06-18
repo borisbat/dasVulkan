@@ -6,6 +6,96 @@ independent-count model, the Linux lavapipe test suite, and the documentation
 site all shipped. What's deliberately left, with enough context to pick each up
 cold:
 
+## Tutorial arc 09–13 (current)
+
+Tutorials 01–08 shipped (triangle, mandelbrot, sdf, cube, instancing, skybox,
+particles, shadow mapping). Tutorials 09–13 cover the non-esoteric remainder of
+Vulkan with five tutorials, each unblocking a discrete capability gap. Deferred:
+tessellation, geometry shaders (obviated by mesh), push descriptors / timeline
+semaphores / sync2 (correctness rails, not visual), sparse, multiview,
+conservative raster (esoteric), hardware ray tracing (booked separately).
+
+| # | Tutorial | New rails |
+|---|---|---|
+| 09 | MSAA + dynamic rendering | `vkCmdBeginRendering`, `VkRenderingInfo`, `VkPipelineRenderingCreateInfo`, MSAA `samples` + `pResolveAttachments` |
+| 10 | Deferred shading (subpasses + input attachments) | Multi-subpass render pass, `VkSubpassDependency`, input-attachment image usage, MRT, `subpassInput` / `subpassLoad` |
+| 11 | HDR + bloom (post-processing chain) | Ping-pong offscreen targets, `R16G16B16A16_SFLOAT`, fullscreen-triangle pattern, tonemap |
+| 12 | GPU-driven rendering (indirect + bindless) | `vkCmdDrawIndexedIndirectCount`, `VkDrawIndexedIndirectCommand`, `UPDATE_AFTER_BIND` + `descriptorBindingVariableDescriptorCount`, `nonuniformEXT()`, `gl_DrawID` |
+| 13 | Mesh shaders | `VK_EXT_mesh_shader`, `vkCmdDrawMeshTasksEXT`, mesh/task execution models, `gl_MeshVerticesEXT[]`, `gl_PrimitiveTriangleIndicesEXT[]`, `SetMeshOutputsEXT`, `EmitMeshTasksEXT` |
+
+### Implementation gap map (from the 2026-06-17 audit)
+
+**dasVulkan side** (this repo) is mostly there — gaps are quick wrappers:
+
+- 09: `cmd_begin_rendering` wrapper missing (raw `vkCmdBeginRendering` bound in
+  `src/dasVULKAN.gen_funcs_15.cpp`; `cmd_end_rendering` already wrapped at
+  `vulkan_cmds.das:2347`). `VkRenderingInfo` / `VkPipelineRenderingCreateInfo`
+  ctors + boost views exist (`vulkan_ctors.das:5022`+, `vulkan_structs.das`).
+  MSAA `samples` plumbing exists (`vulkan_boost.das:238,396,490`).
+- 10: All bound; no boost helper for multi-subpass render passes. Doable
+  manually via `VkSubpassDependency` array + multi-`VkSubpassDescription`.
+- 11: All bound; HDR formats work like any format. No fullscreen-triangle
+  helper (trivial 3-vertex pattern).
+- 12: All bound; `cmd_draw_indexed_indirect_count` at `vulkan_cmds.das:1352`,
+  `VkDrawIndexedIndirectCommand` view at `vulkan_structs.das:2096`,
+  `VkDescriptorSetLayoutBindingFlagsCreateInfo` ctor at `vulkan_ctors.das:2082`.
+  Friction: bindless pNext chain is raw `void?` today (the typed-pNext gap
+  below pinches here for the first time).
+- 13: `cmd_draw_mesh_tasks_ext` already wrapped at `vulkan_cmds.das:1445`!
+  `cmd_draw_mesh_tasks_indirect_ext` missing wrapper (raw call bound).
+  `VkPhysicalDeviceMeshShaderFeaturesEXT` ctor at `vulkan_ctors.das:2488`.
+  Same pNext friction for feature-enable.
+
+**dasSpirv side** (daslang main tree, `modules/dasSpirv/`) holds the heavier
+lifts:
+
+- 09: nothing emitter-side.
+- 10: MRT — emitter enforces single `@location` per global at
+  `spirv_emit.das:372-374`; needs array-of-locations support. `subpassInput`
+  type missing entirely; needs `OpTypeImage Dim=SubpassData`, `subpassLoad`
+  intrinsic, `InputAttachmentIndex` decoration surface (grammar has the
+  decoration enum at `spirv_grammar.das:43`, never emitted).
+- 11: nothing emitter-side.
+- 12: `nonuniformEXT()` intrinsic + `NonUniform` decoration emission missing
+  (grammar has `NonUniform = 5300` and `RuntimeDescriptorArray = 5302`
+  capability, never emitted). `gl_DrawID` builtin missing entirely
+  (`spirv_builtins.das`); needs `DrawParameters` capability.
+- 13: grammar 70% ready (`TaskEXT = 5364`, `MeshEXT = 5365`, `MeshShadingEXT =
+  5283`, `PerPrimitiveEXT = 5271` present in `spirv_grammar.das`); pinned
+  SPIRV-Headers version still needs `OpEmitMeshTasksEXT` confirmed. Emitter
+  side everything missing: execution-model dispatch hardcoded to
+  vertex/fragment/compute at `spirv_emit.das:2818-2822`,
+  `[vulkan_mesh_shader]` / `[vulkan_task_shader]` annotation classes,
+  `gl_MeshVerticesEXT[]` / `gl_PrimitiveTriangleIndicesEXT[]` builtins,
+  `SetMeshOutputsEXT` / `EmitMeshTasksEXT` intrinsics. The mesh-shader emitter
+  surface is the single biggest piece of the arc — likely 2–3 sub-PRs.
+
+### PR-by-PR plan
+
+Each line is one PR. dasVulkan PRs land in this repo; dasSpirv PRs land in
+daslang main tree (`modules/dasSpirv/`). Tutorial PRs land here, gated on their
+impl prereqs. Mark `[merged]` and the PR number inline as each lands.
+
+1. dasVulkan — `cmd_begin_rendering` wrapper.
+2. dasVulkan — **Tutorial 09** (MSAA + dynamic rendering on existing cube scene).
+3. daslang — dasSpirv MRT: multiple `@location` outputs from fragment.
+4. daslang — dasSpirv subpass inputs: `subpassInput` + `OpTypeImage
+   Dim=SubpassData` + `subpassLoad` + `InputAttachmentIndex` decoration.
+5. dasVulkan — **Tutorial 10** (deferred shading — G-buffer + lighting subpass).
+6. dasVulkan — **Tutorial 11** (HDR + bloom; no impl prereq).
+7. daslang — dasSpirv `nonuniformEXT()` + `gl_DrawID` builtin.
+8. dasVulkan — bindless helper (descriptor-set-layout builder with
+   `VkDescriptorSetLayoutBindingFlagsCreateInfo` pNext typed in).
+9. dasVulkan — **Tutorial 12** (GPU-driven culling + indirect + bindless).
+10. daslang — dasSpirv mesh-shader surface (annotations + execution model
+    dispatch + builtins + intrinsics). Likely splits into 2–3 sub-PRs.
+11. dasVulkan — mesh extension feature-enable helper +
+    `cmd_draw_mesh_tasks_indirect_ext` wrapper.
+12. dasVulkan — **Tutorial 13** (cluster culling task → meshlet mesh → fragment).
+
+About 80% of the implementation work concentrates in PRs 3, 4, and 10. The
+others are quick. Tutorials write themselves once their impl PRs land.
+
 ## p-prefix strip on boost field names
 
 The boost view structs keep Vulkan's C field names verbatim — `pAttachments`,
