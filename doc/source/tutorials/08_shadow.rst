@@ -139,3 +139,13 @@ Running it
    # regenerate the recording (needs stbimage + audio + ffmpeg locally)
    daslang -load_module <dasVulkan> \
        <dasVulkan>/tutorials/08_shadow/recording/record_shadow.das
+
+Next
+----
+
+:doc:`09_msaa` drops ``VkRenderPass`` and ``VkFramebuffer`` entirely in
+favour of Vulkan 1.3 **dynamic rendering** (``cmd_begin_rendering`` +
+``VkPipelineRenderingCreateInfo``), and turns on **4× MSAA** with an
+auto-resolve attachment so the cube's silhouette stops being jaggy. A
+runtime indicator strip + AUTO-toggle lets the recording show 4× MSAA
+and 1× rasterization side-by-side in one clip.
