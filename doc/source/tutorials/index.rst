@@ -13,8 +13,8 @@ hello-triangle, :doc:`02_mandelbrot` and :doc:`03_sdf` swap to the compute pipel
 :doc:`05_instancing` draws 1000 cubes in one call, :doc:`06_skybox` wraps the scene in
 a cubemap, :doc:`07_particles` hands the vertex stream itself to a compute shader,
 :doc:`08_shadow` runs two render passes per frame sharing one depth image,
-:doc:`09_msaa` drops VkRenderPass entirely in favour of Vulkan 1.3 dynamic rendering
-+ 4× MSAA with auto-resolve, :doc:`10_deferred` brings everything together
+:doc:`09_msaa` drops VkRenderPass entirely in favour of Vulkan 1.3 dynamic rendering plus
+4× MSAA with auto-resolve, :doc:`10_deferred` brings everything together
 in a multi-subpass deferred renderer with G-buffer + SSAO + shadow + many lights,
 and :doc:`11_hdr` adds an HDR offscreen target + Karis-style five-level bloom
 pyramid + ACES tonemap composite for the post-process rail.
