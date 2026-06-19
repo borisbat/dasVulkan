@@ -73,9 +73,12 @@ struct private Tex {
 }
 
 def private finalize(var t : Tex) {
+    // Vulkan teardown order: image views first (they reference the image), then the image itself
+    // (still attached to memory), then the memory it was bound to. Reversing image/memory hits the
+    // validation layer for "memory still in use by image".
     delete t.view
-    delete t.memory
     delete t.image
+    delete t.memory
 }
 
 def private create_1x1_texture(device : Device; phys : VkPhysicalDevice; queue : VkQueue;

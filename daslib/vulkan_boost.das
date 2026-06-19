@@ -256,20 +256,20 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     return <- b
 }
 
-//! Create a device with the bindless feature set enabled: ``descriptorIndexing`` (the umbrella flag),
-//! ``shaderSampledImageArrayNonUniformIndexing`` (so a fragment can index a ``sampler2D[N]`` by a
-//! per-invocation value with ``nonuniformEXT``), and ``runtimeDescriptorArray`` (header-side; not
-//! needed for fixed-size ``sampler2D[N]`` but harmless and reserved for the runtime-sized follow-up).
-//! Uses the Vulkan 1.2-core `VkPhysicalDeviceVulkan12Features` path — no `VK_EXT_descriptor_indexing`
-//! extension string required on a 1.2+ instance. Pairs with the dasSpirv bindless track (PR-B
-//! `nonuniformEXT`, PR-C `sampler2D[N]`); the GPU regression tests under
-//! `tests/integration/test_bindless_*.das` and `test_nonuniform_ext.das` use this entry point.
+//! Create a device with the bindless feature set enabled: ``descriptorIndexing`` (the umbrella flag)
+//! plus ``shaderSampledImageArrayNonUniformIndexing`` (so a fragment can index a ``sampler2D[N]`` by
+//! a per-invocation value with ``nonuniformEXT``). Uses the Vulkan 1.2-core
+//! `VkPhysicalDeviceVulkan12Features` path — no `VK_EXT_descriptor_indexing` extension string
+//! required on a 1.2+ instance. Pairs with the dasSpirv bindless track (PR-B `nonuniformEXT`, PR-C
+//! `sampler2D[N]`); the GPU regression tests under `tests/integration/test_bindless_*.das` and
+//! `test_nonuniform_ext.das` use this entry point. **`runtimeDescriptorArray` is deliberately NOT
+//! enabled** — runtime-sized descriptor arrays (`sampler2D[]`) are a follow-up scope; enable it
+//! explicitly via the `create_device` features12 overload when that lands.
 def public create_device_descriptor_indexing(phys : VkPhysicalDevice; queue_family : uint) : Device {
     let no_ext : array<string>
     var f12 : VkPhysicalDeviceVulkan12Features
     f12.descriptorIndexing = 1u
     f12.shaderSampledImageArrayNonUniformIndexing = 1u
-    f12.runtimeDescriptorArray = 1u
     return <- create_device(phys, queue_family, no_ext, f12)
 }
 
