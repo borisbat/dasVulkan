@@ -221,6 +221,93 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     return <- b
 }
 
+//! Create a device with Vulkan 1.2 features (e.g. ``descriptorIndexing``,
+//! ``shaderSampledImageArrayNonUniformIndexing``, ``runtimeDescriptorArray``). VK_EXT_descriptor_indexing
+//! was promoted to core in 1.2, so a 1.2+ instance can opt into bindless via this struct in the pNext
+//! chain of ``VkDeviceCreateInfo``; no extension string is required. The instance must be at api
+//! version 1.2 (or higher); otherwise ``vkCreateDevice`` rejects the chain with
+//! ``VK_ERROR_FEATURE_NOT_PRESENT``. Caller sets the needed flags; this helper threads the struct in.
+def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>;
+                         var features12 : VkPhysicalDeviceVulkan12Features) : Device {
+    var prio = 1.0f
+    var qci = VkDeviceQueueCreateInfo()
+    qci.queueFamilyIndex = queue_family
+    qci.queueCount = 1u
+    unsafe {
+        qci.pQueuePriorities = addr(prio)
+    }
+    features12.sType = VkStructureType.PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
+    var ci = VkDeviceCreateInfo()
+    ci.queueCreateInfoCount = 1u
+    unsafe {
+        ci.pQueueCreateInfos = addr(qci)
+        ci.pNext = reinterpret<void?>(addr(features12))
+    }
+    if (!empty(extensions)) {
+        ci.enabledExtensionCount = uint(length(extensions))
+        unsafe {
+            ci.ppEnabledExtensionNames = reinterpret<void?>(addr(extensions[0]))
+        }
+    }
+    var h : VkDevice
+    vk_check(vkCreateDevice(phys, ci, null, h), null)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    return <- b
+}
+
+//! Create a device with the bindless feature set enabled: ``descriptorIndexing`` (the umbrella flag)
+//! plus ``shaderSampledImageArrayNonUniformIndexing`` (so a fragment can index a ``sampler2D[N]`` by
+//! a per-invocation value with ``nonuniformEXT``). Uses the Vulkan 1.2-core
+//! `VkPhysicalDeviceVulkan12Features` path — no `VK_EXT_descriptor_indexing` extension string
+//! required on a 1.2+ instance. Pairs with the dasSpirv bindless track (PR-B `nonuniformEXT`, PR-C
+//! `sampler2D[N]`); the GPU regression tests under `tests/integration/test_bindless_*.das` and
+//! `test_nonuniform_ext.das` use this entry point. **`runtimeDescriptorArray` is deliberately NOT
+//! enabled** — runtime-sized descriptor arrays (`sampler2D[]`) are a follow-up scope; enable it
+//! explicitly via the `create_device` features12 overload when that lands.
+def public create_device_descriptor_indexing(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    let no_ext : array<string>
+    var f12 : VkPhysicalDeviceVulkan12Features
+    f12.descriptorIndexing = 1u
+    f12.shaderSampledImageArrayNonUniformIndexing = 1u
+    return <- create_device(phys, queue_family, no_ext, f12)
+}
+
+//! Create a device with the GPU-driven-rendering feature set enabled: ``multiDrawIndirect`` (so
+//! ``vkCmdDrawIndirect`` can dispatch more than one draw in a single command) and
+//! ``shaderDrawParameters`` (so a vertex shader can read ``gl_DrawID`` -- BuiltIn DrawIndex -- to
+//! key per-draw state). multiDrawIndirect rides on the base ``VkPhysicalDeviceFeatures``;
+//! shaderDrawParameters was promoted to Vulkan 1.1 core via VkPhysicalDeviceVulkan11Features, so a
+//! 1.1+ instance can opt into it without an extension string. Both are threaded into pNext
+//! together. Pairs with the dasSpirv PR-A `gl_DrawID` surface; used by
+//! `tests/integration/test_gl_draw_id.das`.
+def public create_device_draw_parameters(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var prio = 1.0f
+    var qci = VkDeviceQueueCreateInfo()
+    qci.queueFamilyIndex = queue_family
+    qci.queueCount = 1u
+    unsafe {
+        qci.pQueuePriorities = addr(prio)
+    }
+    var base : VkPhysicalDeviceFeatures
+    base.multiDrawIndirect = 1u
+    var f11 : VkPhysicalDeviceVulkan11Features
+    f11.sType = VkStructureType.PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+    f11.shaderDrawParameters = 1u
+    var ci = VkDeviceCreateInfo()
+    ci.queueCreateInfoCount = 1u
+    unsafe {
+        ci.pQueueCreateInfos = addr(qci)
+        ci.pEnabledFeatures = addr(base)
+        ci.pNext = reinterpret<void?>(addr(f11))
+    }
+    var h : VkDevice
+    vk_check(vkCreateDevice(phys, ci, null, h), null)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    return <- b
+}
+
 def public get_device_queue(device : Device; queue_family, index : uint) : VkQueue {
     var q : VkQueue
     vkGetDeviceQueue(boost_value_to_vk(device), queue_family, index, q)
