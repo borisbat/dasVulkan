@@ -667,10 +667,18 @@ def private build_scene_render_pass(device : Device) : RenderPass {
     // BEGIN dep: wait for previous frame's sample of color before we write (color + depth start fresh)
     // END dep: ensure color write is visible to bright-pass sample
     var deps <- color_write_sample_deps()
-    // Extend BEGIN dep to also cover the depth aspect. Need BOTH early and late fragment-tests
-    // stages: pipelines without `EarlyFragmentTests` SPIR-V execution mode (or with discard/depth
-    // export) defer the depth write to the late-fragment-tests stage; the dependency must drain
-    // either side.
+    // Extend BEGIN dep to also cover the depth aspect.
+    //   dstStage: need BOTH early and late fragment-tests stages -- pipelines without
+    //     `EarlyFragmentTests` SPIR-V execution mode (or with discard/depth export) defer the depth
+    //     write to the late-fragment-tests stage; the dependency must drain either side.
+    //   srcStage: previous frame's depth write also happens at early/late fragment-tests; in
+    //     pipeline order late_fragment_tests runs AFTER fragment_shader, so listing only
+    //     fragment_shader leaves a depth WAW hazard against the previous frame. Add both stages
+    //     plus `depth_stencil_attachment_write` access so the previous-frame depth write is
+    //     actually drained before this frame's clear/write.
+    deps[0].srcStageMask.early_fragment_tests = true
+    deps[0].srcStageMask.late_fragment_tests = true
+    deps[0].srcAccessMask.depth_stencil_attachment_write = true
     deps[0].dstStageMask.early_fragment_tests = true
     deps[0].dstStageMask.late_fragment_tests = true
     deps[0].dstAccessMask.depth_stencil_attachment_write = true
