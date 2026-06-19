@@ -261,9 +261,9 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
 //! per-invocation value with ``nonuniformEXT``), and ``runtimeDescriptorArray`` (header-side; not
 //! needed for fixed-size ``sampler2D[N]`` but harmless and reserved for the runtime-sized follow-up).
 //! Uses the Vulkan 1.2-core `VkPhysicalDeviceVulkan12Features` path — no `VK_EXT_descriptor_indexing`
-//! extension string required on a 1.2+ instance. Pairs with the dasSpirv bindless track (PR-A `gl_DrawID`,
-//! PR-B `nonuniformEXT`, PR-C `sampler2D[N]`); the GPU regression tests under
-//! `tests/integration/test_bindless_*.das` and `test_gl_draw_id.das` use this entry point.
+//! extension string required on a 1.2+ instance. Pairs with the dasSpirv bindless track (PR-B
+//! `nonuniformEXT`, PR-C `sampler2D[N]`); the GPU regression tests under
+//! `tests/integration/test_bindless_*.das` and `test_nonuniform_ext.das` use this entry point.
 def public create_device_descriptor_indexing(phys : VkPhysicalDevice; queue_family : uint) : Device {
     let no_ext : array<string>
     var f12 : VkPhysicalDeviceVulkan12Features
@@ -271,6 +271,41 @@ def public create_device_descriptor_indexing(phys : VkPhysicalDevice; queue_fami
     f12.shaderSampledImageArrayNonUniformIndexing = 1u
     f12.runtimeDescriptorArray = 1u
     return <- create_device(phys, queue_family, no_ext, f12)
+}
+
+//! Create a device with the GPU-driven-rendering feature set enabled: ``multiDrawIndirect`` (so
+//! ``vkCmdDrawIndirect`` can dispatch more than one draw in a single command) and
+//! ``shaderDrawParameters`` (so a vertex shader can read ``gl_DrawID`` -- BuiltIn DrawIndex -- to
+//! key per-draw state). multiDrawIndirect rides on the base ``VkPhysicalDeviceFeatures``;
+//! shaderDrawParameters was promoted to Vulkan 1.1 core via VkPhysicalDeviceVulkan11Features, so a
+//! 1.1+ instance can opt into it without an extension string. Both are threaded into pNext
+//! together. Pairs with the dasSpirv PR-A `gl_DrawID` surface; used by
+//! `tests/integration/test_gl_draw_id.das`.
+def public create_device_draw_parameters(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var prio = 1.0f
+    var qci = VkDeviceQueueCreateInfo()
+    qci.queueFamilyIndex = queue_family
+    qci.queueCount = 1u
+    unsafe {
+        qci.pQueuePriorities = addr(prio)
+    }
+    var base : VkPhysicalDeviceFeatures
+    base.multiDrawIndirect = 1u
+    var f11 : VkPhysicalDeviceVulkan11Features
+    f11.sType = VkStructureType.PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+    f11.shaderDrawParameters = 1u
+    var ci = VkDeviceCreateInfo()
+    ci.queueCreateInfoCount = 1u
+    unsafe {
+        ci.pQueueCreateInfos = addr(qci)
+        ci.pEnabledFeatures = addr(base)
+        ci.pNext = reinterpret<void?>(addr(f11))
+    }
+    var h : VkDevice
+    vk_check(vkCreateDevice(phys, ci, null, h), null)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    return <- b
 }
 
 def public get_device_queue(device : Device; queue_family, index : uint) : VkQueue {
