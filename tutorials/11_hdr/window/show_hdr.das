@@ -16,6 +16,18 @@ require ../hdr_tut.das
 require daslib/defer
 require math
 
+//! Tutorial 11 writes linear 16-bit-float to the composite target and relies on the swap surface
+//! being sRGB so the hardware does the linear->sRGB encoding at the blit-format step. If the
+//! platform's swapchain falls back to a non-sRGB format the presented image would be visibly too
+//! dark (no gamma applied). Fail loud rather than silently render wrong. Called both at initial
+//! creation and after every swapchain recreation (resize / out-of-date), since recreation can
+//! select a different surface format.
+def require_srgb_swap(swap : Swapchain) {
+    if (swap.format != VkFormat.B8G8R8A8_SRGB && swap.format != VkFormat.R8G8B8A8_SRGB) {
+        panic("tutorial 11 requires an sRGB swap-target format so the linear->sRGB encoding happens at the blit; got non-sRGB format -- consider extending the tutorial with a runtime gamma-encode path for that platform")
+    }
+}
+
 [export]
 def main {
     if (volkInitialize() != 0) {
@@ -66,13 +78,7 @@ def main {
 
     var inscope res <- build_hdr_resources(device, phys, queue, pool)
     var inscope swap <- create_swapchain(device, phys, surface, HDR_W, HDR_H)
-    // The composite writes linear 16-bit float; the blit-to-swap relies on the swap surface being
-    // sRGB-encoded so the hardware does linear->sRGB conversion at the format step. If the system
-    // falls back to a non-sRGB surface format the user would see a too-dark presentation (no
-    // gamma encoding applied at all). Fail loudly rather than silently rendering wrong.
-    if (swap.format != VkFormat.B8G8R8A8_SRGB && swap.format != VkFormat.R8G8B8A8_SRGB) {
-        panic("tutorial 11 requires an sRGB swap-target format so the linear->sRGB encoding happens at the blit; got non-sRGB format -- consider extending the tutorial with a runtime gamma-encode path for that platform")
-    }
+    require_srgb_swap(swap)
     var inscope sync <- create_frame_sync(device)
 
     while (glfwWindowShouldClose(window) == 0) {
@@ -88,6 +94,7 @@ def main {
             vkDeviceWaitIdle(boost_value_to_vk(device))
             delete swap
             swap <- create_swapchain(device, phys, surface, fbw, fbh)
+            require_srgb_swap(swap)   // recreation can fall back to a different surface format
         }
         let t = float(glfwGetTime())
         // 30-second camera orbit -- one full circle per 30s of wall clock; matches the recording

@@ -35,8 +35,9 @@ let HDR_FMT      = VkFormat.R16G16B16A16_SFLOAT
 let DEPTH_FMT    = VkFormat.D32_SFLOAT
 // LDR target is 16-bit float carrying *linear* post-tonemap values in [0,1]. The composite shader
 // does ACES tonemap but does NOT gamma-encode -- gamma is applied later, at the blit-to-sRGB step
-// (the swap target is `B8G8R8A8_SRGB`; the hardware does the linear->sRGB conversion at blit time,
-// which gives ~12 bits of dark-region precision = no visible banding in HDR smooth gradients).
+// (the swap target is `B8G8R8A8_SRGB` or `R8G8B8A8_SRGB`; the hardware does the linear->sRGB
+// conversion at blit time, which gives ~12 bits of dark-region precision = no visible banding in
+// HDR smooth gradients). show_hdr.das asserts the chosen swapchain format is one of those two.
 let LDR_FMT      = VkFormat.R16G16B16A16_SFLOAT
 // Test readback path uses a sibling 8-bit-sRGB image: composite (linear 16-bit float) is blitted
 // here with hardware sRGB encoding, then copied to a host buffer. Existing tests assume the host
@@ -293,10 +294,11 @@ def public build_hdr_resources(device : Device; phys : VkPhysicalDevice; queue :
     var ldr_extra : VkImageUsageFlags
     ldr_extra.transfer_src = true                   // composite output is blitted (sRGB conversion) to swap or to readback_8bit
     var inscope ldr_color <- build_offscreen_target(device, phys, HDR_W, HDR_H, LDR_FMT, samples1, ldr_extra)
-    var readback_extra : VkImageUsageFlags
-    readback_extra.transfer_dst = true              // receives the linear->sRGB blit
-    readback_extra.transfer_src = true              // then is copied to the host readback buffer
-    var inscope readback_8bit <- build_offscreen_target(device, phys, HDR_W, HDR_H, READBACK_FMT, samples1, readback_extra)
+    // build_offscreen_target unconditionally adds `color_attachment` usage, which we don't need
+    // for the readback intermediate (it's only a blit-dst + blit-src). Build it ourselves with
+    // the minimal usage set so the tutorial stays portable to platforms that report `R8G8B8A8_SRGB`
+    // as supporting `BLIT_*` but not `COLOR_ATTACHMENT` (rare in practice but spec-allowed).
+    var inscope readback_8bit <- build_readback_image(device, phys, HDR_W, HDR_H, READBACK_FMT)
 
     // ----- render passes ----- (built with explicit external subpass dependencies so frames
     // running concurrently in flight in the windowed viewer see each other's writes; the boost
@@ -552,6 +554,51 @@ def private write_sampler(set : VkDescriptorSet; binding : uint; view : ImageVie
     return <- w
 }
 
+//! Minimal-usage offscreen image (TRANSFER_SRC + TRANSFER_DST only, no color_attachment) sized
+//! 1:1 with the LDR target. The boost `build_offscreen_target` helper always sets
+//! `color_attachment` usage; we don't render to this image (only blit through it), and on a
+//! driver that reports `R8G8B8A8_SRGB` as a blit target but not a color attachment that helper
+//! would fail `vkCreateImage`. Build it ourselves with exactly the bits we use.
+def private build_readback_image(device : Device; phys : VkPhysicalDevice;
+                                 width, height : int; format : VkFormat) : OffscreenTarget {
+    var ici : ImageCreateInfo
+    ici.imageType = VkImageType._2D
+    ici.format = format
+    ici.extent.width = uint(width)
+    ici.extent.height = uint(height)
+    ici.extent.depth = 1u
+    ici.mipLevels = 1u
+    ici.arrayLayers = 1u
+    ici.samples._1 = true
+    ici.tiling = VkImageTiling.OPTIMAL
+    ici.usage.transfer_dst = true                   // receives the linear->sRGB blit
+    ici.usage.transfer_src = true                   // then is copied to the host readback buffer
+    ici.initialLayout = VkImageLayout.UNDEFINED
+    var inscope image <- create_image(device, ici)
+    var req : VkMemoryRequirements
+    vkGetImageMemoryRequirements(boost_value_to_vk(device), boost_value_to_vk(image), req)
+    var want : VkMemoryPropertyFlags
+    want.device_local = true
+    var mai : MemoryAllocateInfo
+    mai.allocationSize = req.size
+    mai.memoryTypeIndex = find_memory_type(phys, req.memoryTypeBits, want)
+    var inscope memory <- allocate_memory(device, mai)
+    vk_check(vkBindImageMemory(boost_value_to_vk(device), boost_value_to_vk(image), boost_value_to_vk(memory), 0ul), null)
+    var vci : ImageViewCreateInfo
+    vci.image = weak_copy(image)
+    vci.viewType = VkImageViewType._2D
+    vci.format = format
+    vci.subresourceRange.aspectMask.color = true
+    vci.subresourceRange.levelCount = 1u
+    vci.subresourceRange.layerCount = 1u
+    var inscope view <- create_image_view(device, vci)
+    var t : OffscreenTarget
+    t.image <- image
+    t.memory <- memory
+    t.view <- view
+    return <- t
+}
+
 // ===== render passes / pipelines =====
 
 //! Two external subpass dependencies for a "writer" pass: BEFORE -- the previous frame's sampling of
@@ -620,8 +667,12 @@ def private build_scene_render_pass(device : Device) : RenderPass {
     // BEGIN dep: wait for previous frame's sample of color before we write (color + depth start fresh)
     // END dep: ensure color write is visible to bright-pass sample
     var deps <- color_write_sample_deps()
-    // Extend BEGIN dep to also cover the depth aspect (early/late fragment tests).
+    // Extend BEGIN dep to also cover the depth aspect. Need BOTH early and late fragment-tests
+    // stages: pipelines without `EarlyFragmentTests` SPIR-V execution mode (or with discard/depth
+    // export) defer the depth write to the late-fragment-tests stage; the dependency must drain
+    // either side.
     deps[0].dstStageMask.early_fragment_tests = true
+    deps[0].dstStageMask.late_fragment_tests = true
     deps[0].dstAccessMask.depth_stencil_attachment_write = true
     var ci = VkRenderPassCreateInfo()
     ci.attachmentCount = uint(length(attaches))

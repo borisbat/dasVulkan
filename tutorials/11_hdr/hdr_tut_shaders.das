@@ -241,8 +241,9 @@ def hdr_composite_fs {
     let mapped = aces_fit(merged)
     // Output LINEAR post-tonemap values in [0,1]. The LDR target is R16G16B16A16_SFLOAT (16-bit
     // float linear). Gamma encoding happens at the *blit* step where the destination is sRGB --
-    // for the window the swap target is B8G8R8A8_SRGB; for the static test we blit through an
-    // R8G8B8A8_SRGB readback image. Both routes get the linear->sRGB encoding for free in hardware,
-    // with ~12-bit equivalent dark-region precision -- no banding visible in smooth bloom halos.
+    // for the window the swap target is B8G8R8A8_SRGB or R8G8B8A8_SRGB (asserted in show_hdr.das);
+    // for the static test we blit through an R8G8B8A8_SRGB readback image. Both routes get the
+    // linear->sRGB encoding for free in hardware, with ~12-bit equivalent dark-region precision --
+    // no banding visible in smooth bloom halos.
     frag_ldr = float4(mapped, 1.0)
 }
