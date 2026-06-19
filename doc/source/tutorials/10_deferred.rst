@@ -153,3 +153,14 @@ Running it
    # regenerate the recording (needs stbimage + audio + ffmpeg locally)
    daslang -load_module <dasVulkan> \
        <dasVulkan>/tutorials/10_deferred/recording/record_deferred.das
+
+Next
+----
+
+:doc:`11_hdr` switches the offscreen target to **16-bit float HDR**, adds
+a **Karis-style five-level bloom pyramid** (downsample + tent upsample
+with additive blend), and tone-maps the result back to LDR with the
+**ACES** fitted approximation. Same "render scene → post-process chain →
+present" structure as deferred, but with eleven render-pass instances
+chained through three render-pass *objects* and dynamic viewport so the
+same pipeline runs at every mip resolution.
