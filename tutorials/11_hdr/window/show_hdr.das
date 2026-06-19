@@ -83,8 +83,10 @@ def main {
             swap <- create_swapchain(device, phys, surface, fbw, fbh)
         }
         let t = float(glfwGetTime())
-        // 25-second camera orbit -- one full circle per 25s of wall clock.
-        let raw_cam = t * 0.04f
+        // 30-second camera orbit -- one full circle per 30s of wall clock; matches the recording
+        // driver (900 frames at 30 fps = 30 s per orbit), so frame N in the window corresponds to
+        // the same camera angle as frame N in the recording.
+        let raw_cam = t / 30.0f
         let camera_t = raw_cam - floor(raw_cam)
         update_hdr_uniforms(res, device, t, camera_t)
 

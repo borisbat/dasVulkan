@@ -573,9 +573,11 @@ def private build_post_load_render_pass(device : Device) : RenderPass {
     return <- b
 }
 
-//! Fullscreen-triangle pipeline with additive blend (srcColor=ONE, dstColor=ONE on RGB; alpha
-//! passed through). Used for the upsample passes -- each smaller mip's contribution is *added* to
-//! the destination mip, building the energy-pyramid back up.
+//! Fullscreen-triangle pipeline with additive blend (srcColor=ONE, dstColor=ONE on RGB; the
+//! colour-write mask drops alpha so the dst alpha is preserved at whatever the bright pass / earlier
+//! downsample wrote). Used for the upsample passes -- each smaller mip's contribution is *added* to
+//! the destination mip, building the energy-pyramid back up. Alpha is never read by any subsequent
+//! pass (the composite shader only reads `.xyz`), but pinning it keeps debug visualisations honest.
 def private build_additive_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
                                     vert : ShaderModule; frag : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
@@ -609,13 +611,15 @@ def private build_additive_pipeline(device : Device; rp : RenderPass; layout : P
     blend_att.srcColorBlendFactor = VkBlendFactor.ONE
     blend_att.dstColorBlendFactor = VkBlendFactor.ONE
     blend_att.colorBlendOp = VkBlendOp.ADD
+    // Alpha blend state is required even when the colourWriteMask drops alpha (Vulkan reads the
+    // alphaBlend* fields unconditionally) -- ONE/ONE/ADD is the simplest valid choice.
     blend_att.srcAlphaBlendFactor = VkBlendFactor.ONE
     blend_att.dstAlphaBlendFactor = VkBlendFactor.ONE
     blend_att.alphaBlendOp = VkBlendOp.ADD
     blend_att.colorWriteMask.r = true
     blend_att.colorWriteMask.g = true
     blend_att.colorWriteMask.b = true
-    blend_att.colorWriteMask.a = true
+    // alpha-write disabled: see helper docstring -- dst alpha is preserved at the bright-pass value.
     var blend = VkPipelineColorBlendStateCreateInfo()
     blend.attachmentCount = 1u
 
