@@ -62,8 +62,6 @@ struct BloomCtrl {
     threshold       : float   // bright-pass: pixels with luma < threshold are killed
     soft_knee       : float   // bright-pass: soft-knee width around threshold (0 = hard cut)
     bloom_intensity : float   // composite: how loud bloom is over the HDR scene
-    _pad0           : float   // std430 forces 16-byte alignment on the next field
-    _pad1           : float2  // round the block to 32 bytes -- friendly for every GPU
 }
 var @push_constant pc : BloomCtrl
 
@@ -201,7 +199,9 @@ def hdr_up_fs {
     let tent = ((s00 + s20 + s02 + s22) * (1.0 / 16.0) +
                 (s10 + s01 + s21 + s12) * (2.0 / 16.0) +
                  s11                    * (4.0 / 16.0))
-    // Output is alpha = 1; blend state writes RGB additively (srcAlpha=ONE, dstAlpha=ONE).
+    // Output alpha = 1; the host-side pipeline's blend state writes RGB additively
+    // (srcColor=ONE, dstColor=ONE) and the colourWriteMask drops alpha so the dst alpha stays
+    // pinned at the bright-pass value.
     frag_up = float4(tent, 1.0)
 }
 

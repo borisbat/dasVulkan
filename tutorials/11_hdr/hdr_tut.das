@@ -49,9 +49,6 @@ let INST_STRIDE = 32u
 let INST_FLOATS_PER = 8
 let EVERY_NTH_EMISSIVE = 7              // 1 in 7 cubes glows
 
-// push-constant block matches `BloomCtrl` in the shader (32 bytes total).
-let BLOOM_CTRL_SIZE = 32u
-
 // ===== cube geometry (24 verts, 36 indices; faceted normals) =====
 
 let private cube_vertices : array<float> <- [
@@ -170,8 +167,8 @@ struct public HdrResources {
     rp_composite   : RenderPass
 
     fb_scene       : Framebuffer
-    fb_post_clear  : array<Framebuffer>     // BLOOM_LEVELS entries
-    fb_post_load   : array<Framebuffer>     // BLOOM_LEVELS entries (0 unused for upsample but kept symmetric)
+    fb_post_clear  : array<Framebuffer>     // BLOOM_LEVELS entries (one per bloom mip)
+    fb_post_load   : array<Framebuffer>     // BLOOM_LEVELS entries; the upsample writes to mips 0..3 (4 is the smallest mip and only ever a source)
     fb_composite   : Framebuffer
 
     sampler_linear_clamp : Sampler
@@ -708,34 +705,15 @@ def private set_dyn_vp(cmd : CommandBuffer; w, h : int) {
     }
 }
 
-//! Build a 32-byte push-constant block (matches `BloomCtrl` in the shader) with the supplied
-//! source-mip texel size + threshold/knee/intensity.
-def private pc_bytes(src_rcp_x, src_rcp_y, threshold, soft_knee, bloom_intensity : float) : array<uint8> {
-    var f : array<float>
-    f |> push(src_rcp_x)
-    f |> push(src_rcp_y)
-    f |> push(threshold)
-    f |> push(soft_knee)
-    f |> push(bloom_intensity)
-    f |> push(0.0f)
-    f |> push(0.0f)
-    f |> push(0.0f)
-    var b : array<uint8>
-    b |> resize(int(BLOOM_CTRL_SIZE))
-    unsafe {
-        memcpy(addr(b[0]), addr(f[0]), int(BLOOM_CTRL_SIZE))
-    }
-    delete f
-    return <- b
-}
-
-//! Issue `vkCmdPushConstants` for the post-process block (32 bytes, stage_fragment).
-def private push_post(cmd : CommandBuffer; layout : PipelineLayout; pc : array<uint8>) {
-    var stages : VkShaderStageFlags
-    stages.fragment = true
-    unsafe {
-        vkCmdPushConstants(boost_value_to_vk(cmd), boost_value_to_vk(layout), stages, 0u, BLOOM_CTRL_SIZE, addr(pc[0]))
-    }
+//! Set the shader-side `pc : BloomCtrl` global to the per-pass values. The generated
+//! `hdr_*_push_constants(cmd, layout)` helpers (one per fragment shader that reads `pc`) then
+//! push the full struct via `vkCmdPushConstants` with the right size + stage flag derived from
+//! the shader's `@push_constant` declaration -- no manual size constant, no manual memcpy.
+def private set_pc(src_rcp_w, src_rcp_h, threshold, soft_knee, bloom_intensity : float) {
+    pc.src_rcp = float2(src_rcp_w, src_rcp_h)
+    pc.threshold = threshold
+    pc.soft_knee = soft_knee
+    pc.bloom_intensity = bloom_intensity
 }
 
 // ===== record =====
@@ -773,8 +751,8 @@ def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {
         let sets <- [vk_value_to_boost(res.bright_set)]
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.post_pipe_layout, 1u, sets, no_dyn)
-        let pc = pc_bytes(1.0f / float(HDR_W), 1.0f / float(HDR_H), threshold, soft_knee, bloom_intensity)
-        push_post(cmd, res.post_pipe_layout, pc)
+        set_pc(1.0f / float(HDR_W), 1.0f / float(HDR_H), threshold, soft_knee, bloom_intensity)
+        hdr_bright_fs_push_constants(cmd, res.post_pipe_layout)
         cmd_draw(cmd, 3u, 1u)
     }
     delete b0_clears
@@ -789,9 +767,9 @@ def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {
             let sets <- [vk_value_to_boost(res.down_set[i])]
             var no_dyn : array<uint>
             cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.post_pipe_layout, 1u, sets, no_dyn)
-            let pc = pc_bytes(1.0f / float(BLOOM_W[i]), 1.0f / float(BLOOM_H[i]),
-                              threshold, soft_knee, bloom_intensity)
-            push_post(cmd, res.post_pipe_layout, pc)
+            set_pc(1.0f / float(BLOOM_W[i]), 1.0f / float(BLOOM_H[i]),
+                   threshold, soft_knee, bloom_intensity)
+            hdr_down_fs_push_constants(cmd, res.post_pipe_layout)
             cmd_draw(cmd, 3u, 1u)
         }
         delete clears
@@ -810,9 +788,9 @@ def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {
             let sets <- [vk_value_to_boost(res.up_set[i])]
             var no_dyn : array<uint>
             cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.post_pipe_layout, 1u, sets, no_dyn)
-            let pc = pc_bytes(1.0f / float(BLOOM_W[i + 1]), 1.0f / float(BLOOM_H[i + 1]),
-                              threshold, soft_knee, bloom_intensity)
-            push_post(cmd, res.post_pipe_layout, pc)
+            set_pc(1.0f / float(BLOOM_W[i + 1]), 1.0f / float(BLOOM_H[i + 1]),
+                   threshold, soft_knee, bloom_intensity)
+            hdr_up_fs_push_constants(cmd, res.post_pipe_layout)
             cmd_draw(cmd, 3u, 1u)
         }
         delete up_clears
@@ -825,8 +803,8 @@ def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {
         let sets <- [vk_value_to_boost(res.composite_set)]
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.composite_pipe_layout, 1u, sets, no_dyn)
-        let pc = pc_bytes(1.0f / float(HDR_W), 1.0f / float(HDR_H), threshold, soft_knee, bloom_intensity)
-        push_post(cmd, res.composite_pipe_layout, pc)
+        set_pc(1.0f / float(HDR_W), 1.0f / float(HDR_H), threshold, soft_knee, bloom_intensity)
+        hdr_composite_fs_push_constants(cmd, res.composite_pipe_layout)
         cmd_draw(cmd, 3u, 1u)
     }
     delete comp_clears
