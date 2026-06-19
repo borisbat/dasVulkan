@@ -232,8 +232,9 @@ def hdr_composite_fs {
     let bloom = textureLod(src_bloom, f_uv, 0.0).xyz
     let merged = hdr + bloom * pc.bloom_intensity
     let mapped = aces_fit(merged)
-    // gamma 1/2.2 encode for the R8G8B8A8_UNORM swap target (we don't use an sRGB view, so the
-    // gamma is applied in the shader).
+    // gamma 1/2.2 encode for the R8G8B8A8_UNORM offscreen LDR target (the composite writes here,
+    // not the swapchain -- the windowed viewer blits this image onto whatever the swap target is).
+    // We don't bind an sRGB image view, so the shader does the gamma encode.
     let g = float3(pow(mapped.x, 1.0 / 2.2), pow(mapped.y, 1.0 / 2.2), pow(mapped.z, 1.0 / 2.2))
     frag_ldr = float4(g, 1.0)
 }
