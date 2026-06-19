@@ -8,16 +8,18 @@ options indenting = 4
 //   * 1 x bright pass (BLOOM_W[0] x BLOOM_H[0], R16G16B16A16_SFLOAT)
 //   * 4 x downsample passes (bloom[i] -> bloom[i+1])
 //   * 4 x upsample passes (bloom[i+1] added onto bloom[i])
-//   * 1 x composite pass (LDR_W x LDR_H, R8G8B8A8_UNORM)
+//   * 1 x composite pass (HDR_W x HDR_H LDR target, R8G8B8A8_UNORM)
 //
 // Three render-pass *objects* are shared across these instances: rp_scene (color+depth, clear),
 // rp_post_clear (single-color HDR, clear), rp_post_load (single-color HDR, load). Each of the 5
 // bloom mips has both a clear- and load-framebuffer, plus one fb_scene and one fb_composite.
 //
 // Five pipelines: scene_pipeline (instanced vertex+fragment, depth-tested), bright_pipeline +
-// downsample_pipeline + composite_pipeline (fullscreen-tri, no depth, no blend) and
-// upsample_pipeline (fullscreen-tri, no depth, ADDITIVE blend). All four post-process pipelines
-// use dynamic viewport so the same pipeline runs at every mip resolution.
+// downsample_pipeline (fullscreen-tri, no depth, no blend) and upsample_pipeline (fullscreen-tri,
+// no depth, ADDITIVE blend on RGB, alpha-write masked off) and composite_pipeline (fullscreen-tri,
+// no depth, no blend). The three bloom passes -- bright, down, up -- use dynamic viewport because
+// the same pipeline runs at every mip resolution; the composite pipeline is fixed at HDR_W x HDR_H
+// so it skips dynamic viewport.
 
 module hdr_tut
 

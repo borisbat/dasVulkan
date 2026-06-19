@@ -43,9 +43,11 @@ The headline rails:
 - **Eleven render-pass instances per frame.** One scene, one bright,
   four downsample, four upsample, one composite -- all routed through
   three shared render-pass *objects* (color+depth scene, color-clear
-  HDR, color-load HDR) and four pipelines (scene draws, bright/down/up
-  fullscreen, composite). The post-process pipelines use dynamic
-  viewport so the same pipeline runs at every mip resolution.
+  HDR, color-load HDR) and five pipelines (scene draws, bright/down
+  fullscreen, up with additive blend, composite fullscreen). The
+  three bloom pipelines -- bright, down, up -- use dynamic viewport
+  because the same pipeline runs at every mip resolution; the
+  composite pipeline is fixed at the LDR target size.
 
 Every line of every shader is daslang, lowered to SPIR-V at compile
 time.
