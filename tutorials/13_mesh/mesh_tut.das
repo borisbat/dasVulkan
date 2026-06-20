@@ -2,7 +2,7 @@ options gen2
 options indenting = 4
 
 // Tutorial 13 render path: the GPU-driven mesh-shader pipeline (VK_EXT_mesh_shader). No vertex
-// buffer, no index buffer, no vertex shader -- a single cmd_draw_mesh_tasks_ext dispatches ONE task
+// buffer, no index buffer, no vertex shader -- a single cmd_draw_mesh_tasks_e_x_t dispatches ONE task
 // workgroup, which culls the meshlet grid and dispatches a mesh workgroup per survivor; each mesh
 // workgroup amplifies one colored quad. The CI gate (test_mesh.das) asserts a survivor cell is lit
 // and a culled cell is background, proving the task stage actually removed geometry on the GPU.
@@ -26,6 +26,11 @@ def public mesh_shader_available() : bool {
     }
     var inscope instance <- create_instance("dasVulkan tutorial 13 probe", make_api_version(1u, 3u, 0u))
     volkLoadInstance(boost_value_to_vk(instance))
+    var count = 0u
+    vkEnumeratePhysicalDevices(boost_value_to_vk(instance), count, null)
+    if (count == 0u) {
+        return false   // loader present but no device: soft-skip instead of panicking in select_physical_device
+    }
     let phys = select_physical_device(instance)
     return mesh_shader_supported(phys)
 }

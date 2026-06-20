@@ -357,7 +357,7 @@ def public create_device_draw_parameters(phys : VkPhysicalDevice; queue_family :
 //! MUST also pass the ``"VK_EXT_mesh_shader"`` device-extension string in ``extensions`` (the feature
 //! flags alone are not enough). Mesh/task shaders execute SPIR-V 1.4, which is core in Vulkan 1.2, so
 //! the instance must be at api version >= 1.2. Pairs with the dasSpirv mesh emitter and
-//! ``cmd_draw_mesh_tasks_ext``. Verify the device advertises the features via a
+//! ``cmd_draw_mesh_tasks_e_x_t``. Verify the device advertises the features via a
 //! ``VkPhysicalDeviceMeshShaderFeaturesEXT`` queried through ``VkPhysicalDeviceFeatures2`` before
 //! enabling them; an unsupported flag fails ``vkCreateDevice``.
 def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>;
@@ -662,7 +662,7 @@ def public create_graphics_pipeline_simple(device : Device; render_pass : Render
 //! two states are ignored, so they are left null). Everything else — viewport, rasterizer, MSAA-off,
 //! opaque color blend — matches `create_graphics_pipeline_simple`. The device must have been created
 //! with `create_device_mesh_shader` (or equivalent) and the shaders authored with `[vulkan_task_shader]`
-//! / `[vulkan_mesh_shader]` / `[vulkan_fragment_shader]`. Draw with `cmd_draw_mesh_tasks_ext`.
+//! / `[vulkan_mesh_shader]` / `[vulkan_fragment_shader]`. Draw with `cmd_draw_mesh_tasks_e_x_t`.
 def public create_mesh_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;
                                 task : ShaderModule; mesh : ShaderModule; frag : ShaderModule;
                                 width, height : int; dynamic_viewport : bool = false) : Pipeline {

@@ -2,7 +2,7 @@ options gen2
 options indenting = 4
 
 // Tutorial 13 - the runnable view. Opens a GLFW window + Vulkan swapchain and presents the live
-// GPU-driven mesh-shader render: one cmd_draw_mesh_tasks_ext dispatches a task workgroup that culls
+// GPU-driven mesh-shader render: one cmd_draw_mesh_tasks_e_x_t dispatches a task workgroup that culls
 // meshlets 3 and 4 and dispatches a mesh workgroup per survivor, each amplifying one colored quad.
 // The pixel-oracle (test_mesh.das) renders offscreen for CI; this is the "run it and see it" companion.
 // It needs a display + the GLFW module + a VK_EXT_mesh_shader-capable driver, so it lives in this
