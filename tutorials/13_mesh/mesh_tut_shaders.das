@@ -6,7 +6,7 @@ options indenting = 4
 // There is no vertex shader and no vertex/index buffer. Geometry is amplified on the GPU by a
 // two-stage pipeline:
 //
-//   TASK  (one workgroup, NUM_MESHLETS-wide cull) decides which "meshlets" survive and writes them
+//   TASK  (one workgroup, MAX_MESHLETS-wide cull) decides which "meshlets" survive and writes them
 //         into a @task_payload struct: a count + the surviving meshlet indices. EmitMeshTasksEXT then
 //         dispatches exactly `count` mesh workgroups, carrying the payload to them. Here the cull is a
 //         deterministic stand-in -- it drops meshlets 3 and 4 to carve a visible gap in the grid -- so
@@ -20,7 +20,7 @@ options indenting = 4
 //
 //   FRAG  outputs the interpolated meshlet color.
 //
-// The grid is 2 rows x 4 cols (NUM_MESHLETS = 8). meshlet i sits at cell (i%4, i/4).
+// The grid is 2 rows x 4 cols (MAX_MESHLETS = 8). meshlet i sits at cell (i%4, i/4).
 
 module mesh_tut_shaders public
 
