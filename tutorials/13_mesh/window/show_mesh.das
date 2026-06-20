@@ -61,8 +61,8 @@ def main {
     if (!queue_family_supports_present(phys, gfx, surface)) {
         panic("graphics queue family does not support presentation")
     }
-    if (!device_extension_available(phys, "VK_EXT_mesh_shader")) {
-        panic("this device does not advertise VK_EXT_mesh_shader; cannot run tutorial 13")
+    if (!mesh_shader_supported(phys)) {
+        panic("this device does not support VK_EXT_mesh_shader (meshShader+taskShader); cannot run tutorial 13")
     }
     // device with the swapchain extension AND the mesh-shader extension + features (general overload)
     var mf : VkPhysicalDeviceMeshShaderFeaturesEXT

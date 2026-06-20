@@ -16,9 +16,10 @@ require mesh_tut_shaders
 let public MESH_W = 256
 let public MESH_H = 256
 
-//! Probe whether this machine's Vulkan device advertises VK_EXT_mesh_shader, so the pixel-oracle gate
-//! can skip cleanly on a driver that lacks it (e.g. a Mesa lavapipe older than 24.1) instead of
-//! crashing vkCreateDevice. Creates and tears down a throwaway instance + physical device.
+//! Probe whether this machine's Vulkan device supports VK_EXT_mesh_shader -- both the extension string
+//! and the meshShader/taskShader feature bits (mesh_shader_supported) -- so the pixel-oracle gate can
+//! skip cleanly on a driver that lacks it (e.g. a Mesa lavapipe older than 24.1) instead of crashing
+//! vkCreateDevice. Creates and tears down a throwaway instance + physical device.
 def public mesh_shader_available() : bool {
     if (volkInitialize() != 0) {
         return false
@@ -26,7 +27,7 @@ def public mesh_shader_available() : bool {
     var inscope instance <- create_instance("dasVulkan tutorial 13 probe", make_api_version(1u, 3u, 0u))
     volkLoadInstance(boost_value_to_vk(instance))
     let phys = select_physical_device(instance)
-    return device_extension_available(phys, "VK_EXT_mesh_shader")
+    return mesh_shader_supported(phys)
 }
 
 //! Render the meshlet grid offscreen; returns MESH_W*MESH_H RGBA8 pixels. The device is created with

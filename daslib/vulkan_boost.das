@@ -126,6 +126,23 @@ def public device_extension_available(phys : VkPhysicalDevice; name : string) : 
     return found
 }
 
+//! True iff ``phys`` both advertises ``VK_EXT_mesh_shader`` AND reports the ``meshShader`` and
+//! ``taskShader`` feature bits as supported (queried via ``vkGetPhysicalDeviceFeatures2``). The
+//! extension string alone is not sufficient: a driver can list the extension yet report a feature
+//! bit as 0, which would still fail ``vkCreateDevice``. Use this to gate mesh-pipeline setup.
+def public mesh_shader_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_EXT_mesh_shader")) {
+        return false
+    }
+    var mf = VkPhysicalDeviceMeshShaderFeaturesEXT()   // sType pre-filled by the ctor
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = reinterpret<void?>(addr(mf))
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return mf.meshShader != 0u && mf.taskShader != 0u
+}
+
 def public create_instance(application_name : string; api_version : uint; extensions : array<string>) : Instance {
     var ai = VkApplicationInfo()
     ai.apiVersion = api_version
@@ -376,6 +393,9 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
 //! the ``VK_EXT_mesh_shader`` device-extension string, in one call. This is the entry point Tutorial 13
 //! and ``tests/integration/test_mesh_*.das`` use. The instance must be at api version >= 1.2 (SPIR-V 1.4).
 def public create_device_mesh_shader(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    if (!mesh_shader_supported(phys)) {
+        panic("create_device_mesh_shader: device does not support the VK_EXT_mesh_shader meshShader+taskShader features")
+    }
     var mf : VkPhysicalDeviceMeshShaderFeaturesEXT
     mf.meshShader = 1u
     mf.taskShader = 1u
