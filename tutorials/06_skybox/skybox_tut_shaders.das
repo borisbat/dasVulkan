@@ -125,7 +125,10 @@ def floor_fs {
     let n = normalize(f_world_normal)
     let gx = floor(f_world_pos.x * 0.5 + 100.0)
     let gz = floor(f_world_pos.z * 0.5 + 100.0)
-    let checker = (sin(gx * 12.9898 + gz * 78.233) * 0.5 + 0.5) > 0.5 ? 0.85 : 0.32
+    // true checkerboard: cell parity (gx+gz) mod 2, via floor (no mod builtin needed)
+    let cell = gx + gz
+    let parity = cell - floor(cell * 0.5) * 2.0          // 0.0 = even cell, 1.0 = odd cell
+    let checker = parity < 0.5 ? 0.85 : 0.28
     let base = float3(checker, checker, checker) * float3(0.72, 0.74, 0.80)
     let v = normalize(float3(cam.cam_pos.x - f_world_pos.x, cam.cam_pos.y - f_world_pos.y,
                              cam.cam_pos.z - f_world_pos.z))
