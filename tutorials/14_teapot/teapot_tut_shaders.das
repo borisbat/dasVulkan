@@ -92,13 +92,27 @@ def eval_normal(base : int; u, v : float) : float3 {
 
 [vulkan_task_shader(local_size_x=1, name="teapot_task_spv")]
 def teapot_task {
-    // v1: pass-through (keep all patches) to validate tessellation + shading first; the backface cull
-    // is enabled in a follow-up once the full teapot renders correctly.
+    // Per-patch backface cull: a patch whose (world) surface normal faces away from the camera is
+    // hidden by the front of the teapot (depth resolves the rest), so it is dropped before any mesh
+    // workgroup runs for it. This is the GPU-driven cluster cull -- the count of surviving patches
+    // drops as the teapot rotates, and the rendered image is unchanged (the culled patches were
+    // occluded). A small negative threshold keeps grazing silhouette patches so the outline stays solid.
+    var n = 0u
     for (p in range(PATCH_COUNT)) {
-        payload.visible[p] = uint(p)
+        let base = p * 16
+        let c = ubo.cp[base + 5].xyz          // an interior control point as the patch anchor
+        let du = ubo.cp[base + 3].xyz - ubo.cp[base + 0].xyz
+        let dv = ubo.cp[base + 12].xyz - ubo.cp[base + 0].xyz
+        let world_n = normalize((ubo.model * float4(cross(du, dv), 0.0)).xyz)
+        let world_c = (ubo.model * float4(c, 1.0)).xyz
+        let view_dir = normalize(ubo.camera.xyz - world_c)
+        if (dot(world_n, view_dir) > -0.15) {
+            payload.visible[n] = uint(p)
+            n ++
+        }
     }
-    payload.count = uint(PATCH_COUNT)
-    EmitMeshTasksEXT(uint(PATCH_COUNT), 1u, 1u)
+    payload.count = n
+    EmitMeshTasksEXT(n, 1u, 1u)
 }
 
 // ===== MESH: tessellate one patch =====
