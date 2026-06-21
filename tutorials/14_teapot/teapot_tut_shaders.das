@@ -185,6 +185,25 @@ var @in @location = 1 f_world_pos    : float3
 var @in @location = 2 f_patch        : float
 var @out @location = 0 frag_color    : float4
 
+//! Procedural environment sampled by a direction -- the thing the glazed teapot reflects. A warm
+//! horizon -> cool zenith gradient, a darker ground hemisphere, and a bright sun disc + glow along the
+//! light direction (so the reflected sun rides the surface as the teapot turns, and lines up with the
+//! specular highlight). No cubemap texture needed: it's evaluated analytically per fragment.
+def env_color(dir : float3) : float3 {
+    let up = clamp(dir.y, -1.0, 1.0)
+    let t = clamp(up * 0.5 + 0.5, 0.0, 1.0)
+    var c = lerp(float3(0.90, 0.80, 0.70), float3(0.32, 0.48, 0.82), float3(t, t, t))
+    if (up < 0.0) {
+        let g = clamp(-up * 1.5, 0.0, 1.0)
+        c = lerp(c, float3(0.18, 0.15, 0.13), float3(g, g, g))
+    }
+    let sun_dir = normalize(ubo.light.xyz)
+    let sd = max(dot(dir, sun_dir), 0.0)
+    c = c + float3(1.0, 0.92, 0.78) * (pow(sd, 250.0) * 3.0)   // bright sun disc
+    c = c + float3(1.0, 0.88, 0.70) * (pow(sd, 8.0) * 0.4)     // soft glow
+    return c
+}
+
 [vulkan_fragment_shader(name="teapot_frag_spv")]
 def teapot_fs {
     var n = normalize(f_world_normal)
@@ -193,11 +212,23 @@ def teapot_fs {
         n = -n
     }
     let l = normalize(ubo.light.xyz)
-    let key = max(dot(n, l), 0.0) * 0.8 + 0.2
-    let ceramic = float3(0.85, 0.55, 0.28)
-    var col = ceramic * key
-    let rim = pow(1.0 - max(dot(n, view), 0.0), 3.0) * 0.35
-    col += float3(rim, rim, rim)
+
+    // reflect the view about the surface normal and sample the procedural environment
+    let inc = float3(-view.x, -view.y, -view.z)
+    let rdir = inc - n * (2.0 * dot(n, inc))
+    let env = env_color(rdir)
+
+    // glazed ceramic: warm diffuse base, Fresnel-weighted environment reflection, tight glossy
+    // highlight. Fresnel makes the rim mirror-bright; the centre keeps a base sheen.
+    let key = max(dot(n, l), 0.0) * 0.7 + 0.3
+    let base = float3(0.82, 0.50, 0.26) * key
+    let fres = pow(1.0 - max(dot(n, view), 0.0), 4.0)
+    let reflectivity = 0.18 + 0.62 * fres
+    let half = normalize(l + view)
+    let spec = pow(max(dot(n, half), 0.0), 120.0) * 1.3
+    var col = lerp(base, env, float3(reflectivity, reflectivity, reflectivity))
+    col = col + float3(spec, spec, spec)
+
     if (ubo.camera.w > 0.5) {             // per-patch debug tint
         let h = fract(f_patch * 0.137)
         let tint = float3(fract(h + 0.0), fract(h + 0.33), fract(h + 0.66))
