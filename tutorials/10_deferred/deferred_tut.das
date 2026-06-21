@@ -336,34 +336,52 @@ def public finalize(var ctx : DeferredContext) {
 
 // ===== build =====
 
-def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : DeferredResources {
-    let dev = boost_value_to_vk(device)
+// build_deferred_resources is by far the largest builder in the tutorials (8 images + 8
+// textures/samplers + 4 render passes + 4 framebuffers + 4 pipelines + descriptors). Holding every
+// resource in ONE stack frame overflows the interpreter's default per-context stack on the smaller
+// contexts CI creates per test (`dastest --isolated-mode`, ~16KB), and the frame is larger on Linux
+// (struct packing) than Windows. So the build is split into phase helpers, each filling `r` by
+// reference in its own (small) frame -- no `options stack` bump needed on any consuming root.
 
-    // ----- offscreen images -----
+def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : DeferredResources {
+    var r : DeferredResources
+    build_df_images(r, device, phys)
+    build_df_textures(r, device, phys, queue, pool)
+    build_df_passes_framebuffers(r, device)
+    build_df_geometry(r, device, phys)
+    build_df_pipelines(r, device)
+    build_df_descriptors(r, device)
+    r.buf_size = uint64(DEFERRED_W * DEFERRED_H * 4)
+    r.readback <- create_host_buffer(device, phys, r.buf_size)
+    return <- r
+}
+
+// ----- offscreen images -----
+def private build_df_images(var r : DeferredResources; device : Device; phys : VkPhysicalDevice) {
     var samples1 : VkSampleCountFlags
     samples1._1 = true
     var gbuf_extra : VkImageUsageFlags
     gbuf_extra.sampled = true               // sampled (not input_attachment) — ssao + lighting read NEIGHBOURS
-    var inscope g_albedo   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, ALBEDO_FMT,   samples1, gbuf_extra)
-    var inscope g_normal   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, NORMAL_FMT,   samples1, gbuf_extra)
-    var inscope g_worldpos <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, WORLDPOS_FMT, samples1, gbuf_extra)
-    var inscope ssao_img   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, SSAO_FMT,     samples1, gbuf_extra)
-
+    r.g_albedo   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, ALBEDO_FMT,   samples1, gbuf_extra)
+    r.g_normal   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, NORMAL_FMT,   samples1, gbuf_extra)
+    r.g_worldpos <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, WORLDPOS_FMT, samples1, gbuf_extra)
+    r.ssao_img   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, SSAO_FMT,     samples1, gbuf_extra)
     var depth_extra : VkImageUsageFlags
-    var inscope depth <- build_offscreen_depth(device, phys, DEFERRED_W, DEFERRED_H, DEPTH_FMT, depth_extra)
-
+    r.depth <- build_offscreen_depth(device, phys, DEFERRED_W, DEFERRED_H, DEPTH_FMT, depth_extra)
     var sm_extra : VkImageUsageFlags
     sm_extra.sampled = true
-    var inscope shadow_map <- build_offscreen_depth(device, phys, SHADOW_W, SHADOW_H, DEPTH_FMT, sm_extra)
-
+    r.shadow_map <- build_offscreen_depth(device, phys, SHADOW_W, SHADOW_H, DEPTH_FMT, sm_extra)
     var final_extra : VkImageUsageFlags
     final_extra.transfer_src = true
-    var inscope final_color <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, FINAL_FMT, samples1, final_extra)
+    r.final_color <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, FINAL_FMT, samples1, final_extra)
+}
 
-    var inscope shadow_sampler <- create_sampler_shadow(device)
+// ----- textures + samplers (HDR env, cat PBR maps, floor brick maps, the NEAREST G-buffer sampler) -----
+def private build_df_textures(var r : DeferredResources; device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) {
+    r.shadow_sampler <- create_sampler_shadow(device)
 
     // HDR equirect environment (Cannon, Poly Haven CC0) + a linear sampler (wrap azimuth, clamp poles)
-    var inscope env_tex <- load_texture_hdr(device, phys, queue, pool,
+    r.env_tex <- load_texture_hdr(device, phys, queue, pool,
         path_join(tutorial_asset_dir("hdri"), "cannon_2k.hdr"))
     var esci : SamplerCreateInfo
     esci.magFilter = VkFilter.LINEAR
@@ -371,15 +389,15 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     esci.addressModeU = VkSamplerAddressMode.REPEAT
     esci.addressModeV = VkSamplerAddressMode.CLAMP_TO_EDGE
     esci.addressModeW = VkSamplerAddressMode.CLAMP_TO_EDGE
-    var inscope env_sampler <- create_sampler(device, esci)
+    r.env_sampler <- create_sampler(device, esci)
 
     // Cat statue PBR maps (concrete_cat_statue, CC0): diff is sRGB albedo; nor_gl + arm are linear.
     let cat_tex_dir = path_join(tutorial_asset_dir("cat"), "textures")
-    var inscope cat_albedo <- load_texture_2d(device, phys, queue, pool,
+    r.cat_albedo <- load_texture_2d(device, phys, queue, pool,
         path_join(cat_tex_dir, "concrete_cat_statue_diff_2k.jpg"), true)
-    var inscope cat_normal <- load_texture_2d(device, phys, queue, pool,
+    r.cat_normal <- load_texture_2d(device, phys, queue, pool,
         path_join(cat_tex_dir, "concrete_cat_statue_nor_gl_2k.jpg"), false)
-    var inscope cat_arm <- load_texture_2d(device, phys, queue, pool,
+    r.cat_arm <- load_texture_2d(device, phys, queue, pool,
         path_join(cat_tex_dir, "concrete_cat_statue_arm_2k.jpg"), false)
     var csci : SamplerCreateInfo
     csci.magFilter = VkFilter.LINEAR
@@ -389,15 +407,15 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     csci.addressModeV = VkSamplerAddressMode.REPEAT
     csci.addressModeW = VkSamplerAddressMode.REPEAT
     csci.maxLod = 16.0f
-    var inscope cat_sampler <- create_sampler(device, csci)
+    r.cat_sampler <- create_sampler(device, csci)
 
     // Floor brick maps (ambientCG Bricks031, CC0): Color sRGB, NormalGL + AO linear. Reuse cat_sampler.
     let brick_dir = tutorial_asset_dir("brick")
-    var inscope floor_albedo <- load_texture_2d(device, phys, queue, pool,
+    r.floor_albedo <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_Color.jpg"), true)
-    var inscope floor_normal <- load_texture_2d(device, phys, queue, pool,
+    r.floor_normal <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_NormalGL.jpg"), false)
-    var inscope floor_ao <- load_texture_2d(device, phys, queue, pool,
+    r.floor_ao <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_AmbientOcclusion.jpg"), false)
 
     // NEAREST/clamp sampler for the deferred G-buffer reads: the ssao + lighting passes need exact
@@ -408,62 +426,65 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     gsci.addressModeU = VkSamplerAddressMode.CLAMP_TO_EDGE
     gsci.addressModeV = VkSamplerAddressMode.CLAMP_TO_EDGE
     gsci.addressModeW = VkSamplerAddressMode.CLAMP_TO_EDGE
-    var inscope gbuffer_sampler <- create_sampler(device, gsci)
+    r.gbuffer_sampler <- create_sampler(device, gsci)
+}
 
-    // ----- render passes (three single-subpass passes; finalLayouts hand off gbuffer->ssao->lighting) -----
-    var inscope rp_shadow   <- create_render_pass_depth_only(device, DEPTH_FMT)
-    var inscope rp_gbuffer  <- build_gbuffer_render_pass(device)
-    var inscope rp_ssao     <- create_render_pass_single_color(device, SSAO_FMT, VkImageLayout.SHADER_READ_ONLY_OPTIMAL)
-    var inscope rp_lighting <- create_render_pass_single_color(device, FINAL_FMT)   // default finalLayout = TRANSFER_SRC_OPTIMAL
+// ----- render passes (three single-subpass passes) + framebuffers -----
+def private build_df_passes_framebuffers(var r : DeferredResources; device : Device) {
+    r.rp_shadow   <- create_render_pass_depth_only(device, DEPTH_FMT)
+    r.rp_gbuffer  <- build_gbuffer_render_pass(device)
+    r.rp_ssao     <- create_render_pass_single_color(device, SSAO_FMT, VkImageLayout.SHADER_READ_ONLY_OPTIMAL)
+    r.rp_lighting <- create_render_pass_single_color(device, FINAL_FMT)   // default finalLayout = TRANSFER_SRC_OPTIMAL
 
-    // ----- framebuffers -----
     var sm_attach : array<ImageView>
-    sm_attach |> push(weak_copy(shadow_map.view))
+    sm_attach |> push(weak_copy(r.shadow_map.view))
     var sm_fbci : FramebufferCreateInfo
-    sm_fbci.renderPass = weak_copy(rp_shadow)
+    sm_fbci.renderPass = weak_copy(r.rp_shadow)
     sm_fbci.pAttachments <- sm_attach
     sm_fbci.width = uint(SHADOW_W)
     sm_fbci.height = uint(SHADOW_H)
     sm_fbci.layers = 1u
-    var inscope fb_shadow <- create_framebuffer(device, sm_fbci)
+    r.fb_shadow <- create_framebuffer(device, sm_fbci)
 
     // G-buffer framebuffer: 3 MRT color + depth.
     var gb_attach : array<ImageView>
-    gb_attach |> push(weak_copy(g_albedo.view))
-    gb_attach |> push(weak_copy(g_normal.view))
-    gb_attach |> push(weak_copy(g_worldpos.view))
-    gb_attach |> push(weak_copy(depth.view))
+    gb_attach |> push(weak_copy(r.g_albedo.view))
+    gb_attach |> push(weak_copy(r.g_normal.view))
+    gb_attach |> push(weak_copy(r.g_worldpos.view))
+    gb_attach |> push(weak_copy(r.depth.view))
     var gb_fbci : FramebufferCreateInfo
-    gb_fbci.renderPass = weak_copy(rp_gbuffer)
+    gb_fbci.renderPass = weak_copy(r.rp_gbuffer)
     gb_fbci.pAttachments <- gb_attach
     gb_fbci.width = uint(DEFERRED_W)
     gb_fbci.height = uint(DEFERRED_H)
     gb_fbci.layers = 1u
-    var inscope fb_gbuffer <- create_framebuffer(device, gb_fbci)
+    r.fb_gbuffer <- create_framebuffer(device, gb_fbci)
 
     // SSAO framebuffer: the single R8 occlusion target.
     var ssao_attach : array<ImageView>
-    ssao_attach |> push(weak_copy(ssao_img.view))
+    ssao_attach |> push(weak_copy(r.ssao_img.view))
     var ssao_fbci : FramebufferCreateInfo
-    ssao_fbci.renderPass = weak_copy(rp_ssao)
+    ssao_fbci.renderPass = weak_copy(r.rp_ssao)
     ssao_fbci.pAttachments <- ssao_attach
     ssao_fbci.width = uint(DEFERRED_W)
     ssao_fbci.height = uint(DEFERRED_H)
     ssao_fbci.layers = 1u
-    var inscope fb_ssao <- create_framebuffer(device, ssao_fbci)
+    r.fb_ssao <- create_framebuffer(device, ssao_fbci)
 
     // Lighting framebuffer: the final composited color (blitted/copied out afterwards).
     var lit_attach : array<ImageView>
-    lit_attach |> push(weak_copy(final_color.view))
+    lit_attach |> push(weak_copy(r.final_color.view))
     var lit_fbci : FramebufferCreateInfo
-    lit_fbci.renderPass = weak_copy(rp_lighting)
+    lit_fbci.renderPass = weak_copy(r.rp_lighting)
     lit_fbci.pAttachments <- lit_attach
     lit_fbci.width = uint(DEFERRED_W)
     lit_fbci.height = uint(DEFERRED_H)
     lit_fbci.layers = 1u
-    var inscope fb_lighting <- create_framebuffer(device, lit_fbci)
+    r.fb_lighting <- create_framebuffer(device, lit_fbci)
+}
 
-    // ----- geometry + UBO buffers -----
+// ----- geometry + UBO buffers -----
+def private build_df_geometry(var r : DeferredResources; device : Device; phys : VkPhysicalDevice) {
     var vb_usage : VkBufferUsageFlags
     vb_usage.vertex_buffer = true
     var ib_usage : VkBufferUsageFlags
@@ -471,50 +492,67 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
 
-    // cube_vb/cube_ib now hold the CAT model (loaded from the OBJ; uint32 indices)
+    // cube_vb/cube_ib hold the CAT model (loaded from the OBJ; uint32 indices)
     var cat_v : array<float>
     var cat_i : array<uint>
     build_cat_geometry(cat_v, cat_i)
-    let cat_index_count = uint(length(cat_i))
-    var inscope cube_vb <- create_host_buffer_from_bytes(device, phys, vb_usage, cat_v)
+    r.cat_index_count = uint(length(cat_i))
+    r.cube_vb <- create_host_buffer_from_bytes(device, phys, vb_usage, cat_v)
     delete cat_v
-    var inscope cube_ib <- create_host_buffer_from_bytes(device, phys, ib_usage, cat_i)
+    r.cube_ib <- create_host_buffer_from_bytes(device, phys, ib_usage, cat_i)
     delete cat_i
 
     var floor_v_copy : array<float>
     floor_v_copy |> push_from(floor_vertices)
-    var inscope floor_vb <- create_host_buffer_from_bytes(device, phys, vb_usage, floor_v_copy)
+    r.floor_vb <- create_host_buffer_from_bytes(device, phys, vb_usage, floor_v_copy)
     delete floor_v_copy
     var floor_i_copy : array<uint16>
     floor_i_copy |> push_from(floor_indices)
-    var inscope floor_ib <- create_host_buffer_from_bytes(device, phys, ib_usage, floor_i_copy)
+    r.floor_ib <- create_host_buffer_from_bytes(device, phys, ib_usage, floor_i_copy)
     delete floor_i_copy
 
-    var inscope xform_ubo <- create_host_buffer(device, phys, XFORM_SIZE, ubo_usage)
-    var inscope scene_ubo <- create_host_buffer(device, phys, SCENE_SIZE, ubo_usage)
+    r.xform_ubo <- create_host_buffer(device, phys, XFORM_SIZE, ubo_usage)
+    r.scene_ubo <- create_host_buffer(device, phys, SCENE_SIZE, ubo_usage)
+}
 
-    // ----- pipeline layouts via reflection -----
+// ----- pipeline layouts (via reflection) + shaders + pipelines -----
+def private build_df_pipelines(var r : DeferredResources; device : Device) {
     var shadow_refl <- [decode_reflection(shadow_vert_spv_reflect)]
-    var inscope shadow_set_layouts <- build_descriptor_set_layouts(device, shadow_refl)
-    var inscope shadow_pipe_layout <- build_pipeline_layout(device, shadow_set_layouts, shadow_refl)
+    r.shadow_set_layouts <- build_descriptor_set_layouts(device, shadow_refl)
+    r.shadow_pipe_layout <- build_pipeline_layout(device, r.shadow_set_layouts, shadow_refl)
     delete shadow_refl
 
     var gbuf_refl <- [decode_reflection(gbuffer_vert_spv_reflect), decode_reflection(gbuffer_frag_spv_reflect)]
-    var inscope gbuffer_set_layouts <- build_descriptor_set_layouts(device, gbuf_refl)
-    var inscope gbuffer_pipe_layout <- build_pipeline_layout(device, gbuffer_set_layouts, gbuf_refl)
+    r.gbuffer_set_layouts <- build_descriptor_set_layouts(device, gbuf_refl)
+    r.gbuffer_pipe_layout <- build_pipeline_layout(device, r.gbuffer_set_layouts, gbuf_refl)
     delete gbuf_refl
 
     var ssao_refl <- [decode_reflection(ssao_vert_spv_reflect), decode_reflection(ssao_frag_spv_reflect)]
-    var inscope ssao_set_layouts <- build_descriptor_set_layouts(device, ssao_refl)
-    var inscope ssao_pipe_layout <- build_pipeline_layout(device, ssao_set_layouts, ssao_refl)
+    r.ssao_set_layouts <- build_descriptor_set_layouts(device, ssao_refl)
+    r.ssao_pipe_layout <- build_pipeline_layout(device, r.ssao_set_layouts, ssao_refl)
     delete ssao_refl
 
     var light_refl <- [decode_reflection(lighting_vert_spv_reflect), decode_reflection(lighting_frag_spv_reflect)]
-    var inscope lighting_set_layouts <- build_descriptor_set_layouts(device, light_refl)
-    var inscope lighting_pipe_layout <- build_pipeline_layout(device, lighting_set_layouts, light_refl)
+    r.lighting_set_layouts <- build_descriptor_set_layouts(device, light_refl)
+    r.lighting_pipe_layout <- build_pipeline_layout(device, r.lighting_set_layouts, light_refl)
     delete light_refl
 
-    // ----- descriptor pool sized for ALL sets -----
+    var inscope sh_shadow   <- create_shader_module(device, shadow_vert_spv)
+    var inscope sh_gbuf_v   <- create_shader_module(device, gbuffer_vert_spv)
+    var inscope sh_gbuf_f   <- create_shader_module(device, gbuffer_frag_spv)
+    var inscope sh_ssao_v   <- create_shader_module(device, ssao_vert_spv)
+    var inscope sh_ssao_f   <- create_shader_module(device, ssao_frag_spv)
+    var inscope sh_light_v  <- create_shader_module(device, lighting_vert_spv)
+    var inscope sh_light_f  <- create_shader_module(device, lighting_frag_spv)
+
+    r.shadow_pipeline   <- build_shadow_pipeline_d(device, r.rp_shadow, r.shadow_pipe_layout, sh_shadow)
+    r.gbuffer_pipeline  <- build_gbuffer_pipeline(device, r.rp_gbuffer, r.gbuffer_pipe_layout, sh_gbuf_v, sh_gbuf_f)
+    r.ssao_pipeline     <- build_fullscreen_pipeline(device, r.rp_ssao, r.ssao_pipe_layout, sh_ssao_v, sh_ssao_f, 0u, false)
+    r.lighting_pipeline <- build_fullscreen_pipeline(device, r.rp_lighting, r.lighting_pipe_layout, sh_light_v, sh_light_f, 0u, false)
+}
+
+// ----- descriptor pool + sets + writes -----
+def private build_df_descriptors(var r : DeferredResources; device : Device) {
     var dpci : DescriptorPoolCreateInfo
     dpci.maxSets = 5u                                              // shadow + gbuffer + ssao + lighting_set0 + lighting_set1
     var p_ubo : DescriptorPoolSize
@@ -525,122 +563,38 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     p_smp.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
     p_smp.descriptorCount = 16u                                   // gbuffer 6 + ssao 2 + lighting 4 + shadow + env
     dpci.pPoolSizes |> push(p_smp)
-    var inscope desc_pool <- create_descriptor_pool(device, dpci)
+    r.desc_pool <- create_descriptor_pool(device, dpci)
 
-    // ----- allocate descriptor sets -----
-    var shadow_set    = alloc_one_set(device, desc_pool, shadow_set_layouts[0])
-    var gbuffer_set   = alloc_one_set(device, desc_pool, gbuffer_set_layouts[0])
-    var ssao_set      = alloc_one_set(device, desc_pool, ssao_set_layouts[0])      // xform UBO + 2 sampled G-buffer
-    var lighting_set0 = alloc_one_set(device, desc_pool, lighting_set_layouts[0])  // 4 sampled G-buffer + ssao
-    var lighting_set1 = alloc_one_set(device, desc_pool, lighting_set_layouts[1])  // shadow_map + scene UBO + env
+    r.shadow_set    = alloc_one_set(device, r.desc_pool, r.shadow_set_layouts[0])
+    r.gbuffer_set   = alloc_one_set(device, r.desc_pool, r.gbuffer_set_layouts[0])
+    r.ssao_set      = alloc_one_set(device, r.desc_pool, r.ssao_set_layouts[0])      // xform UBO + 2 sampled G-buffer
+    r.lighting_set0 = alloc_one_set(device, r.desc_pool, r.lighting_set_layouts[0])  // 4 sampled G-buffer + ssao
+    r.lighting_set1 = alloc_one_set(device, r.desc_pool, r.lighting_set_layouts[1])  // shadow_map + scene UBO + env
 
-    // ----- writes -----
     var writes : array<WriteDescriptorSet>
-    writes |> emplace(write_ubo(shadow_set, 0u, xform_ubo.buffer, XFORM_SIZE))
-    writes |> emplace(write_ubo(gbuffer_set, 0u, xform_ubo.buffer, XFORM_SIZE))
-    writes |> emplace(write_image_sampler(gbuffer_set, 1u, cat_albedo.view, cat_sampler))
-    writes |> emplace(write_image_sampler(gbuffer_set, 2u, cat_normal.view, cat_sampler))
-    writes |> emplace(write_image_sampler(gbuffer_set, 3u, cat_arm.view, cat_sampler))
-    writes |> emplace(write_image_sampler(gbuffer_set, 4u, floor_albedo.view, cat_sampler))
-    writes |> emplace(write_image_sampler(gbuffer_set, 5u, floor_normal.view, cat_sampler))
-    writes |> emplace(write_image_sampler(gbuffer_set, 6u, floor_ao.view, cat_sampler))
+    writes |> emplace(write_ubo(r.shadow_set, 0u, r.xform_ubo.buffer, XFORM_SIZE))
+    writes |> emplace(write_ubo(r.gbuffer_set, 0u, r.xform_ubo.buffer, XFORM_SIZE))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 1u, r.cat_albedo.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 2u, r.cat_normal.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 3u, r.cat_arm.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 4u, r.floor_albedo.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 5u, r.floor_normal.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 6u, r.floor_ao.view, r.cat_sampler))
     // ssao set 0: xform UBO (b0) + sampled g_normal (b1) + g_worldpos (b2), NEAREST
-    writes |> emplace(write_ubo(ssao_set, 0u, xform_ubo.buffer, XFORM_SIZE))
-    writes |> emplace(write_image_sampler(ssao_set, 1u, g_normal.view, gbuffer_sampler))
-    writes |> emplace(write_image_sampler(ssao_set, 2u, g_worldpos.view, gbuffer_sampler))
+    writes |> emplace(write_ubo(r.ssao_set, 0u, r.xform_ubo.buffer, XFORM_SIZE))
+    writes |> emplace(write_image_sampler(r.ssao_set, 1u, r.g_normal.view, r.gbuffer_sampler))
+    writes |> emplace(write_image_sampler(r.ssao_set, 2u, r.g_worldpos.view, r.gbuffer_sampler))
     // lighting set 0: sampled albedo (b0) / normal (b1) / world-pos (b2) / ssao (b3), NEAREST
-    writes |> emplace(write_image_sampler(lighting_set0, 0u, g_albedo.view, gbuffer_sampler))
-    writes |> emplace(write_image_sampler(lighting_set0, 1u, g_normal.view, gbuffer_sampler))
-    writes |> emplace(write_image_sampler(lighting_set0, 2u, g_worldpos.view, gbuffer_sampler))
-    writes |> emplace(write_image_sampler(lighting_set0, 3u, ssao_img.view, gbuffer_sampler))
-    writes |> emplace(write_shadow_sampler(lighting_set1, 0u, shadow_map.view, shadow_sampler))
-    writes |> emplace(write_ubo(lighting_set1, 1u, scene_ubo.buffer, SCENE_SIZE))
-    writes |> emplace(write_image_sampler(lighting_set1, 2u, env_tex.view, env_sampler))
+    writes |> emplace(write_image_sampler(r.lighting_set0, 0u, r.g_albedo.view, r.gbuffer_sampler))
+    writes |> emplace(write_image_sampler(r.lighting_set0, 1u, r.g_normal.view, r.gbuffer_sampler))
+    writes |> emplace(write_image_sampler(r.lighting_set0, 2u, r.g_worldpos.view, r.gbuffer_sampler))
+    writes |> emplace(write_image_sampler(r.lighting_set0, 3u, r.ssao_img.view, r.gbuffer_sampler))
+    writes |> emplace(write_shadow_sampler(r.lighting_set1, 0u, r.shadow_map.view, r.shadow_sampler))
+    writes |> emplace(write_ubo(r.lighting_set1, 1u, r.scene_ubo.buffer, SCENE_SIZE))
+    writes |> emplace(write_image_sampler(r.lighting_set1, 2u, r.env_tex.view, r.env_sampler))
 
     var no_copies : array<CopyDescriptorSet>
     update_descriptor_sets(device, writes, no_copies)
-
-    // ----- shaders + pipelines -----
-    var inscope sh_shadow   <- create_shader_module(device, shadow_vert_spv)
-    var inscope sh_gbuf_v   <- create_shader_module(device, gbuffer_vert_spv)
-    var inscope sh_gbuf_f   <- create_shader_module(device, gbuffer_frag_spv)
-    var inscope sh_ssao_v   <- create_shader_module(device, ssao_vert_spv)
-    var inscope sh_ssao_f   <- create_shader_module(device, ssao_frag_spv)
-    var inscope sh_light_v  <- create_shader_module(device, lighting_vert_spv)
-    var inscope sh_light_f  <- create_shader_module(device, lighting_frag_spv)
-
-    var inscope shadow_pipeline   <- build_shadow_pipeline_d(device, rp_shadow, shadow_pipe_layout, sh_shadow)
-    var inscope gbuffer_pipeline  <- build_gbuffer_pipeline(device, rp_gbuffer, gbuffer_pipe_layout, sh_gbuf_v, sh_gbuf_f)
-    var inscope ssao_pipeline     <- build_fullscreen_pipeline(device, rp_ssao, ssao_pipe_layout, sh_ssao_v, sh_ssao_f, 0u, false)
-    var inscope lighting_pipeline <- build_fullscreen_pipeline(device, rp_lighting, lighting_pipe_layout, sh_light_v, sh_light_f, 0u, false)
-
-    // ----- readback -----
-    let buf_size = uint64(DEFERRED_W * DEFERRED_H * 4)
-    var inscope readback <- create_host_buffer(device, phys, buf_size)
-
-    // ----- (queue + pool are passed in so the caller can record/submit later) -----
-    let _unused_queue = queue
-    let _unused_pool = pool
-
-    // ssao set 1 binding 1: handled above via ssao_set; ssao set 0: handled via ssao_set0 (we
-    // store ssao_set0 in the same field as ssao_set is meant for set 1 -- but we have TWO ssao
-    // sets (set 0 = input atts, set 1 = scene UBO). Need to track both. Adjusting the struct.)
-
-    var r : DeferredResources
-    r.g_albedo <- g_albedo
-    r.g_normal <- g_normal
-    r.g_worldpos <- g_worldpos
-    r.ssao_img <- ssao_img
-    r.final_color <- final_color
-    r.depth <- depth
-    r.shadow_map <- shadow_map
-    r.shadow_sampler <- shadow_sampler
-    r.env_tex <- env_tex
-    r.env_sampler <- env_sampler
-    r.cat_albedo <- cat_albedo
-    r.cat_normal <- cat_normal
-    r.cat_arm <- cat_arm
-    r.cat_sampler <- cat_sampler
-    r.floor_albedo <- floor_albedo
-    r.floor_normal <- floor_normal
-    r.floor_ao <- floor_ao
-    r.gbuffer_sampler <- gbuffer_sampler
-    r.rp_shadow <- rp_shadow
-    r.rp_gbuffer <- rp_gbuffer
-    r.rp_ssao <- rp_ssao
-    r.rp_lighting <- rp_lighting
-    r.fb_shadow <- fb_shadow
-    r.fb_gbuffer <- fb_gbuffer
-    r.fb_ssao <- fb_ssao
-    r.fb_lighting <- fb_lighting
-    r.cube_vb <- cube_vb
-    r.cube_ib <- cube_ib
-    r.cat_index_count = cat_index_count
-    r.floor_vb <- floor_vb
-    r.floor_ib <- floor_ib
-    r.xform_ubo <- xform_ubo
-    r.scene_ubo <- scene_ubo
-    r.shadow_set_layouts <- shadow_set_layouts
-    r.shadow_pipe_layout <- shadow_pipe_layout
-    r.shadow_pipeline <- shadow_pipeline
-    r.shadow_set = shadow_set
-    r.gbuffer_set_layouts <- gbuffer_set_layouts
-    r.gbuffer_pipe_layout <- gbuffer_pipe_layout
-    r.gbuffer_pipeline <- gbuffer_pipeline
-    r.gbuffer_set = gbuffer_set
-    r.ssao_set_layouts <- ssao_set_layouts
-    r.ssao_pipe_layout <- ssao_pipe_layout
-    r.ssao_pipeline <- ssao_pipeline
-    r.ssao_set = ssao_set
-    r.lighting_set_layouts <- lighting_set_layouts
-    r.lighting_pipe_layout <- lighting_pipe_layout
-    r.lighting_pipeline <- lighting_pipeline
-    r.lighting_set0 = lighting_set0
-    r.lighting_set1 = lighting_set1
-    r.desc_pool <- desc_pool
-    r.readback <- readback
-    r.buf_size = buf_size
-    return <- r
 }
 
 // ===== helpers =====
