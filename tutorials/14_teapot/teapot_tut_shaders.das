@@ -35,17 +35,22 @@ let TRIS  = 98   // 2*TESS^2
 
 // ===== UBO =====
 
-//! One UBO (binding 0). The generated bind_uniform supports a single @uniform struct per shader, so
-//! the static control net and the per-frame transform share one block; the ~8 KB re-upload per frame
-//! is negligible. cp = 32 patches x 16 control points (xyz; w pad), patch p = cp[p*16 .. p*16+15],
-//! row-major 4x4. mvp = proj*view*model (positions); model = world rotation (normals + cull facing);
-//! camera.xyz = world eye, camera.w = debug-tint flag (0/1); light.xyz = world light direction.
+//! One UBO (binding 0), shared by every shader in this module (teapot task/mesh/frag, the ground
+//! floor, the env sky). generate_bind_uniform writes the WHOLE struct from any one reachable shader,
+//! so the host calls a single *_bind_uniform per frame and all stages see the same allocation. cp =
+//! 32 patches x 16 control points (xyz; w pad), patch p = cp[p*16 .. p*16+15], row-major 4x4. mvp =
+//! proj*view*model (teapot positions); model = world rotation (normals + cull facing); vp = proj*view
+//! (the world-space ground floor, which carries its own world coords); light_vp = the light's
+//! proj*view for the shadow-map pass; camera.xyz = world eye, camera.w = debug-tint flag (0/1);
+//! light.xyz = world light direction (the sun, shared by env + shadow).
 struct TeapotUBO {
-    mvp    : float4x4
-    model  : float4x4
-    camera : float4
-    light  : float4
-    cp     : float4[512]
+    mvp      : float4x4
+    model    : float4x4
+    vp       : float4x4
+    light_vp : float4x4
+    camera   : float4
+    light    : float4
+    cp       : float4[512]
 }
 var @uniform @set = 0 @binding = 0 ubo : TeapotUBO
 
@@ -235,4 +240,74 @@ def teapot_fs {
         col = lerp(col, tint, float3(0.55, 0.55, 0.55))   // splat t: dasSpirv FMix needs a vec t
     }
     frag_color = float4(col, 1.0)
+}
+
+// ===== GROUND FLOOR =====
+// A world-space XZ plane the teapot sits on. Its own pipeline (regular vertex + fragment, vertex
+// buffer of world positions) drawn in the same color pass as the mesh-shader teapot. The floor reads
+// `ubo.vp` (proj*view, no model — the quad is already in world space) and reflects the SAME env the
+// teapot does, so floor and teapot agree on the environment.
+
+var @in  @location = 0 fl_pos   : float3
+var @out @location = 0 fl_world : float3
+
+[vulkan_vertex_shader(name="floor_vert_spv")]
+def floor_vs {
+    fl_world = fl_pos
+    gl_Position = ubo.vp * float4(fl_pos, 1.0)
+}
+
+var @in  @location = 0 ff_world : float3
+var @out @location = 0 floor_color : float4
+
+[vulkan_fragment_shader(name="floor_frag_spv")]
+def floor_fs {
+    let n = float3(0.0, 1.0, 0.0)
+    // checkerboard via cell parity (gx+gz) mod 2 — bigger cells (x0.6) keep far-field aliasing tame.
+    let gx = floor(ff_world.x * 0.6 + 1000.0)
+    let gz = floor(ff_world.z * 0.6 + 1000.0)
+    let cell = gx + gz
+    let parity = cell - floor(cell * 0.5) * 2.0
+    let checker = parity < 0.5 ? 0.58 : 0.20
+    let l = normalize(ubo.light.xyz)
+    let key = max(dot(n, l), 0.0) * 0.5 + 0.5
+    var col = float3(checker, checker, checker) * key
+    // polished sheen: Fresnel-weighted reflection of the env about the up normal
+    let view = normalize(ubo.camera.xyz - ff_world)
+    let inc = float3(-view.x, -view.y, -view.z)
+    let rdir = inc - n * (2.0 * dot(n, inc))
+    let env = env_color(rdir)
+    let fres = pow(1.0 - max(dot(n, view), 0.0), 4.0) * 0.6
+    col = lerp(col, env, float3(fres, fres, fres))
+    // dissolve the far floor into the sky so the slab has no hard edge and the checker never reaches
+    // the aliasing-prone horizon. Horizon colour = env sampled along the (flattened) view ray.
+    let horizon = env_color(normalize(float3(-view.x, 0.04, -view.z)))
+    let d = length(float2(ff_world.x, ff_world.z))
+    let fade = clamp((d - 4.5) * 0.14, 0.0, 1.0)
+    col = lerp(col, horizon, float3(fade, fade, fade))
+    floor_color = float4(col, 1.0)
+}
+
+// ===== ENV SKY =====
+// A fullscreen triangle drawn first (depth test off) so the background shows the same procedural env
+// the teapot + floor reflect — the teapot is now in a scene, not a void. The host computes the three
+// corner view-rays from the camera basis and uploads them as the triangle's per-vertex attribute; the
+// fragment normalizes the interpolated ray and evaluates env_color.
+
+var @in  @location = 0 sky_clip : float2
+var @in  @location = 1 sky_ray  : float3
+var @out @location = 0 sky_v_ray : float3
+
+[vulkan_vertex_shader(name="sky_vert_spv")]
+def sky_vs {
+    sky_v_ray = sky_ray
+    gl_Position = float4(sky_clip.x, sky_clip.y, 1.0, 1.0)   // z = w = 1 -> far plane
+}
+
+var @in  @location = 0 sky_f_ray : float3
+var @out @location = 0 sky_color : float4
+
+[vulkan_fragment_shader(name="sky_frag_spv")]
+def sky_fs {
+    sky_color = float4(env_color(normalize(sky_f_ray)), 1.0)
 }
