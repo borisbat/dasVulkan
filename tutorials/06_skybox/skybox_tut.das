@@ -267,7 +267,7 @@ def public build_skybox_resources(device : Device; phys : VkPhysicalDevice; queu
 
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
-    var inscope ubo <- create_host_buffer(device, phys, 128ul, ubo_usage)        // view (64) + proj (64) = 128 bytes
+    var inscope ubo <- create_host_buffer(device, phys, 224ul, ubo_usage)        // view+proj+view_full (192) + cam_pos (16) + material (16)
 
     // 6-face cubemap: build the procedural sky on the host and stage it through one
     // HOST_VISIBLE/HOST_COHERENT buffer into a device-local cube image.
@@ -354,7 +354,7 @@ def public build_skybox_resources(device : Device; phys : VkPhysicalDevice; queu
     w0.descriptorCount = 1u
     var binfo : DescriptorBufferInfo
     binfo.buffer = weak_copy(ubo.buffer)
-    binfo.range_ = 128ul
+    binfo.range_ = 224ul
     w0.pBufferInfo |> push(binfo)
     writes |> emplace(w0)
     var w1 : WriteDescriptorSet
