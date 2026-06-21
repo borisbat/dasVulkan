@@ -33,25 +33,21 @@ let TESS  = 7    // TESS x TESS quad grid per patch
 let VERTS = 64   // (TESS+1)^2  -- emitter needs literal-constant globals (SetMeshOutputsEXT operand)
 let TRIS  = 98   // 2*TESS^2
 
-// ===== UBOs =====
+// ===== UBO =====
 
-//! Static control net: 32 patches x 16 control points (xyz used; w padding for the std140 vec4
-//! stride). Patch p occupies cp[p*16 .. p*16+15], row-major 4x4. Uploaded once.
-struct TeapotGeom {
-    cp : float4[512]
-}
-var @uniform @set = 0 @binding = 0 geom : TeapotGeom
-
-//! Per-frame transform + lighting. mvp = proj*view*model (positions); model = world rotation (for
-//! normals + the cull facing test); camera.xyz = world eye, camera.w = debug-tint flag (0/1);
-//! light.xyz = world light direction.
-struct TeapotXform {
+//! One UBO (binding 0). The generated bind_uniform supports a single @uniform struct per shader, so
+//! the static control net and the per-frame transform share one block; the ~8 KB re-upload per frame
+//! is negligible. cp = 32 patches x 16 control points (xyz; w pad), patch p = cp[p*16 .. p*16+15],
+//! row-major 4x4. mvp = proj*view*model (positions); model = world rotation (normals + cull facing);
+//! camera.xyz = world eye, camera.w = debug-tint flag (0/1); light.xyz = world light direction.
+struct TeapotUBO {
     mvp    : float4x4
     model  : float4x4
     camera : float4
     light  : float4
+    cp     : float4[512]
 }
-var @uniform @set = 0 @binding = 1 xf : TeapotXform
+var @uniform @set = 0 @binding = 0 ubo : TeapotUBO
 
 // ===== task -> mesh payload =====
 
@@ -76,10 +72,10 @@ def eval_patch(base : int; u, v : float) : float3 {
     let sv = 1.0 - v
     let bu0 = su * su * su; let bu1 = 3.0 * su * su * u; let bu2 = 3.0 * su * u * u; let bu3 = u * u * u
     let bv0 = sv * sv * sv; let bv1 = 3.0 * sv * sv * v; let bv2 = 3.0 * sv * v * v; let bv3 = v * v * v
-    let r0 = bv0 * geom.cp[base +  0].xyz + bv1 * geom.cp[base +  1].xyz + bv2 * geom.cp[base +  2].xyz + bv3 * geom.cp[base +  3].xyz
-    let r1 = bv0 * geom.cp[base +  4].xyz + bv1 * geom.cp[base +  5].xyz + bv2 * geom.cp[base +  6].xyz + bv3 * geom.cp[base +  7].xyz
-    let r2 = bv0 * geom.cp[base +  8].xyz + bv1 * geom.cp[base +  9].xyz + bv2 * geom.cp[base + 10].xyz + bv3 * geom.cp[base + 11].xyz
-    let r3 = bv0 * geom.cp[base + 12].xyz + bv1 * geom.cp[base + 13].xyz + bv2 * geom.cp[base + 14].xyz + bv3 * geom.cp[base + 15].xyz
+    let r0 = bv0 * ubo.cp[base +  0].xyz + bv1 * ubo.cp[base +  1].xyz + bv2 * ubo.cp[base +  2].xyz + bv3 * ubo.cp[base +  3].xyz
+    let r1 = bv0 * ubo.cp[base +  4].xyz + bv1 * ubo.cp[base +  5].xyz + bv2 * ubo.cp[base +  6].xyz + bv3 * ubo.cp[base +  7].xyz
+    let r2 = bv0 * ubo.cp[base +  8].xyz + bv1 * ubo.cp[base +  9].xyz + bv2 * ubo.cp[base + 10].xyz + bv3 * ubo.cp[base + 11].xyz
+    let r3 = bv0 * ubo.cp[base + 12].xyz + bv1 * ubo.cp[base + 13].xyz + bv2 * ubo.cp[base + 14].xyz + bv3 * ubo.cp[base + 15].xyz
     return bu0 * r0 + bu1 * r1 + bu2 * r2 + bu3 * r3
 }
 
@@ -120,9 +116,9 @@ def teapot_mesh {
             let pos = eval_patch(base, u, v)
             let nrm = eval_normal(base, u, v)
             let idx = iu * (TESS + 1) + iv
-            gl_MeshVerticesEXT[idx].gl_Position = xf.mvp * float4(pos, 1.0)
-            v_world_normal[idx] = normalize((xf.model * float4(nrm, 0.0)).xyz)
-            v_world_pos[idx] = (xf.model * float4(pos, 1.0)).xyz
+            gl_MeshVerticesEXT[idx].gl_Position = ubo.mvp * float4(pos, 1.0)
+            v_world_normal[idx] = normalize((ubo.model * float4(nrm, 0.0)).xyz)
+            v_world_pos[idx] = (ubo.model * float4(pos, 1.0)).xyz
             v_patch[idx] = float(patch)
         }
     }
@@ -152,17 +148,17 @@ var @out @location = 0 frag_color    : float4
 [vulkan_fragment_shader(name="teapot_frag_spv")]
 def teapot_fs {
     var n = normalize(f_world_normal)
-    let view = normalize(xf.camera.xyz - f_world_pos)
+    let view = normalize(ubo.camera.xyz - f_world_pos)
     if (dot(n, view) < 0.0) {            // view-facing: robust to per-patch winding
         n = -n
     }
-    let l = normalize(xf.light.xyz)
+    let l = normalize(ubo.light.xyz)
     let key = max(dot(n, l), 0.0) * 0.8 + 0.2
     let ceramic = float3(0.85, 0.55, 0.28)
     var col = ceramic * key
     let rim = pow(1.0 - max(dot(n, view), 0.0), 3.0) * 0.35
     col += float3(rim, rim, rim)
-    if (xf.camera.w > 0.5) {             // per-patch debug tint
+    if (ubo.camera.w > 0.5) {             // per-patch debug tint
         let h = fract(f_patch * 0.137)
         let tint = float3(fract(h + 0.0), fract(h + 0.33), fract(h + 0.66))
         col = lerp(col, tint, float3(0.55, 0.55, 0.55))   // splat t: dasSpirv FMix needs a vec t
