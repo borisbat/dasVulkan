@@ -33,6 +33,9 @@ let CAM_FOV_Y  = 45.0f * PI / 180.0f
 let LIGHT_DIR  = float3(0.4f, 0.9f, 0.5f)   // un-normalized; normalized where used (the sun)
 let FLOOR_Y    = -0.62f                      // the teapot's base sits here; the ground plane lives at this y
 let FLOOR_EXT  = 16.0f                        // half-extent of the ground quad in X and Z
+let SHADOW_W   = 1024
+let SHADOW_H   = 1024
+let SHADOW_FMT = VkFormat.D32_SFLOAT          // the shadow map: depth attachment in pass 1, sampled in pass 2
 
 // ===== matrix helpers (column-major, m[col] = column vector) =====
 
@@ -162,11 +165,15 @@ def teapot_model(angle : float) : float4x4 {
 struct public TeapotResources {
     color         : OffscreenTarget
     depth         : OffscreenDepth
+    shadow_map    : OffscreenDepth        // D32: depth attachment in pass 1, sampler2DShadow in pass 2
     render_pass   : RenderPass
+    rp_shadow     : RenderPass            // depth-only pass for the shadow map
     framebuffer   : Framebuffer
+    fb_shadow     : Framebuffer
     ubo           : HostBuffer
     floor_vb      : HostBuffer            // ground quad (world-space positions)
     sky_vb        : HostBuffer            // fullscreen env-sky triangle (clip.xy + ray.xyz)
+    shadow_sampler : Sampler             // depth-compare sampler for the shadow lookup
     set_layouts   : array<DescriptorSetLayout>
     desc_pool     : DescriptorPool
     desc_set      : VkDescriptorSet
@@ -174,6 +181,7 @@ struct public TeapotResources {
     pipeline      : Pipeline              // mesh-shader teapot
     pipeline_floor : Pipeline             // ground plane (vertex+fragment)
     pipeline_sky   : Pipeline             // env background (vertex+fragment, depth off)
+    pipeline_shadow : Pipeline            // mesh-shader teapot, depth-only, from the light's POV
     readback      : HostBuffer
     buf_size      : uint64
 }
@@ -181,17 +189,22 @@ struct public TeapotResources {
 def public finalize(var r : TeapotResources) {
     unsafe {
         delete r.readback
+        delete r.pipeline_shadow
         delete r.pipeline_sky
         delete r.pipeline_floor
         delete r.pipeline
         delete r.pipe_layout
         delete r.desc_pool
         delete r.set_layouts
+        delete r.shadow_sampler
         delete r.sky_vb
         delete r.floor_vb
         delete r.ubo
+        delete r.fb_shadow
         delete r.framebuffer
+        delete r.rp_shadow
         delete r.render_pass
+        delete r.shadow_map
         delete r.depth
         delete r.color
     }
@@ -214,6 +227,77 @@ def public finalize(var ctx : TeapotContext) {
     }
 }
 
+//! Depth-only mesh-shader pipeline for the shadow pass: task + mesh stages, NO fragment, NO color
+//! attachment (mesh pipelines ignore vertex-input + input-assembly). Slope-scaled depth bias keeps the
+//! teapot from self-shadowing into acne on the floor. Hand-rolled because create_mesh_pipeline always
+//! attaches a fragment stage + a color blend attachment.
+def private build_mesh_shadow_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+                                       task, mesh : ShaderModule) : Pipeline {
+    var stages : array<VkPipelineShaderStageCreateInfo>
+    stages |> resize(2)
+    stages[0] = VkPipelineShaderStageCreateInfo()
+    stages[0].stage.task_ext = true
+    stages[0].module_ = boost_value_to_vk(task)
+    stages[0].pName = "main"
+    stages[1] = VkPipelineShaderStageCreateInfo()
+    stages[1].stage.mesh_ext = true
+    stages[1].module_ = boost_value_to_vk(mesh)
+    stages[1].pName = "main"
+
+    var viewport : VkViewport
+    viewport.width = float(SHADOW_W)
+    viewport.height = float(SHADOW_H)
+    viewport.maxDepth = 1.0f
+    var scissor : VkRect2D
+    scissor.extent.width = uint(SHADOW_W)
+    scissor.extent.height = uint(SHADOW_H)
+    var vp = VkPipelineViewportStateCreateInfo()
+    vp.viewportCount = 1u
+    vp.scissorCount = 1u
+
+    var rast = VkPipelineRasterizationStateCreateInfo()
+    rast.polygonMode = VkPolygonMode.FILL
+    rast.frontFace = VkFrontFace.COUNTER_CLOCKWISE       // cullMode left NONE — the Newell patches are
+    rast.depthBiasEnable = VK_TRUE                        // not consistently wound; render both sides for
+    rast.depthBiasConstantFactor = 1.5f                  // a solid depth silhouette, slope-bias for acne.
+    rast.depthBiasSlopeFactor = 3.0f
+    rast.lineWidth = 1.0f
+
+    var msaa = VkPipelineMultisampleStateCreateInfo()
+    msaa.rasterizationSamples._1 = true
+
+    var depthstate = VkPipelineDepthStencilStateCreateInfo()
+    depthstate.depthTestEnable = VK_TRUE
+    depthstate.depthWriteEnable = VK_TRUE
+    depthstate.depthCompareOp = VkCompareOp.LESS
+    depthstate.maxDepthBounds = 1.0f
+
+    var blend = VkPipelineColorBlendStateCreateInfo()    // attachmentCount = 0 (no color attachments)
+
+    var h : VkPipeline
+    unsafe {
+        var gp = VkGraphicsPipelineCreateInfo()
+        gp.stageCount = 2u
+        gp.pStages = addr(stages[0])
+        // pVertexInputState + pInputAssemblyState deliberately null — ignored for mesh pipelines.
+        vp.pViewports = addr(viewport)
+        vp.pScissors = addr(scissor)
+        gp.pViewportState = addr(vp)
+        gp.pRasterizationState = addr(rast)
+        gp.pMultisampleState = addr(msaa)
+        gp.pDepthStencilState = addr(depthstate)
+        gp.pColorBlendState = addr(blend)
+        gp.layout = boost_value_to_vk(layout)
+        gp.renderPass = boost_value_to_vk(rp)
+        vk_check(vkCreateGraphicsPipelines(boost_value_to_vk(device), null, 1u, addr(gp), null, addr(h)), null)
+    }
+    delete stages
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
+}
+
 //! Build the teapot render resources against a caller-owned (device, phys, queue, pool). Uploads the
 //! Newell control net into the UBO's cp[] once; the per-frame transform is restamped each frame.
 def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : TeapotResources {
@@ -226,6 +310,19 @@ def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : Te
         width = uint(TEAPOT_W),
         height = uint(TEAPOT_H),
         layers = 1u))
+
+    // Shadow map: a D32 depth image used as the depth attachment in pass 1, then sampled as a
+    // sampler2DShadow in pass 2. `sampled` usage lets the floor fragment bind it. The depth-only pass's
+    // finalLayout = DEPTH_STENCIL_READ_ONLY_OPTIMAL hands it to the color pass ready to sample.
+    var sm_usage : VkImageUsageFlags
+    sm_usage.sampled = true
+    var inscope shadow_map <- build_offscreen_depth(device, phys, SHADOW_W, SHADOW_H, SHADOW_FMT, sm_usage)
+    var inscope rp_shadow <- create_render_pass_depth_only(device, SHADOW_FMT)
+    var inscope fb_shadow <- create_framebuffer(device, FramebufferCreateInfo(
+        renderPass = weak_copy(rp_shadow),
+        pAttachments <- [weak_copy(shadow_map.view)],
+        width = uint(SHADOW_W), height = uint(SHADOW_H), layers = 1u))
+    var inscope shadow_sampler <- create_sampler_shadow(device)
 
     var ubo_usage : VkBufferUsageFlags
     ubo_usage.uniform_buffer = true
@@ -267,6 +364,10 @@ def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : Te
     ps0.type_ = VkDescriptorType.UNIFORM_BUFFER
     ps0.descriptorCount = 1u
     dpci.pPoolSizes |> push(ps0)
+    var ps1 : DescriptorPoolSize
+    ps1.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    ps1.descriptorCount = 1u                  // the shadow-map sampler2DShadow
+    dpci.pPoolSizes |> push(ps1)
     var inscope desc_pool <- create_descriptor_pool(device, dpci)
 
     var dsai = VkDescriptorSetAllocateInfo()
@@ -290,6 +391,19 @@ def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : Te
     binfo.range_ = TEAPOT_UBO_SIZE
     w0.pBufferInfo |> push(binfo)
     writes |> emplace(w0)
+
+    var w1 : WriteDescriptorSet                // binding 1 = sampler2DShadow (the shadow map)
+    w1.dstSet = vk_value_to_boost(raw_set)
+    w1.dstBinding = 1u
+    w1.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    w1.descriptorCount = 1u
+    var shadow_info : DescriptorImageInfo
+    shadow_info.sampler = weak_copy(shadow_sampler)
+    shadow_info.imageView = weak_copy(shadow_map.view)
+    shadow_info.imageLayout = VkImageLayout.DEPTH_STENCIL_READ_ONLY_OPTIMAL
+    w1.pImageInfo |> push(shadow_info)
+    writes |> emplace(w1)
+
     var no_copies : array<CopyDescriptorSet>
     update_descriptor_sets(device, writes, no_copies)
 
@@ -337,15 +451,24 @@ def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : Te
     delete sky_bind
     delete sky_attr
 
+    // shadow caster: the same on-GPU tessellation, depth-only, from the light's POV
+    var inscope shadow_task <- create_shader_module(device, teapot_shadow_task_spv)
+    var inscope shadow_mesh <- create_shader_module(device, teapot_shadow_mesh_spv)
+    var inscope pipeline_shadow <- build_mesh_shadow_pipeline(device, rp_shadow, pipe_layout,
+        shadow_task, shadow_mesh)
+
     let buf_size = uint64(TEAPOT_W * TEAPOT_H * 4)
     var inscope readback <- create_host_buffer(device, phys, buf_size)
 
     return <- TeapotResources(
-        color <- color, depth <- depth, render_pass <- render_pass, framebuffer <- framebuffer,
-        ubo <- ubo_buf, floor_vb <- floor_vb, sky_vb <- sky_vb,
+        color <- color, depth <- depth, shadow_map <- shadow_map,
+        render_pass <- render_pass, rp_shadow <- rp_shadow,
+        framebuffer <- framebuffer, fb_shadow <- fb_shadow,
+        ubo <- ubo_buf, floor_vb <- floor_vb, sky_vb <- sky_vb, shadow_sampler <- shadow_sampler,
         set_layouts <- set_layouts, desc_pool <- desc_pool, desc_set = raw_set,
         pipe_layout <- pipe_layout, pipeline <- pipeline, pipeline_floor <- pipeline_floor,
-        pipeline_sky <- pipeline_sky, readback <- readback, buf_size = buf_size)
+        pipeline_sky <- pipeline_sky, pipeline_shadow <- pipeline_shadow,
+        readback <- readback, buf_size = buf_size)
 }
 
 //! Probe whether this machine's Vulkan device supports VK_EXT_mesh_shader (extension + meshShader/
@@ -407,16 +530,28 @@ def public update_teapot_uniforms(res : TeapotResources; device : Device; time :
 }
 
 def public record_teapot_render_pass(res : TeapotResources; cmd : CommandBuffer) {
+    var sets <- [vk_value_to_boost(res.desc_set)]
+    var no_dyn : array<uint>
+
+    // ===== Pass 1: shadow map — the teapot's depth from the light's POV (mesh-shader, depth-only).
+    // The pass's finalLayout = DEPTH_STENCIL_READ_ONLY_OPTIMAL hands the image to pass 2 ready to sample.
+    var shadow_clears <- [clear_depth(1.0f)]
+    record_render_pass(cmd, res.rp_shadow, res.fb_shadow, full_area(SHADOW_W, SHADOW_H), shadow_clears) {
+        cmd_bind_pipeline(cmd, res.pipeline_shadow)
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.pipe_layout, 0u, sets, no_dyn)
+        cmd_draw_mesh_tasks_e_x_t(cmd, 1u, 1u, 1u)
+    }
+    delete shadow_clears
+
+    // ===== Pass 2: color — sky, then the floor (which samples the shadow map), then the teapot.
     var clears <- [clear_color(0.06f, 0.07f, 0.10f, 1.0f), clear_depth(1.0f)]
     record_render_pass(cmd, res.render_pass, res.framebuffer, full_area(TEAPOT_W, TEAPOT_H), clears) {
-        let sets <- [vk_value_to_boost(res.desc_set)]
-        var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.pipe_layout, 0u, sets, no_dyn)
         // 1. env sky (depth off) paints the background, so the corners are the environment, not a void
         cmd_bind_pipeline(cmd, res.pipeline_sky)
         cmd_bind_vertex_buffer(cmd, 0u, weak_copy(res.sky_vb.buffer))
         cmd_draw(cmd, 3u)
-        // 2. reflective checkerboard ground the teapot sits on
+        // 2. reflective checkerboard ground the teapot sits on (receives the teapot's shadow)
         cmd_bind_pipeline(cmd, res.pipeline_floor)
         cmd_bind_vertex_buffer(cmd, 0u, weak_copy(res.floor_vb.buffer))
         cmd_draw(cmd, 6u)
@@ -425,6 +560,8 @@ def public record_teapot_render_pass(res : TeapotResources; cmd : CommandBuffer)
         cmd_draw_mesh_tasks_e_x_t(cmd, 1u, 1u, 1u)
     }
     delete clears
+    delete sets
+    delete no_dyn
 }
 
 def public render_teapot_frame(var ctx : TeapotContext; time : float; debug_tint : bool) : array<uint8> {

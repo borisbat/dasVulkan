@@ -242,11 +242,33 @@ def teapot_fs {
     frag_color = float4(col, 1.0)
 }
 
+// ===== SHADOW MAP SAMPLER =====
+// The depth-compare combined sampler. dasSpirv emits OpTypeImage with the Depth=1 flag (the
+// `sampler2DShadow` marker) and textureCompare lowers to OpImageSampleDrefImplicitLod -> scalar PCF
+// in [0,1] (1 = lit, 0 = shadowed). The floor reads it to receive the teapot's cast silhouette.
+var @uniform @set = 0 @binding = 1 teapot_shadow_map : sampler2DShadow
+
+let SHADOW_MAP_PX = 1024.0
+
+//! 3x3 PCF: each textureCompare is already hardware-PCF'd over its 2x2 footprint, so 9 taps give a
+//! soft, stable shadow edge cheaply.
+def private pcf_shadow(uv : float2; ref : float) : float {
+    let texel = 1.0 / SHADOW_MAP_PX
+    var sum = 0.0
+    for (j in range(-1, 2)) {
+        for (i in range(-1, 2)) {
+            let off = float2(float(i), float(j)) * texel
+            sum += textureCompare(teapot_shadow_map, uv + off, ref)
+        }
+    }
+    return sum * (1.0 / 9.0)
+}
+
 // ===== GROUND FLOOR =====
 // A world-space XZ plane the teapot sits on. Its own pipeline (regular vertex + fragment, vertex
 // buffer of world positions) drawn in the same color pass as the mesh-shader teapot. The floor reads
-// `ubo.vp` (proj*view, no model — the quad is already in world space) and reflects the SAME env the
-// teapot does, so floor and teapot agree on the environment.
+// `ubo.vp` (proj*view, no model — the quad is already in world space), reflects the SAME env the
+// teapot does, and receives the teapot's shadow via the sampler2DShadow above.
 
 var @in  @location = 0 fl_pos   : float3
 var @out @location = 0 fl_world : float3
@@ -270,8 +292,20 @@ def floor_fs {
     let parity = cell - floor(cell * 0.5) * 2.0
     let checker = parity < 0.5 ? 0.58 : 0.20
     let l = normalize(ubo.light.xyz)
-    let key = max(dot(n, l), 0.0) * 0.5 + 0.5
-    var col = float3(checker, checker, checker) * key
+    let ndotl = max(dot(n, l), 0.0)
+
+    // shadow lookup: project the floor fragment into the light's clip space, remap NDC.xy [-1,1] to
+    // the [0,1] shadow-map UV (Vulkan NDC.z is already [0,1], used as the compare reference).
+    let lc = ubo.light_vp * float4(ff_world, 1.0)
+    let lw = max(lc.w, 0.0001)
+    let lndc = float3(lc.x / lw, lc.y / lw, lc.z / lw)
+    let suv = float2(lndc.x * 0.5 + 0.5, lndc.y * 0.5 + 0.5)
+    let ref = clamp(lndc.z - 0.0015, 0.0, 1.0)        // small constant receiver bias
+    var lit = pcf_shadow(suv, ref)
+    if (ndotl < 0.05) { lit = 0.0 }
+
+    // ambient + shadowed key light
+    var col = float3(checker, checker, checker) * (0.45 + ndotl * 0.7 * lit)
     // polished sheen: Fresnel-weighted reflection of the env about the up normal
     let view = normalize(ubo.camera.xyz - ff_world)
     let inc = float3(-view.x, -view.y, -view.z)
@@ -310,4 +344,48 @@ var @out @location = 0 sky_color : float4
 [vulkan_fragment_shader(name="sky_frag_spv")]
 def sky_fs {
     sky_color = float4(env_color(normalize(sky_f_ray)), 1.0)
+}
+
+// ===== SHADOW CASTER (mesh-shader, depth-only) =====
+// The teapot casts its TRUE silhouette: the same on-GPU Bezier tessellation, rendered depth-only from
+// the light's point of view into the shadow map (pass 1). The task emits ALL patches (a shadow caster
+// must include patches that face away from the camera — they still occlude the light); the mesh writes
+// clip = light_vp * model * pos and no fragment varyings (the pipeline has no fragment stage).
+
+[vulkan_task_shader(local_size_x=1, name="teapot_shadow_task_spv")]
+def teapot_shadow_task {
+    for (p in range(PATCH_COUNT)) {
+        payload.visible[p] = uint(p)
+    }
+    payload.count = uint(PATCH_COUNT)
+    EmitMeshTasksEXT(uint(PATCH_COUNT), 1u, 1u)
+}
+
+[vulkan_mesh_shader(local_size_x=1, max_vertices=64, max_primitives=98, name="teapot_shadow_mesh_spv")]
+def teapot_shadow_mesh {
+    SetMeshOutputsEXT(uint(VERTS), uint(TRIS))
+    let patch = payload.visible[gl_WorkGroupID.x]
+    let base = int(patch) * 16
+    for (iu in range(TESS + 1)) {
+        for (iv in range(TESS + 1)) {
+            let u = float(iu) / float(TESS)
+            let v = float(iv) / float(TESS)
+            let pos = eval_patch(base, u, v)
+            let idx = iu * (TESS + 1) + iv
+            gl_MeshVerticesEXT[idx].gl_Position = ubo.light_vp * ubo.model * float4(pos, 1.0)
+        }
+    }
+    var t = 0
+    for (iu in range(TESS)) {
+        for (iv in range(TESS)) {
+            let a = iu * (TESS + 1) + iv
+            let b = a + 1
+            let c = a + (TESS + 1)
+            let d = c + 1
+            gl_PrimitiveTriangleIndicesEXT[t] = uint3(uint(a), uint(b), uint(c))
+            t ++
+            gl_PrimitiveTriangleIndicesEXT[t] = uint3(uint(b), uint(d), uint(c))
+            t ++
+        }
+    }
 }
