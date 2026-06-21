@@ -17,23 +17,25 @@ options indenting = 4
 //     of world-pos and tri-planar UV, then a tangent-space normal sample is rotated into world
 //     space and written to the G-buffer.
 //
-//   * SSAO PASS  (ssao_vs fullscreen tri + ssao_fs) -- reads normal + world-pos subpassInputs
-//     (subpass dependency 0 -> 1 orders the reads behind the G-buffer writes), uses a
-//     curvature-based AO approximation (the input-attachment surface only sees the CURRENT
-//     fragment, so true screen-space sampling needs sampled images instead; the curvature-AO is a
-//     pedagogical-clarity choice that keeps the multi-subpass rail in focus).
+//   * SSAO PASS  (ssao_vs fullscreen tri + ssao_fs) -- samples the G-buffer normal + world-position
+//     as SAMPLED textures (NEAREST), so it can read NEIGHBOUR texels. Real screen-space AO: a
+//     hemisphere of sample points around each fragment's world position is projected back to screen
+//     and tested against the stored surface depth -- crevices + the cat-floor contact darken.
 //
-//   * LIGHTING PASS  (lighting_vs fullscreen tri + lighting_fs) -- reads ALL FOUR subpassInputs
-//     (albedo+spec, normal, world-pos, ssao), samples the shadow map (sampler2DShadow + 5x5 PCF),
-//     accumulates contributions from ONE directional sun + NUM_LIGHTS orbiting colored point
-//     lights packed in the scene UBO. A 6-mode `debug_mode` push constant flips between the
-//     composed lit result and the raw G-buffer / SSAO / lighting-only visualizations.
+//   * LIGHTING PASS  (lighting_vs fullscreen tri + lighting_fs) -- samples the G-buffer (albedo+spec,
+//     normal, world-pos) + the SSAO factor as SAMPLED textures, samples the shadow map
+//     (sampler2DShadow + 5x5 PCF) + the HDR environment, and accumulates ONE directional sun +
+//     NUM_LIGHTS orbiting colored point lights packed in the scene UBO. A 6-mode `debug_mode` push
+//     constant flips between the composed lit result and the raw G-buffer / SSAO / lighting-only views.
 //
-// UBO LAYOUT (two UBOs because set 0 on the SSAO + lighting pipelines is taken by subpassInputs):
-//   * `xform : XformCam` at set 0 / binding 0  -- view + proj + light_vp (gbuffer + shadow passes)
-//   * `scene : SceneCam` at set 1 / binding 1  -- duplicated light_vp + light_dir + camera_pos +
-//     point lights array (SSAO + lighting passes). Slight duplication is the cost of avoiding a
-//     descriptor-set-index conflict with the input attachments at set 0.
+// Three single-subpass render passes hand off via attachment finalLayouts (gbuffer color ->
+// SHADER_READ_ONLY -> sampled by ssao + lighting; ssao -> SHADER_READ_ONLY -> sampled by lighting),
+// the more common real-world deferred architecture than one multi-subpass pass with input attachments.
+//
+// UBO LAYOUT (two UBOs):
+//   * `xform : XformCam` at set 0 / binding 0  -- view + proj + light_vp (gbuffer + shadow + ssao)
+//   * `scene : SceneCam` at set 1 / binding 1  -- light_vp + light_dir + camera_pos + point lights
+//     (lighting pass). Two UBOs keep the gbuffer's per-object xform separate from the scene globals.
 
 module deferred_tut_shaders public
 
@@ -188,7 +190,14 @@ def gbuffer_fs {
     g_worldpos_out = float4(f_world_pos, float(f_material))
 }
 
-// ===== SSAO pass (subpass 1) =====
+// ===== SSAO pass (real screen-space ambient occlusion) =====
+// The G-buffer normal + world-position are SAMPLED images here (not subpass inputs), so this pass can
+// read NEIGHBOUR texels -- the thing input attachments cannot do. For each fragment we sample a small
+// hemisphere of points around its world position, project each back to screen, and compare the stored
+// surface depth there against the sample's depth: points that fall behind nearby geometry are
+// occluded. occlusion = occluded / K darkens crevices and the cat-floor contact, which is what grounds
+// the cat. A production AO would add a noise texture + a separable blur; we keep a per-pixel hash
+// rotation + a 16-sample spiral for tutorial clarity.
 
 var @out @location = 0 v_uv_ssao : float2
 
@@ -203,28 +212,69 @@ def ssao_vs {
     v_uv_ssao = float2((x + 1.0) * 0.5, (y + 1.0) * 0.5)
 }
 
-var @set = 0 @binding = 0 @input_attachment_index = 0 ssao_in_normal   : subpassInput
-var @set = 0 @binding = 1 @input_attachment_index = 1 ssao_in_worldpos : subpassInput
+// G-buffer as sampled textures (NEAREST). xform (set 0 / binding 0, shared with the gbuffer pass)
+// supplies view + proj so we can project hemisphere sample points back to screen space.
+var @uniform @set = 0 @binding = 1 ssao_g_normal   : sampler2D
+var @uniform @set = 0 @binding = 2 ssao_g_worldpos : sampler2D
 
 var @in @location = 0 f_uv_ssao : float2
 var @out @location = 0 ssao_out : float4
 
-//! Curvature-based AO. Pure input-attachment surfaces can only sample the CURRENT fragment, so
-//! true SSAO that reads neighbours needs sampled images instead. We use a |n . view| curvature
-//! darkening: surfaces facing the camera = bright, grazing-angle = darker. Pedagogically this
-//! teaches "G-buffer reads + post-pass write" cleanly; a production SSAO would attach the G-buffer
-//! as sampled images and randomly sample a hemisphere of offsets around the world position.
+let SSAO_K        = 16
+let SSAO_RADIUS   = 0.6
+let SSAO_BIAS     = 0.03
+let SSAO_STRENGTH = 1.7      // scales raw occlusion so the cat-floor crease reads in the composite
+
+//! Per-pixel rotation hash -- breaks the 16-sample spiral pattern so the AO doesn't band.
+def private hash21(p : float2) : float {
+    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453)
+}
+
 [vulkan_fragment_shader(name="ssao_frag_spv")]
 def ssao_fs {
-    let n = subpassLoad(ssao_in_normal).xyz
-    let p = subpassLoad(ssao_in_worldpos).xyz
-    if (dot(n, n) < 0.01) {
-        ssao_out = float4(1.0, 1.0, 1.0, 1.0)   // background -> no AO darkening
+    let uv = f_uv_ssao
+    let n_raw = texture(ssao_g_normal, uv).xyz
+    if (dot(n_raw, n_raw) < 0.01) {
+        ssao_out = float4(1.0, 1.0, 1.0, 1.0)        // background -> no darkening
         return
     }
-    let view = normalize(scene.camera_pos.xyz - p)
-    let facing = max(dot(normalize(n), view), 0.0)
-    let ao = 0.55 + 0.45 * pow(facing, 0.6)
+    let n = normalize(n_raw)
+    let p = texture(ssao_g_worldpos, uv).xyz
+    let cur_vz = (xform.view * float4(p, 1.0)).z
+
+    // Tangent basis around the normal (pick a non-parallel up vector).
+    var up = float3(0.0, 1.0, 0.0)
+    if (abs(n.y) > 0.95) {
+        up = float3(1.0, 0.0, 0.0)
+    }
+    let tangent = normalize(cross(up, n))
+    let bitangent = cross(n, tangent)
+    let ang0 = hash21(uv * 1024.0) * 6.2831853
+
+    var occ = 0.0
+    for (i in range(SSAO_K)) {
+        let fi = (float(i) + 0.5) / float(SSAO_K)
+        let ang = ang0 + float(i) * 2.3998277                       // golden angle, radians
+        let rr = SSAO_RADIUS * sqrt(fi)
+        // Hemisphere-biased offset: spiral in the tangent plane, lifted along the normal.
+        let off = (cos(ang) * tangent + sin(ang) * bitangent) * rr + n * (rr * 0.5)
+        let sp = p + off
+        let clip = xform.proj * xform.view * float4(sp, 1.0)
+        let w = max(clip.w, 0.0001)
+        let suv = float2(clip.x / w * 0.5 + 0.5, clip.y / w * 0.5 + 0.5)
+        let stored_n = texture(ssao_g_normal, suv).xyz
+        let stored_p = texture(ssao_g_worldpos, suv).xyz
+        let stored_vz = (xform.view * float4(stored_p, 1.0)).z
+        let sample_vz = (xform.view * float4(sp, 1.0)).z
+        let range_check = smoothstep(0.0, 1.0, SSAO_RADIUS / max(abs(cur_vz - stored_vz), 0.0001))
+        // View looks down -Z: a stored surface CLOSER to the camera has a GREATER (less negative) z,
+        // so it occludes the sample point. Guard against off-screen + background samples.
+        if (clip.w > 0.0 && suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0
+                && dot(stored_n, stored_n) > 0.01 && stored_vz >= sample_vz + SSAO_BIAS) {
+            occ += range_check
+        }
+    }
+    let ao = clamp(1.0 - SSAO_STRENGTH * occ / float(SSAO_K), 0.0, 1.0)
     ssao_out = float4(ao, ao, ao, 1.0)
 }
 
@@ -248,10 +298,12 @@ struct DebugPC {
 }
 var @push_constant dbg : DebugPC
 
-var @set = 0 @binding = 0 @input_attachment_index = 0 lit_in_albedo   : subpassInput
-var @set = 0 @binding = 1 @input_attachment_index = 1 lit_in_normal   : subpassInput
-var @set = 0 @binding = 2 @input_attachment_index = 2 lit_in_worldpos : subpassInput
-var @set = 0 @binding = 3 @input_attachment_index = 3 lit_in_ssao     : subpassInput
+// G-buffer + SSAO as sampled textures (NEAREST, set 0). The fullscreen-triangle uv maps 1:1 to the
+// G-buffer texels, so a NEAREST fetch reads each fragment's own deferred values exactly.
+var @uniform @set = 0 @binding = 0 lit_albedo   : sampler2D
+var @uniform @set = 0 @binding = 1 lit_normal   : sampler2D
+var @uniform @set = 0 @binding = 2 lit_worldpos : sampler2D
+var @uniform @set = 0 @binding = 3 lit_ssao     : sampler2D
 
 var @uniform @set = 1 @binding = 0 shadow_map : sampler2DShadow
 
@@ -319,10 +371,10 @@ def lighting_fs {
         return
     }
 
-    let albedo_spec = subpassLoad(lit_in_albedo)
-    let normal_mat  = subpassLoad(lit_in_normal)
-    let worldpos_mt = subpassLoad(lit_in_worldpos)
-    let ssao_factor = subpassLoad(lit_in_ssao).x
+    let albedo_spec = texture(lit_albedo, f_uv_lit)
+    let normal_mat  = texture(lit_normal, f_uv_lit)
+    let worldpos_mt = texture(lit_worldpos, f_uv_lit)
+    let ssao_factor = texture(lit_ssao, f_uv_lit).x
 
     let albedo = albedo_spec.rgb
     let spec_intensity = albedo_spec.a
@@ -403,7 +455,7 @@ def lighting_fs {
     let env_spec = env_refl * (spec_intensity * (0.10 + 0.7 * fres))
 
     let ao = clamp(ssao_factor, 0.0, 1.0)
-    let lighting = (ambient * ao) + (sun_contrib + pt_contrib) * (0.65 + 0.35 * ao) + env_spec * ao
+    let lighting = (ambient * ao) + (sun_contrib + pt_contrib) * (0.55 + 0.45 * ao) + env_spec * ao
 
     if (dbg.debug_mode == 5) {
         frag_color = float4(lighting, 1.0)

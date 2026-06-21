@@ -2,39 +2,34 @@ options gen2
 options indenting = 4
 
 // Tutorial 10 -- deferred shading "putting it all together". Reuses the shadow rail from tutorial
-// 08 and adds the deferred multi-subpass machinery on top:
+// 08 and builds the deferred renderer as FOUR single-subpass render passes that hand off via
+// attachment finalLayouts -- the more common real-world architecture than one multi-subpass pass
+// with input attachments (and the architecture REAL screen-space AO needs, since SSAO must sample
+// NEIGHBOUR G-buffer texels, which input attachments cannot do):
 //
-//   * SHADOW pass: single-subpass depth-only render pass (lifted from tutorial 08), targets a
-//     1024x1024 D32_SFLOAT image. Runs ONCE per frame; the depth image transitions to
-//     DEPTH_STENCIL_READ_ONLY_OPTIMAL at end-of-pass so the lighting pass can sample it as
-//     `sampler2DShadow`.
+//   * SHADOW pass: depth-only render from the sun's POV into a 1024x1024 D32_SFLOAT image
+//     (DEPTH_STENCIL_READ_ONLY at end-of-pass), sampled in the lighting pass as `sampler2DShadow`.
 //
-//   * DEFERRED pass: ONE render pass, THREE subpasses, SIX attachments, TWO dependencies:
-//       attachment 0 = g_albedo   (RGBA8,  COLOR_ATTACHMENT | INPUT_ATTACHMENT)
-//       attachment 1 = g_normal   (RGBA16F, ... )
-//       attachment 2 = g_worldpos (RGBA16F, ... )
-//       attachment 3 = depth      (D32_SFLOAT, DEPTH_STENCIL_ATTACHMENT)
-//       attachment 4 = ssao_img   (R8_UNORM, COLOR_ATTACHMENT | INPUT_ATTACHMENT)
-//       attachment 5 = final_color(RGBA8,   COLOR_ATTACHMENT | TRANSFER_SRC -- the blit target)
+//   * G-BUFFER pass: 3 MRT color + depth. albedo+spec (RGBA8), perturbed world normal+shininess
+//     (RGBA16F), world-pos+material (RGBA16F). The 3 color attachments STORE and transition to
+//     SHADER_READ_ONLY so the next two passes can SAMPLE them.
 //
-//       subpass 0 (gbuffer):  writes (0, 1, 2) + depth
-//       subpass 1 (ssao):     reads  (1, 2)        writes (4)
-//       subpass 2 (lighting): reads  (0, 1, 2, 4)  writes (5)
+//   * SSAO pass: a fullscreen triangle that samples g_normal + g_worldpos as textures and computes
+//     real hemisphere-kernel screen-space ambient occlusion (writes an R8 factor, SHADER_READ_ONLY).
 //
-//       dep 0->1, dep 1->2:  COLOR_ATTACHMENT_OUTPUT,COLOR_ATTACHMENT_WRITE
-//                         -> FRAGMENT_SHADER,INPUT_ATTACHMENT_READ
+//   * LIGHTING pass: a fullscreen triangle that samples the 3 G-buffer textures + the SSAO factor +
+//     the shadow map + the HDR environment, composites the lit result into final_color (TRANSFER_SRC
+//     for the blit/readback).
 //
-// FOUR pipelines on these render passes (one per shader pair):
-//   * shadow_pipeline   (depth-only, vertex-only, rp_shadow / subpass 0)
-//   * gbuffer_pipeline  (vertex+fragment, vertex input pos+normal, 3 color blends, rp_deferred / subpass 0)
-//   * ssao_pipeline     (vertex+fragment, no vertex input, 1 color blend, rp_deferred / subpass 1)
-//   * lighting_pipeline (vertex+fragment, no vertex input, 1 color blend, rp_deferred / subpass 2)
+// FOUR pipelines, one per shader pair:
+//   * shadow_pipeline   (depth-only, vertex-only,            rp_shadow)
+//   * gbuffer_pipeline  (vertex+fragment, pos+normal+uv,     rp_gbuffer,  3 color blends)
+//   * ssao_pipeline     (vertex+fragment, no vertex input,   rp_ssao,     1 color blend)
+//   * lighting_pipeline (vertex+fragment, no vertex input,   rp_lighting, 1 color blend)
 //
-// SCENE: a cube + a brick floor, lit by ONE shadowed directional sun + THREE orbiting colored
-// point lights packed in the scene UBO. Normal-mapping (derivative-based TBN -> brick mortar
-// grooves on the floor, brushed micro-grain on the cube) makes the surfaces look like surfaces.
-// SSAO darkens grazing-angle edges via a |n.view| curvature term -- a pedagogical simplification
-// of full screen-space AO, kept honest in the shader docstring.
+// SCENE: a concrete-cat statue + a brick floor (real CC0 PBR maps), lit by ONE shadowed directional
+// sun + THREE orbiting colored point lights packed in the scene UBO, with HDR-equirect IBL. The real
+// SSAO darkens crevices + the cat-floor contact, grounding the cat on the brick.
 
 module deferred_tut
 
@@ -225,11 +220,16 @@ struct public DeferredResources {
     floor_albedo  : Texture            // floor brick: Color / NormalGL / AO
     floor_normal  : Texture
     floor_ao      : Texture
+    gbuffer_sampler : Sampler          // NEAREST/clamp — exact G-buffer texel reads (ssao + lighting)
 
     rp_shadow     : RenderPass
-    rp_deferred   : RenderPass
+    rp_gbuffer    : RenderPass
+    rp_ssao       : RenderPass
+    rp_lighting   : RenderPass
     fb_shadow     : Framebuffer
-    fb_deferred   : Framebuffer
+    fb_gbuffer    : Framebuffer
+    fb_ssao       : Framebuffer
+    fb_lighting   : Framebuffer
 
     cube_vb : HostBuffer               // the cat model (loaded from OBJ)
     cube_ib : HostBuffer               // uint32 indices
@@ -252,14 +252,13 @@ struct public DeferredResources {
     ssao_set_layouts : array<DescriptorSetLayout>
     ssao_pipe_layout : PipelineLayout
     ssao_pipeline    : Pipeline
-    ssao_set_input   : VkDescriptorSet     // set 0: input attachments
-    ssao_set_scene   : VkDescriptorSet     // set 1: scene UBO
+    ssao_set         : VkDescriptorSet      // set 0: xform UBO + g_normal + g_worldpos (sampled)
 
     lighting_set_layouts : array<DescriptorSetLayout>
     lighting_pipe_layout : PipelineLayout
     lighting_pipeline    : Pipeline
-    lighting_set0        : VkDescriptorSet  // 4 subpassInputs
-    lighting_set1        : VkDescriptorSet  // shadow_map + scene UBO
+    lighting_set0        : VkDescriptorSet  // 4 sampled G-buffer + ssao textures
+    lighting_set1        : VkDescriptorSet  // shadow_map + scene UBO + env_map
 
     desc_pool : DescriptorPool
 
@@ -283,10 +282,15 @@ def public finalize(var r : DeferredResources) {
         delete r.shadow_pipeline
         delete r.shadow_pipe_layout
         delete r.shadow_set_layouts
-        delete r.fb_deferred
+        delete r.fb_lighting
+        delete r.fb_ssao
+        delete r.fb_gbuffer
         delete r.fb_shadow
-        delete r.rp_deferred
+        delete r.rp_lighting
+        delete r.rp_ssao
+        delete r.rp_gbuffer
         delete r.rp_shadow
+        delete r.gbuffer_sampler
         delete r.floor_ao
         delete r.floor_normal
         delete r.floor_albedo
@@ -339,7 +343,7 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     var samples1 : VkSampleCountFlags
     samples1._1 = true
     var gbuf_extra : VkImageUsageFlags
-    gbuf_extra.input_attachment = true
+    gbuf_extra.sampled = true               // sampled (not input_attachment) — ssao + lighting read NEIGHBOURS
     var inscope g_albedo   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, ALBEDO_FMT,   samples1, gbuf_extra)
     var inscope g_normal   <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, NORMAL_FMT,   samples1, gbuf_extra)
     var inscope g_worldpos <- build_offscreen_target(device, phys, DEFERRED_W, DEFERRED_H, WORLDPOS_FMT, samples1, gbuf_extra)
@@ -396,9 +400,21 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     var inscope floor_ao <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_AmbientOcclusion.jpg"), false)
 
-    // ----- render passes -----
+    // NEAREST/clamp sampler for the deferred G-buffer reads: the ssao + lighting passes need exact
+    // texels — linear filtering would smear world-pos / normals across silhouettes. No mips.
+    var gsci : SamplerCreateInfo
+    gsci.magFilter = VkFilter.NEAREST
+    gsci.minFilter = VkFilter.NEAREST
+    gsci.addressModeU = VkSamplerAddressMode.CLAMP_TO_EDGE
+    gsci.addressModeV = VkSamplerAddressMode.CLAMP_TO_EDGE
+    gsci.addressModeW = VkSamplerAddressMode.CLAMP_TO_EDGE
+    var inscope gbuffer_sampler <- create_sampler(device, gsci)
+
+    // ----- render passes (three single-subpass passes; finalLayouts hand off gbuffer->ssao->lighting) -----
     var inscope rp_shadow   <- create_render_pass_depth_only(device, DEPTH_FMT)
-    var inscope rp_deferred <- build_deferred_render_pass(device)
+    var inscope rp_gbuffer  <- build_gbuffer_render_pass(device)
+    var inscope rp_ssao     <- create_render_pass_single_color(device, SSAO_FMT, VkImageLayout.SHADER_READ_ONLY_OPTIMAL)
+    var inscope rp_lighting <- create_render_pass_single_color(device, FINAL_FMT)   // default finalLayout = TRANSFER_SRC_OPTIMAL
 
     // ----- framebuffers -----
     var sm_attach : array<ImageView>
@@ -411,20 +427,41 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     sm_fbci.layers = 1u
     var inscope fb_shadow <- create_framebuffer(device, sm_fbci)
 
-    var def_attach : array<ImageView>
-    def_attach |> push(weak_copy(g_albedo.view))
-    def_attach |> push(weak_copy(g_normal.view))
-    def_attach |> push(weak_copy(g_worldpos.view))
-    def_attach |> push(weak_copy(depth.view))
-    def_attach |> push(weak_copy(ssao_img.view))
-    def_attach |> push(weak_copy(final_color.view))
-    var def_fbci : FramebufferCreateInfo
-    def_fbci.renderPass = weak_copy(rp_deferred)
-    def_fbci.pAttachments <- def_attach
-    def_fbci.width = uint(DEFERRED_W)
-    def_fbci.height = uint(DEFERRED_H)
-    def_fbci.layers = 1u
-    var inscope fb_deferred <- create_framebuffer(device, def_fbci)
+    // G-buffer framebuffer: 3 MRT color + depth.
+    var gb_attach : array<ImageView>
+    gb_attach |> push(weak_copy(g_albedo.view))
+    gb_attach |> push(weak_copy(g_normal.view))
+    gb_attach |> push(weak_copy(g_worldpos.view))
+    gb_attach |> push(weak_copy(depth.view))
+    var gb_fbci : FramebufferCreateInfo
+    gb_fbci.renderPass = weak_copy(rp_gbuffer)
+    gb_fbci.pAttachments <- gb_attach
+    gb_fbci.width = uint(DEFERRED_W)
+    gb_fbci.height = uint(DEFERRED_H)
+    gb_fbci.layers = 1u
+    var inscope fb_gbuffer <- create_framebuffer(device, gb_fbci)
+
+    // SSAO framebuffer: the single R8 occlusion target.
+    var ssao_attach : array<ImageView>
+    ssao_attach |> push(weak_copy(ssao_img.view))
+    var ssao_fbci : FramebufferCreateInfo
+    ssao_fbci.renderPass = weak_copy(rp_ssao)
+    ssao_fbci.pAttachments <- ssao_attach
+    ssao_fbci.width = uint(DEFERRED_W)
+    ssao_fbci.height = uint(DEFERRED_H)
+    ssao_fbci.layers = 1u
+    var inscope fb_ssao <- create_framebuffer(device, ssao_fbci)
+
+    // Lighting framebuffer: the final composited color (blitted/copied out afterwards).
+    var lit_attach : array<ImageView>
+    lit_attach |> push(weak_copy(final_color.view))
+    var lit_fbci : FramebufferCreateInfo
+    lit_fbci.renderPass = weak_copy(rp_lighting)
+    lit_fbci.pAttachments <- lit_attach
+    lit_fbci.width = uint(DEFERRED_W)
+    lit_fbci.height = uint(DEFERRED_H)
+    lit_fbci.layers = 1u
+    var inscope fb_lighting <- create_framebuffer(device, lit_fbci)
 
     // ----- geometry + UBO buffers -----
     var vb_usage : VkBufferUsageFlags
@@ -479,30 +516,23 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
 
     // ----- descriptor pool sized for ALL sets -----
     var dpci : DescriptorPoolCreateInfo
-    dpci.maxSets = 6u                                              // shadow + gbuffer + ssao_input + ssao_scene + lighting_set0 + lighting_set1
+    dpci.maxSets = 5u                                              // shadow + gbuffer + ssao + lighting_set0 + lighting_set1
     var p_ubo : DescriptorPoolSize
     p_ubo.type_ = VkDescriptorType.UNIFORM_BUFFER
-    p_ubo.descriptorCount = 4u                                     // shadow + gbuffer (xform) + ssao_scene + lighting_set1 (scene)
+    p_ubo.descriptorCount = 4u                                     // xform x3 (shadow/gbuffer/ssao) + scene (lighting_set1)
     dpci.pPoolSizes |> push(p_ubo)
-    var p_ia : DescriptorPoolSize
-    p_ia.type_ = VkDescriptorType.INPUT_ATTACHMENT
-    p_ia.descriptorCount = 6u                                      // ssao(2) + lighting(4)
-    dpci.pPoolSizes |> push(p_ia)
     var p_smp : DescriptorPoolSize
     p_smp.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
-    p_smp.descriptorCount = 8u                                     // shadow + env + 3 cat + 3 floor-brick maps
+    p_smp.descriptorCount = 16u                                   // gbuffer 6 + ssao 2 + lighting 4 + shadow + env
     dpci.pPoolSizes |> push(p_smp)
     var inscope desc_pool <- create_descriptor_pool(device, dpci)
 
     // ----- allocate descriptor sets -----
-    var shadow_set   = alloc_one_set(device, desc_pool, shadow_set_layouts[0])
-    var gbuffer_set  = alloc_one_set(device, desc_pool, gbuffer_set_layouts[0])
-    var ssao_set     = alloc_one_set(device, desc_pool, ssao_set_layouts[1])     // ssao's set 1 = scene UBO
-    var lighting_set0 = alloc_one_set(device, desc_pool, lighting_set_layouts[0]) // 4 subpassInputs
-    var lighting_set1 = alloc_one_set(device, desc_pool, lighting_set_layouts[1]) // shadow_map + scene UBO
-
-    // ssao set 0 = input attachments (g_normal + g_worldpos). Allocated AFTER set 1 below.
-    var ssao_set_input = alloc_one_set(device, desc_pool, ssao_set_layouts[0])
+    var shadow_set    = alloc_one_set(device, desc_pool, shadow_set_layouts[0])
+    var gbuffer_set   = alloc_one_set(device, desc_pool, gbuffer_set_layouts[0])
+    var ssao_set      = alloc_one_set(device, desc_pool, ssao_set_layouts[0])      // xform UBO + 2 sampled G-buffer
+    var lighting_set0 = alloc_one_set(device, desc_pool, lighting_set_layouts[0])  // 4 sampled G-buffer + ssao
+    var lighting_set1 = alloc_one_set(device, desc_pool, lighting_set_layouts[1])  // shadow_map + scene UBO + env
 
     // ----- writes -----
     var writes : array<WriteDescriptorSet>
@@ -514,13 +544,15 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     writes |> emplace(write_image_sampler(gbuffer_set, 4u, floor_albedo.view, cat_sampler))
     writes |> emplace(write_image_sampler(gbuffer_set, 5u, floor_normal.view, cat_sampler))
     writes |> emplace(write_image_sampler(gbuffer_set, 6u, floor_ao.view, cat_sampler))
-    writes |> emplace(write_ubo(ssao_set, 1u, scene_ubo.buffer, SCENE_SIZE))
-    writes |> emplace(write_input_attachment(ssao_set_input, 0u, g_normal.view))
-    writes |> emplace(write_input_attachment(ssao_set_input, 1u, g_worldpos.view))
-    writes |> emplace(write_input_attachment(lighting_set0, 0u, g_albedo.view))
-    writes |> emplace(write_input_attachment(lighting_set0, 1u, g_normal.view))
-    writes |> emplace(write_input_attachment(lighting_set0, 2u, g_worldpos.view))
-    writes |> emplace(write_input_attachment(lighting_set0, 3u, ssao_img.view))
+    // ssao set 0: xform UBO (b0) + sampled g_normal (b1) + g_worldpos (b2), NEAREST
+    writes |> emplace(write_ubo(ssao_set, 0u, xform_ubo.buffer, XFORM_SIZE))
+    writes |> emplace(write_image_sampler(ssao_set, 1u, g_normal.view, gbuffer_sampler))
+    writes |> emplace(write_image_sampler(ssao_set, 2u, g_worldpos.view, gbuffer_sampler))
+    // lighting set 0: sampled albedo (b0) / normal (b1) / world-pos (b2) / ssao (b3), NEAREST
+    writes |> emplace(write_image_sampler(lighting_set0, 0u, g_albedo.view, gbuffer_sampler))
+    writes |> emplace(write_image_sampler(lighting_set0, 1u, g_normal.view, gbuffer_sampler))
+    writes |> emplace(write_image_sampler(lighting_set0, 2u, g_worldpos.view, gbuffer_sampler))
+    writes |> emplace(write_image_sampler(lighting_set0, 3u, ssao_img.view, gbuffer_sampler))
     writes |> emplace(write_shadow_sampler(lighting_set1, 0u, shadow_map.view, shadow_sampler))
     writes |> emplace(write_ubo(lighting_set1, 1u, scene_ubo.buffer, SCENE_SIZE))
     writes |> emplace(write_image_sampler(lighting_set1, 2u, env_tex.view, env_sampler))
@@ -538,9 +570,9 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     var inscope sh_light_f  <- create_shader_module(device, lighting_frag_spv)
 
     var inscope shadow_pipeline   <- build_shadow_pipeline_d(device, rp_shadow, shadow_pipe_layout, sh_shadow)
-    var inscope gbuffer_pipeline  <- build_gbuffer_pipeline(device, rp_deferred, gbuffer_pipe_layout, sh_gbuf_v, sh_gbuf_f)
-    var inscope ssao_pipeline     <- build_fullscreen_pipeline(device, rp_deferred, ssao_pipe_layout, sh_ssao_v, sh_ssao_f, 1u, false)
-    var inscope lighting_pipeline <- build_fullscreen_pipeline(device, rp_deferred, lighting_pipe_layout, sh_light_v, sh_light_f, 2u, false)
+    var inscope gbuffer_pipeline  <- build_gbuffer_pipeline(device, rp_gbuffer, gbuffer_pipe_layout, sh_gbuf_v, sh_gbuf_f)
+    var inscope ssao_pipeline     <- build_fullscreen_pipeline(device, rp_ssao, ssao_pipe_layout, sh_ssao_v, sh_ssao_f, 0u, false)
+    var inscope lighting_pipeline <- build_fullscreen_pipeline(device, rp_lighting, lighting_pipe_layout, sh_light_v, sh_light_f, 0u, false)
 
     // ----- readback -----
     let buf_size = uint64(DEFERRED_W * DEFERRED_H * 4)
@@ -572,10 +604,15 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     r.floor_albedo <- floor_albedo
     r.floor_normal <- floor_normal
     r.floor_ao <- floor_ao
+    r.gbuffer_sampler <- gbuffer_sampler
     r.rp_shadow <- rp_shadow
-    r.rp_deferred <- rp_deferred
+    r.rp_gbuffer <- rp_gbuffer
+    r.rp_ssao <- rp_ssao
+    r.rp_lighting <- rp_lighting
     r.fb_shadow <- fb_shadow
-    r.fb_deferred <- fb_deferred
+    r.fb_gbuffer <- fb_gbuffer
+    r.fb_ssao <- fb_ssao
+    r.fb_lighting <- fb_lighting
     r.cube_vb <- cube_vb
     r.cube_ib <- cube_ib
     r.cat_index_count = cat_index_count
@@ -594,8 +631,7 @@ def public build_deferred_resources(device : Device; phys : VkPhysicalDevice; qu
     r.ssao_set_layouts <- ssao_set_layouts
     r.ssao_pipe_layout <- ssao_pipe_layout
     r.ssao_pipeline <- ssao_pipeline
-    r.ssao_set_input = ssao_set_input
-    r.ssao_set_scene = ssao_set
+    r.ssao_set = ssao_set
     r.lighting_set_layouts <- lighting_set_layouts
     r.lighting_pipe_layout <- lighting_pipe_layout
     r.lighting_pipeline <- lighting_pipeline
@@ -636,19 +672,6 @@ def private write_ubo(set : VkDescriptorSet; binding : uint; buf : Buffer; size 
     return <- w
 }
 
-def private write_input_attachment(set : VkDescriptorSet; binding : uint; view : ImageView) : WriteDescriptorSet {
-    var w : WriteDescriptorSet
-    w.dstSet = vk_value_to_boost(set)
-    w.dstBinding = binding
-    w.descriptorType = VkDescriptorType.INPUT_ATTACHMENT
-    w.descriptorCount = 1u
-    var ii : DescriptorImageInfo
-    ii.imageView = weak_copy(view)
-    ii.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
-    w.pImageInfo |> push(ii)
-    return <- w
-}
-
 def private write_shadow_sampler(set : VkDescriptorSet; binding : uint; view : ImageView; sampler : Sampler) : WriteDescriptorSet {
     var w : WriteDescriptorSet
     w.dstSet = vk_value_to_boost(set)
@@ -678,43 +701,29 @@ def private write_image_sampler(set : VkDescriptorSet; binding : uint; view : Im
     return <- w
 }
 
-// ===== multi-subpass deferred render pass (6 attachments, 3 subpasses, 2 deps) =====
+// ===== G-buffer render pass (3 MRT color + depth, single subpass) =====
+// The 3 color attachments STORE + transition to SHADER_READ_ONLY so the ssao + lighting passes can
+// SAMPLE them. No input attachments, no explicit subpass deps -- the cross-pass handoff rides the
+// attachment finalLayouts, the same pattern the shadow pass uses.
 
-def private build_deferred_render_pass(device : Device) : RenderPass {
+def private gbuf_color_attach(fmt : VkFormat) : VkAttachmentDescription {
+    var a : VkAttachmentDescription
+    a.format = fmt
+    a.samples._1 = true
+    a.loadOp = VkAttachmentLoadOp.CLEAR
+    a.storeOp = VkAttachmentStoreOp.STORE          // consumed by ssao + lighting -> MUST store
+    a.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
+    a.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
+    a.initialLayout = VkImageLayout.UNDEFINED
+    a.finalLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    return a
+}
+
+def private build_gbuffer_render_pass(device : Device) : RenderPass {
     var attaches : array<VkAttachmentDescription>
-
-    var a_albedo : VkAttachmentDescription
-    a_albedo.format = ALBEDO_FMT
-    a_albedo.samples._1 = true
-    a_albedo.loadOp = VkAttachmentLoadOp.CLEAR
-    a_albedo.storeOp = VkAttachmentStoreOp.DONT_CARE
-    a_albedo.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
-    a_albedo.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
-    a_albedo.initialLayout = VkImageLayout.UNDEFINED
-    a_albedo.finalLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
-    attaches |> push(a_albedo)
-
-    var a_normal : VkAttachmentDescription
-    a_normal.format = NORMAL_FMT
-    a_normal.samples._1 = true
-    a_normal.loadOp = VkAttachmentLoadOp.CLEAR
-    a_normal.storeOp = VkAttachmentStoreOp.DONT_CARE
-    a_normal.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
-    a_normal.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
-    a_normal.initialLayout = VkImageLayout.UNDEFINED
-    a_normal.finalLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
-    attaches |> push(a_normal)
-
-    var a_worldpos : VkAttachmentDescription
-    a_worldpos.format = WORLDPOS_FMT
-    a_worldpos.samples._1 = true
-    a_worldpos.loadOp = VkAttachmentLoadOp.CLEAR
-    a_worldpos.storeOp = VkAttachmentStoreOp.DONT_CARE
-    a_worldpos.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
-    a_worldpos.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
-    a_worldpos.initialLayout = VkImageLayout.UNDEFINED
-    a_worldpos.finalLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
-    attaches |> push(a_worldpos)
+    attaches |> push(gbuf_color_attach(ALBEDO_FMT))
+    attaches |> push(gbuf_color_attach(NORMAL_FMT))
+    attaches |> push(gbuf_color_attach(WORLDPOS_FMT))
 
     var a_depth : VkAttachmentDescription
     a_depth.format = DEPTH_FMT
@@ -727,115 +736,34 @@ def private build_deferred_render_pass(device : Device) : RenderPass {
     a_depth.finalLayout = VkImageLayout.DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     attaches |> push(a_depth)
 
-    var a_ssao : VkAttachmentDescription
-    a_ssao.format = SSAO_FMT
-    a_ssao.samples._1 = true
-    a_ssao.loadOp = VkAttachmentLoadOp.CLEAR
-    a_ssao.storeOp = VkAttachmentStoreOp.DONT_CARE
-    a_ssao.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
-    a_ssao.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
-    a_ssao.initialLayout = VkImageLayout.UNDEFINED
-    a_ssao.finalLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
-    attaches |> push(a_ssao)
-
-    var a_final : VkAttachmentDescription
-    a_final.format = FINAL_FMT
-    a_final.samples._1 = true
-    a_final.loadOp = VkAttachmentLoadOp.CLEAR
-    a_final.storeOp = VkAttachmentStoreOp.STORE
-    a_final.stencilLoadOp = VkAttachmentLoadOp.DONT_CARE
-    a_final.stencilStoreOp = VkAttachmentStoreOp.DONT_CARE
-    a_final.initialLayout = VkImageLayout.UNDEFINED
-    a_final.finalLayout = VkImageLayout.TRANSFER_SRC_OPTIMAL
-    attaches |> push(a_final)
-
-    // Subpass 0: writes (0, 1, 2) + depth
+    // Single subpass: write the 3 G-buffer color attachments + depth.
     var s0_color : array<VkAttachmentReference>
     s0_color |> push(att_ref(0u, VkImageLayout.COLOR_ATTACHMENT_OPTIMAL))
     s0_color |> push(att_ref(1u, VkImageLayout.COLOR_ATTACHMENT_OPTIMAL))
     s0_color |> push(att_ref(2u, VkImageLayout.COLOR_ATTACHMENT_OPTIMAL))
     var s0_depth = att_ref(3u, VkImageLayout.DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 
-    // Subpass 1: reads (1, 2), writes (4)
-    var s1_input : array<VkAttachmentReference>
-    s1_input |> push(att_ref(1u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    s1_input |> push(att_ref(2u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    var s1_color : array<VkAttachmentReference>
-    s1_color |> push(att_ref(4u, VkImageLayout.COLOR_ATTACHMENT_OPTIMAL))
-
-    // Subpass 2: reads (0, 1, 2, 4), writes (5)
-    var s2_input : array<VkAttachmentReference>
-    s2_input |> push(att_ref(0u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    s2_input |> push(att_ref(1u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    s2_input |> push(att_ref(2u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    s2_input |> push(att_ref(4u, VkImageLayout.SHADER_READ_ONLY_OPTIMAL))
-    var s2_color : array<VkAttachmentReference>
-    s2_color |> push(att_ref(5u, VkImageLayout.COLOR_ATTACHMENT_OPTIMAL))
-
     var s0 : VkSubpassDescription
     s0.pipelineBindPoint = VkPipelineBindPoint.GRAPHICS
     s0.colorAttachmentCount = 3u
 
-    var s1 : VkSubpassDescription
-    s1.pipelineBindPoint = VkPipelineBindPoint.GRAPHICS
-    s1.inputAttachmentCount = 2u
-    s1.colorAttachmentCount = 1u
-
-    var s2 : VkSubpassDescription
-    s2.pipelineBindPoint = VkPipelineBindPoint.GRAPHICS
-    s2.inputAttachmentCount = 4u
-    s2.colorAttachmentCount = 1u
-
     var subpasses : array<VkSubpassDescription>
     subpasses |> push(s0)
-    subpasses |> push(s1)
-    subpasses |> push(s2)
-
-    var deps : array<VkSubpassDependency>
-    var dep01 : VkSubpassDependency
-    dep01.srcSubpass = 0u
-    dep01.dstSubpass = 1u
-    dep01.srcStageMask.color_attachment_output = true
-    dep01.dstStageMask.fragment_shader = true
-    dep01.srcAccessMask.color_attachment_write = true
-    dep01.dstAccessMask.input_attachment_read = true
-    dep01.dependencyFlags.by_region = true
-    deps |> push(dep01)
-    var dep12 : VkSubpassDependency
-    dep12.srcSubpass = 1u
-    dep12.dstSubpass = 2u
-    dep12.srcStageMask.color_attachment_output = true
-    dep12.dstStageMask.fragment_shader = true
-    dep12.srcAccessMask.color_attachment_write = true
-    dep12.dstAccessMask.input_attachment_read = true
-    dep12.dependencyFlags.by_region = true
-    deps |> push(dep12)
 
     var ci = VkRenderPassCreateInfo()
     ci.attachmentCount = uint(length(attaches))
-    ci.subpassCount = uint(length(subpasses))
-    ci.dependencyCount = uint(length(deps))
+    ci.subpassCount = 1u
     var h : VkRenderPass
     unsafe {
         subpasses[0].pColorAttachments = addr(s0_color[0])
         subpasses[0].pDepthStencilAttachment = addr(s0_depth)
-        subpasses[1].pInputAttachments = addr(s1_input[0])
-        subpasses[1].pColorAttachments = addr(s1_color[0])
-        subpasses[2].pInputAttachments = addr(s2_input[0])
-        subpasses[2].pColorAttachments = addr(s2_color[0])
         ci.pAttachments = addr(attaches[0])
         ci.pSubpasses = addr(subpasses[0])
-        ci.pDependencies = addr(deps[0])
         vk_check(vkCreateRenderPass(boost_value_to_vk(device), ci, null, h), null)
     }
     delete attaches
     delete subpasses
-    delete deps
     delete s0_color
-    delete s1_input
-    delete s1_color
-    delete s2_input
-    delete s2_color
     var b = vk_value_to_boost(h)
     b._needs_delete = true
     b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
@@ -1202,43 +1130,46 @@ def public record_deferred_render(res : DeferredResources; cmd : CommandBuffer) 
     }
     delete sh_clears
 
-    // ---- deferred pass (G-buffer -> SSAO -> lighting) ----
-    var def_clears <- [
+    // ---- G-buffer pass (3 MRT color + depth) ----
+    var gb_clears <- [
         clear_color(0.0f, 0.0f, 0.0f, 1.0f),     // 0: albedo bg
-        clear_color(0.0f, 0.0f, 0.0f, 0.0f),     // 1: normal bg (zero vec)
+        clear_color(0.0f, 0.0f, 0.0f, 0.0f),     // 1: normal bg (zero vec = background marker)
         clear_color(0.0f, 0.0f, 0.0f, 0.0f),     // 2: world-pos bg
-        clear_depth(1.0f),                        // 3: depth
-        clear_color(1.0f, 0.0f, 0.0f, 0.0f),     // 4: ssao bg (1 = no darkening)
-        clear_color(0.05f, 0.05f, 0.08f, 1.0f)   // 5: final colour bg (will be overwritten by lighting)
+        clear_depth(1.0f)                         // 3: depth
     ]
-    record_render_pass(cmd, res.rp_deferred, res.fb_deferred, full_area(DEFERRED_W, DEFERRED_H), def_clears) {
-        // subpass 0: G-buffer (draw all geometry)
+    record_render_pass(cmd, res.rp_gbuffer, res.fb_gbuffer, full_area(DEFERRED_W, DEFERRED_H), gb_clears) {
         cmd_bind_pipeline(cmd, res.gbuffer_pipeline)
         let g_sets <- [vk_value_to_boost(res.gbuffer_set)]
         var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.gbuffer_pipe_layout, 0u, g_sets, no_dyn)
         draw_casters(res, cmd, res.gbuffer_pipe_layout)
+    }
+    delete gb_clears
 
-        // subpass 1: SSAO
-        cmd_next_subpass(cmd, VkSubpassContents.INLINE)
+    // ---- SSAO pass (samples the G-buffer normal + world-pos; writes the occlusion factor) ----
+    var ssao_clears <- [clear_color(1.0f, 1.0f, 1.0f, 1.0f)]      // 1 = no darkening
+    record_render_pass(cmd, res.rp_ssao, res.fb_ssao, full_area(DEFERRED_W, DEFERRED_H), ssao_clears) {
         cmd_bind_pipeline(cmd, res.ssao_pipeline)
-        let ssao_s0 <- [vk_value_to_boost(res.ssao_set_input)]
-        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.ssao_pipe_layout, 0u, ssao_s0, no_dyn)
-        let ssao_s1 <- [vk_value_to_boost(res.ssao_set_scene)]
-        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.ssao_pipe_layout, 1u, ssao_s1, no_dyn)
+        let ssao_sets <- [vk_value_to_boost(res.ssao_set)]
+        var no_dyn : array<uint>
+        cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.ssao_pipe_layout, 0u, ssao_sets, no_dyn)
         cmd_draw(cmd, 3u)
+    }
+    delete ssao_clears
 
-        // subpass 2: lighting
-        cmd_next_subpass(cmd, VkSubpassContents.INLINE)
+    // ---- lighting pass (samples G-buffer + ssao + shadow + env; composites the final colour) ----
+    var lit_clears <- [clear_color(0.05f, 0.05f, 0.08f, 1.0f)]
+    record_render_pass(cmd, res.rp_lighting, res.fb_lighting, full_area(DEFERRED_W, DEFERRED_H), lit_clears) {
         cmd_bind_pipeline(cmd, res.lighting_pipeline)
         let l_sets0 <- [vk_value_to_boost(res.lighting_set0)]
+        var no_dyn : array<uint>
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.lighting_pipe_layout, 0u, l_sets0, no_dyn)
         let l_sets1 <- [vk_value_to_boost(res.lighting_set1)]
         cmd_bind_descriptor_sets(cmd, VkPipelineBindPoint.GRAPHICS, res.lighting_pipe_layout, 1u, l_sets1, no_dyn)
         lighting_fs_push_constants(cmd, res.lighting_pipe_layout)
         cmd_draw(cmd, 3u)
     }
-    delete def_clears
+    delete lit_clears
 }
 
 //! Draw cube + floor with the appropriate ObjectPush per object. Used by BOTH the shadow pass and
@@ -1321,11 +1252,11 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
 }
 
 def public debug_mode_label(m : int) : string {
-    if (m == DBG_ALBEDO)   return "albedo"
-    if (m == DBG_NORMAL)   return "normal"
+    if (m == DBG_ALBEDO) return "albedo"
+    if (m == DBG_NORMAL) return "normal"
     if (m == DBG_WORLDPOS) return "world-pos"
-    if (m == DBG_SSAO)     return "ssao"
-    if (m == DBG_LIGHT)    return "lighting-only"
+    if (m == DBG_SSAO) return "ssao"
+    if (m == DBG_LIGHT) return "lighting-only"
     return "lit"
 }
 
@@ -1348,31 +1279,31 @@ enum public DeferredToggle {
 let public AUTO_PERIOD = 2.5f
 
 def public deferred_active_mode(toggle : DeferredToggle; t : float) : int {
-    if (toggle == DeferredToggle.force_lit)      return DBG_LIT
-    if (toggle == DeferredToggle.force_albedo)   return DBG_ALBEDO
-    if (toggle == DeferredToggle.force_normal)   return DBG_NORMAL
+    if (toggle == DeferredToggle.force_lit) return DBG_LIT
+    if (toggle == DeferredToggle.force_albedo) return DBG_ALBEDO
+    if (toggle == DeferredToggle.force_normal) return DBG_NORMAL
     if (toggle == DeferredToggle.force_worldpos) return DBG_WORLDPOS
-    if (toggle == DeferredToggle.force_ssao)     return DBG_SSAO
-    if (toggle == DeferredToggle.force_light)    return DBG_LIGHT
+    if (toggle == DeferredToggle.force_ssao) return DBG_SSAO
+    if (toggle == DeferredToggle.force_light) return DBG_LIGHT
     return int(floor(t / AUTO_PERIOD)) % DBG_MODE_COUNT
 }
 
 def public deferred_toggle_label(toggle : DeferredToggle) : string {
-    if (toggle == DeferredToggle.force_lit)      return "FORCE LIT"
-    if (toggle == DeferredToggle.force_albedo)   return "FORCE ALBEDO"
-    if (toggle == DeferredToggle.force_normal)   return "FORCE NORMAL"
+    if (toggle == DeferredToggle.force_lit) return "FORCE LIT"
+    if (toggle == DeferredToggle.force_albedo) return "FORCE ALBEDO"
+    if (toggle == DeferredToggle.force_normal) return "FORCE NORMAL"
     if (toggle == DeferredToggle.force_worldpos) return "FORCE WORLD-POS"
-    if (toggle == DeferredToggle.force_ssao)     return "FORCE SSAO"
-    if (toggle == DeferredToggle.force_light)    return "FORCE LIGHT"
+    if (toggle == DeferredToggle.force_ssao) return "FORCE SSAO"
+    if (toggle == DeferredToggle.force_light) return "FORCE LIGHT"
     return "AUTO"
 }
 
 def public next_deferred_toggle(toggle : DeferredToggle) : DeferredToggle {
-    if (toggle == DeferredToggle.auto_toggle)    return DeferredToggle.force_lit
-    if (toggle == DeferredToggle.force_lit)      return DeferredToggle.force_albedo
-    if (toggle == DeferredToggle.force_albedo)   return DeferredToggle.force_normal
-    if (toggle == DeferredToggle.force_normal)   return DeferredToggle.force_worldpos
+    if (toggle == DeferredToggle.auto_toggle) return DeferredToggle.force_lit
+    if (toggle == DeferredToggle.force_lit) return DeferredToggle.force_albedo
+    if (toggle == DeferredToggle.force_albedo) return DeferredToggle.force_normal
+    if (toggle == DeferredToggle.force_normal) return DeferredToggle.force_worldpos
     if (toggle == DeferredToggle.force_worldpos) return DeferredToggle.force_ssao
-    if (toggle == DeferredToggle.force_ssao)     return DeferredToggle.force_light
+    if (toggle == DeferredToggle.force_ssao) return DeferredToggle.force_light
     return DeferredToggle.auto_toggle
 }
