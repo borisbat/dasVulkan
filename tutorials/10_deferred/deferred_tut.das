@@ -1169,18 +1169,19 @@ def public update_deferred_uniforms(res : DeferredResources; device : Device; ti
     scene.light_vp = light_vp
     scene.light_dir = float4(sun_dir.x, sun_dir.y, sun_dir.z, 0.0f)
     scene.camera_pos = float4(cam_pos.x, cam_pos.y, cam_pos.z, time)
-    // Three colored point lights orbit at radius 2.5, height 1.2 (just above the floor and below
-    // the cube's centre). Range 6, falloff 1.5 -- gives a wide, soft, visible coloured pool. The
-    // 4x intensity bump (vs the original 1.0) is what makes them visibly punch through the sun.
+    // Three colored point lights orbit at radius 2.5, height 1.2 (just above the floor, below the cat's
+    // centre). Range 6, falloff 1.5 -- a wide, soft coloured pool. Kept as ACCENTS (~1.6 peak) so the
+    // sun + ambient stay the base and the scene keeps dynamic-range headroom (the old 4x bump blew the
+    // concrete/brick out to flat colour and removed the dark contact that grounds the cat).
     let lt = time * 0.5f
     let lr = 2.5f
     let lh = 1.2f
     scene.pos0 = float4(lr * cos(lt),          lh, lr * sin(lt),          6.0f)
-    scene.col0 = float4(4.0f, 0.8f, 0.6f, 1.5f)
+    scene.col0 = float4(1.6f, 0.34f, 0.26f, 1.5f)
     scene.pos1 = float4(lr * cos(lt + 2.094f), lh, lr * sin(lt + 2.094f), 6.0f)
-    scene.col1 = float4(0.6f, 3.6f, 1.0f, 1.5f)
+    scene.col1 = float4(0.26f, 1.5f, 0.42f, 1.5f)
     scene.pos2 = float4(lr * cos(lt + 4.188f), lh, lr * sin(lt + 4.188f), 6.0f)
-    scene.col2 = float4(0.8f, 1.2f, 4.0f, 1.5f)
+    scene.col2 = float4(0.34f, 0.5f, 1.6f, 1.5f)
     lighting_fs_bind_uniform(device, res.scene_ubo.memory)
 }
 
