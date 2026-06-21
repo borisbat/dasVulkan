@@ -85,7 +85,15 @@ def eval_normal(base : int; u, v : float) : float3 {
     let e = 0.012
     let du = eval_patch(base, min(u + e, 1.0), v) - eval_patch(base, max(u - e, 0.0), v)
     let dv = eval_patch(base, u, min(v + e, 1.0)) - eval_patch(base, u, max(v - e, 0.0))
-    return normalize(cross(du, dv))
+    let nn = cross(du, dv)
+    let len2 = dot(nn, nn)
+    // A collapsed control-net row (the lid-knob apex rows are single points) makes one finite-
+    // difference zero, so cross() is the zero vector and normalize() would be NaN -- a NaN vertex
+    // attribute makes the driver discard the whole primitive (the knob vanished). Fall back instead.
+    if (len2 < 1.0e-10) {
+        return float3(0.0, 0.0, 1.0)
+    }
+    return normalize(nn)
 }
 
 // ===== TASK: per-patch cull =====
@@ -105,17 +113,23 @@ def teapot_task {
             c += ubo.cp[base + i].xyz
         }
         c *= 1.0 / 16.0                       // patch center = mean of the control net
+        let world_c = (ubo.model * float4(c, 1.0)).xyz
+        let outward = normalize(world_c)      // teapot is centered at the origin
+        // Patch normal from the control net. A collapsed control-net row (the lid-knob apex rows are
+        // single points) makes one span zero -> cross() is the zero vector -> normalize() is NaN, and
+        // `dot(NaN,..) > t` is false for ANY t, so the patch would be wrongly culled (the knob vanished).
+        // Fall back to the position-based outward direction there. Otherwise orient cross(du,dv) outward
+        // (the Newell patches are not consistently wound) and cull only near-fully-back patches so the
+        // silhouette stays artifact-free.
         let du = ubo.cp[base + 3].xyz - ubo.cp[base + 0].xyz
         let dv = ubo.cp[base + 12].xyz - ubo.cp[base + 0].xyz
-        let world_c = (ubo.model * float4(c, 1.0)).xyz
-        var world_n = normalize((ubo.model * float4(cross(du, dv), 0.0)).xyz)
-        // The Newell patches are not consistently wound, so orient the normal outward from the
-        // origin-centered teapot first; then cull only the patches whose center faces almost directly
-        // away (deep back, fully occluded). A coarse 32-patch teapot has curved patches (the spout
-        // especially) whose center faces away while a near edge is still visible, so a tight threshold
-        // is what keeps the silhouette artifact-free -- the deep-back patches it drops are the safe ones.
-        if (dot(world_n, normalize(world_c)) < 0.0) {
-            world_n = -world_n
+        let raw = cross(du, dv)
+        var world_n = outward
+        if (dot(raw, raw) > 1.0e-10) {
+            world_n = normalize((ubo.model * float4(raw, 0.0)).xyz)
+            if (dot(world_n, outward) < 0.0) {
+                world_n = -world_n
+            }
         }
         let to_cam = normalize(ubo.camera.xyz - world_c)
         if (dot(world_n, to_cam) > -0.92) {
