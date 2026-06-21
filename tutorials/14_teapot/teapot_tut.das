@@ -229,6 +229,24 @@ def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : Te
         pipe_layout <- pipe_layout, pipeline <- pipeline, readback <- readback, buf_size = buf_size)
 }
 
+//! Probe whether this machine's Vulkan device supports VK_EXT_mesh_shader (extension + meshShader/
+//! taskShader feature bits), so the pixel-oracle can skip cleanly on a driver that lacks it instead of
+//! panicking in create_device_mesh_shader. Creates and tears down a throwaway instance + physical device.
+def public mesh_shader_available() : bool {
+    if (volkInitialize() != 0) {
+        return false
+    }
+    var inscope instance <- create_instance("dasVulkan tutorial 14 probe", make_api_version(1u, 3u, 0u))
+    volkLoadInstance(boost_value_to_vk(instance))
+    var count = 0u
+    vkEnumeratePhysicalDevices(boost_value_to_vk(instance), count, null)
+    if (count == 0u) {
+        return false
+    }
+    let phys = select_physical_device(instance)
+    return mesh_shader_supported(phys)
+}
+
 def public build_teapot_context() : TeapotContext {
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")

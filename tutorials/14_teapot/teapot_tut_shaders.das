@@ -100,13 +100,25 @@ def teapot_task {
     var n = 0u
     for (p in range(PATCH_COUNT)) {
         let base = p * 16
-        let c = ubo.cp[base + 5].xyz          // an interior control point as the patch anchor
+        var c = float3(0.0, 0.0, 0.0)
+        for (i in range(16)) {
+            c += ubo.cp[base + i].xyz
+        }
+        c *= 1.0 / 16.0                       // patch center = mean of the control net
         let du = ubo.cp[base + 3].xyz - ubo.cp[base + 0].xyz
         let dv = ubo.cp[base + 12].xyz - ubo.cp[base + 0].xyz
-        let world_n = normalize((ubo.model * float4(cross(du, dv), 0.0)).xyz)
         let world_c = (ubo.model * float4(c, 1.0)).xyz
-        let view_dir = normalize(ubo.camera.xyz - world_c)
-        if (dot(world_n, view_dir) > -0.15) {
+        var world_n = normalize((ubo.model * float4(cross(du, dv), 0.0)).xyz)
+        // The Newell patches are not consistently wound, so orient the normal outward from the
+        // origin-centered teapot first; then cull only the patches whose center faces almost directly
+        // away (deep back, fully occluded). A coarse 32-patch teapot has curved patches (the spout
+        // especially) whose center faces away while a near edge is still visible, so a tight threshold
+        // is what keeps the silhouette artifact-free -- the deep-back patches it drops are the safe ones.
+        if (dot(world_n, normalize(world_c)) < 0.0) {
+            world_n = -world_n
+        }
+        let to_cam = normalize(ubo.camera.xyz - world_c)
+        if (dot(world_n, to_cam) > -0.92) {
             payload.visible[n] = uint(p)
             n ++
         }
