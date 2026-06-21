@@ -66,15 +66,15 @@ let public DBG_SSAO      = 4
 let public DBG_LIGHT     = 5
 let public DBG_MODE_COUNT = 6
 
-// ===== cat statue geometry (loaded from an OBJ; stride 24 = pos + normal, uint32 indices) =====
+// ===== cat statue geometry (loaded from an OBJ; stride 32 = pos + normal + uv, uint32 indices) =====
 // The concrete-cat-statue model (CC0, tutorials/_assets/cat) replaces the old cube: organic geometry
 // shows off deferred shading, shadows, AO and IBL far better than a box. load_obj_mesh is a plain text
-// reader (no stbimage), so the GEOMETRY is CI-safe; the HDR + textures (next phases) are what pull in
-// stbimage. The G-buffer derives UVs tri-planar from world pos, so only pos + normal are uploaded.
+// reader (no stbimage), so the GEOMETRY is CI-safe; the HDR + textures pull in stbimage. The cat
+// carries OBJ UVs, so pos + normal + uv are uploaded (the floor uses a dummy uv at the same stride).
 
 let CAT_HEIGHT = 2.2f       // fitted height in world units; base sits at y=0, centred in x/z
 
-//! Load + fit the cat into `verts` (interleaved pos.xyz + normal.xyz, stride 24) and `indices`
+//! Load + fit the cat into `verts` (interleaved pos.xyz + normal.xyz + uv.xy, stride 32) and `indices`
 //! (uint32). The model is centred in x/z, its base dropped to y=0, and scaled to CAT_HEIGHT tall.
 def build_cat_geometry(var verts : array<float>; var indices : array<uint>) {
     let dir = tutorial_asset_dir("cat")

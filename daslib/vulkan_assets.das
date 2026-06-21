@@ -5,9 +5,10 @@ options indenting = 4
 // daslang glsl/geom_gen OBJ parser). Both upload onto GPU resources with the same staging path the
 // cube tutorial uses inline. The actual asset FILES live in tutorials/_assets/ (all CC0).
 //
-// NOTE: this requires dasStbImage. The lavapipe CI daslang build is compiled WITHOUT stbimage (same
-// reason the recording/ folders are CI-skipped), so a tutorial pixel-oracle that loads a file texture
-// must soft-skip when stbimage is unavailable -- or the CI build must add stbimage. Locally it just works.
+// NOTE: this requires dasStbImage, which is a HARD dependency -- the loaders panic on decode failure.
+// The lavapipe CI daslang build now builds dasModuleStbImage (added to the tests.yml --target line),
+// so the texture tutorials' oracle gates load real maps in CI. (The recording/ folders stay CI-skipped
+// because they also need audio.)
 
 module vulkan_assets
 

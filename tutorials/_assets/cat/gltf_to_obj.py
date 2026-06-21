@@ -2,12 +2,14 @@
 """Minimal glTF (separate .bin) -> OBJ converter (no deps). Extracts POSITION / TEXCOORD_0 / NORMAL
 + indices of the first mesh primitive and writes a triangulated OBJ that glsl/geom_gen load_obj_mesh
 can read. Concrete Cat Statue (Poly Haven, CC0)."""
-import json, struct, sys, os
+import json, struct, os
 
 here = os.path.dirname(os.path.abspath(__file__))
 gltf_path = os.path.join(here, "concrete_cat_statue_2k.gltf")
-g = json.load(open(gltf_path))
-buf = open(os.path.join(here, g["buffers"][0]["uri"]), "rb").read()
+with open(gltf_path) as f:
+    g = json.load(f)
+with open(os.path.join(here, g["buffers"][0]["uri"]), "rb") as f:
+    buf = f.read()
 accs, bvs = g["accessors"], g["bufferViews"]
 
 CT = {5126: ("f", 4), 5125: ("I", 4), 5123: ("H", 2), 5121: ("B", 1)}

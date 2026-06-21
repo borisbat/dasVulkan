@@ -100,9 +100,9 @@ def gen_floor(var verts : array<float>; var indices : array<uint16>) {
     indices |> reserve(6)
     let h = FLOOR_HALF
     verts |> push(-h); verts |> push(0.0f); verts |> push(-h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
-    verts |> push( h); verts |> push(0.0f); verts |> push(-h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
-    verts |> push( h); verts |> push(0.0f); verts |> push( h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
-    verts |> push(-h); verts |> push(0.0f); verts |> push( h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
+    verts |> push(h); verts |> push(0.0f); verts |> push(-h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
+    verts |> push(h); verts |> push(0.0f); verts |> push(h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
+    verts |> push(-h); verts |> push(0.0f); verts |> push(h); verts |> push(0.0f); verts |> push(1.0f); verts |> push(0.0f)
     indices |> push(uint16(0)); indices |> push(uint16(1)); indices |> push(uint16(2))
     indices |> push(uint16(0)); indices |> push(uint16(2)); indices |> push(uint16(3))
 }
@@ -393,7 +393,10 @@ def private build_scene_pipeline(device : Device; rp : RenderPass; layout : Pipe
     }
     delete stages
     delete attrs
-    return <- vk_value_to_boost(h)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    b._device = unsafe(reinterpret<uint64>(boost_value_to_vk(device)))
+    return <- b
 }
 
 //! Build the offscreen targets, the cubemap (uploaded + transitioned to SHADER_READ_ONLY), and the
