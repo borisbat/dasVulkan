@@ -31,7 +31,7 @@ def main {
     // Captions stay canonical; voice text is respelled phonetically per skills/recording.md
     // (dasVulkan -> "das Vulkan", SPIR-V -> "Spear V" per Khronos, digits -> words for the ear).
     // Periods (not commas) force the TTS to pause between beats.
-    say( 30, "dasVulkan tutorial 3 -- SDF raymarch",
+    say( 30, "dasVulkan tutorial 3 -- SDF ray march",
             "das Vulkan tutorial three. The SDF ray march.")
     say(360, "No vertices. No textures. Just math",
             "No vertices. No textures. The whole scene is math.")

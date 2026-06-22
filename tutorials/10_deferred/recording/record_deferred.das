@@ -13,7 +13,6 @@ require ../deferred_tut.das
 require ../../recording/tutorial_record_voiced.das
 require daslib/fio
 require daslib/module_path
-require math
 
 [export]
 def main {
@@ -33,11 +32,11 @@ def main {
     say(30,  "dasVulkan tutorial 10 -- deferred shading",
              "das Vulkan tutorial ten. Deferred shading.")
     say(300, "G-buffer pass. MRT writes albedo. normal. world-pos",
-             "G buffer pass. M R T writes albedo. normal. world position.")
-    say(540, "SSAO subpass reads world-pos. normal. writes AO",
-             "S S A O subpass reads world position and normal. writes ambient occlusion.")
-    say(780, "Lighting subpass. 4 inputs + shadow map + 3 lights",
-             "Lighting subpass. Four subpass inputs. Plus shadow map. Plus three orbiting point lights.")
+             "G buffer pass. M R T writes the concrete cat's albedo. normal. and world position.")
+    say(540, "SSAO pass samples the G-buffer. real hemisphere occlusion",
+             "S S A O pass samples the G buffer textures. real hemisphere occlusion grounds the cat.")
+    say(780, "Lighting pass. G-buffer + SSAO + shadow + HDR environment",
+             "Lighting pass samples the G buffer. S S A O. the shadow map. and the H D R environment.")
 
     var inscope ctx <- build_deferred_context()
 

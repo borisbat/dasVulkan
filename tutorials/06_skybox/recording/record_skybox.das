@@ -31,10 +31,10 @@ def main {
     // Captions stay canonical; voice text is respelled phonetically per skills/recording.md.
     say(30, "dasVulkan tutorial 6 -- skybox",
             "das Vulkan tutorial six. Skybox.")
-    say(360, "Cubemap. Six procedural faces",
-            "Cubemap. Six procedural faces. The headline rail.")
-    say(720, "Depth equals one. Always behind",
-            "Depth equals one. Always behind everything else.")
+    say(360, "Mirror sphere reflects the procedural cubemap",
+            "Cubemap. Six procedural faces. The metal sphere reflects the sky. Schlick Fresnel tints the rim.")
+    say(720, "Skybox draws at depth one. Always behind",
+            "The sky itself draws at depth one. Always behind the sphere and the floor.")
 
     var inscope ctx <- build_skybox_context()
 
