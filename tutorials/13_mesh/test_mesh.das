@@ -8,7 +8,7 @@ options indenting = 4
 // The grid is 4 cols x 2 rows; cell (col,row) center maps to screen (256x256):
 //   x = (((-1 + (col+0.5)*0.5)) * 0.5 + 0.5) * 256    -> col 0,1,2,3 = 32, 96, 160, 224
 //   y = (((-1 + (row+0.5)*1.0)) * 0.5 + 0.5) * 256    -> row 0,1     = 64, 192
-// per-meshlet color = ((col+1)/4, (row+1)/2, 0.6); clear color = (0.05, 0.05, 0.08) ~ (13,13,20).
+// per-meshlet color = ((col+1)/4, (row+1)/2, 0.6); clear color = (0.05, 0.05, 0.08), sRGB-encoded ~ (63,63,80).
 //
 // If the device lacks VK_EXT_mesh_shader (an older lavapipe), the test soft-skips rather than failing
 // -- the same discipline the dasSpirv spirv-val gate uses when the SDK is absent.
@@ -17,7 +17,7 @@ require dastest/testing_boost public
 require mesh_tut
 
 def private is_background(c : int3) : bool {
-    return c.x < 30 && c.y < 30 && c.z < 30
+    return c.x < 100 && c.y < 100 && c.z < 100
 }
 
 [test]

@@ -22,7 +22,7 @@ def test_shadow_oracle(t : T?) {
 
         // Sky pixel (top-left corner) — clear color (10/10/20 dark blue).
         let sky = px(pixels, 16, 16)
-        t |> success(luminance(sky) < 60, "sky is dark clear color")
+        t |> success(luminance(sky) < 80, "sky is dark clear color")
 
         // Find a SHADOWED point on the floor (in the cube's shadow). The sun is roughly along +x
         // at time=0 (sun_yaw = 0); shadow falls toward -x of the cube on the floor. Floor occupies
@@ -39,11 +39,11 @@ def test_shadow_oracle(t : T?) {
                 if (abs(p.x - p.y) < 60 && abs(p.y - p.z) < 60) {
                     if (l < min_floor) { min_floor = l }
                     if (l > max_floor) { max_floor = l }
-                    if (l < 80) { any_shadow = true }
+                    if (l < 140) { any_shadow = true }
                 }
             }
         }
-        t |> success(any_shadow, "found at least one shadowed floor pixel (luminance < 80)")
+        t |> success(any_shadow, "found at least one shadowed floor pixel (luminance < 140)")
         t |> success(max_floor > 100, "found at least one lit floor pixel (luminance > 100, max = {max_floor})")
         t |> success(max_floor - min_floor > 40, "floor has shadow contrast: max {max_floor} - min {min_floor} > 40")
 

@@ -29,7 +29,7 @@ def public render_spin_triangle(angle : float) : array<uint8> {
     var inscope device <- create_device(phys, gfx)
     volkLoadDevice(boost_value_to_vk(device))
     let queue = get_device_queue(device, gfx, 0u)
-    let fmt = VkFormat.R8G8B8A8_UNORM
+    let fmt = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 
     var inscope target <- build_offscreen_target(device, phys, TRI_W, TRI_H, fmt)
     var inscope render_pass <- create_render_pass_single_color(device, fmt)

@@ -43,7 +43,7 @@ let public SCENE_W = 768
 let public SCENE_H = 768
 let public SHADOW_W = 1024
 let public SHADOW_H = 1024
-let public SCENE_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let public SCENE_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 let public SCENE_DEPTH_FMT = VkFormat.D32_SFLOAT
 let public SHADOW_FMT = VkFormat.D32_SFLOAT
 

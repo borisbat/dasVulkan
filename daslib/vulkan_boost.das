@@ -1077,7 +1077,10 @@ def public transition_image_aspect(cmd : CommandBuffer; image : Image; old_layou
 //! dispatches w/8 x h/8, and reads the image back. w and h must be positive multiples of 8 so the
 //! dispatch covers every pixel (asserted). For the canonical authoring side see dasSpirv's image2D +
 //! imageStore (e.g. dasVulkan's storage-image tests and the Mandelbrot tutorial).
-def public compute_to_storage_image(var words : array<uint>; w, h : int) : array<uint8> {
+//! When `srgb_encode` is true the linear storage image is blitted into an R8G8B8A8_SRGB intermediate
+//! before readback, so the hardware applies the linear->sRGB gamma encode at the blit and the returned
+//! bytes are display-ready (storage images do NOT sRGB-encode on write). Default false: copy as-is.
+def public compute_to_storage_image(var words : array<uint>; w, h : int; srgb_encode : bool = false) : array<uint8> {
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
         "compute_to_storage_image: w/h must be positive multiples of 8")
     if (volkInitialize() != 0) {
@@ -1126,6 +1129,38 @@ def public compute_to_storage_image(var words : array<uint>; w, h : int) : array
     vci.subresourceRange.levelCount = 1u
     vci.subresourceRange.layerCount = 1u
     var inscope view <- create_image_view(device, vci)
+
+    // optional sRGB readback intermediate: when srgb_encode, the linear storage image is blitted into
+    // this R8G8B8A8_SRGB image (hardware applies linear->sRGB at the blit) and THAT is read back. No
+    // storage usage -- storage images don't sRGB-encode on write; TRANSFER_DST (blit target) + TRANSFER_SRC.
+    let srgb_fmt = VkFormat.R8G8B8A8_SRGB
+    var inscope srgb_image : Image
+    var inscope srgb_mem : DeviceMemory
+    if (srgb_encode) {
+        var sici : ImageCreateInfo
+        sici.imageType = VkImageType._2D
+        sici.format = srgb_fmt
+        sici.extent.width = uint(w)
+        sici.extent.height = uint(h)
+        sici.extent.depth = 1u
+        sici.mipLevels = 1u
+        sici.arrayLayers = 1u
+        sici.samples._1 = true
+        sici.tiling = VkImageTiling.OPTIMAL
+        sici.usage.transfer_dst = true
+        sici.usage.transfer_src = true
+        sici.initialLayout = VkImageLayout.UNDEFINED
+        srgb_image <- create_image(device, sici)
+        var sreq : VkMemoryRequirements
+        vkGetImageMemoryRequirements(dev, boost_value_to_vk(srgb_image), sreq)
+        var swant : VkMemoryPropertyFlags
+        swant.device_local = true
+        var smai : MemoryAllocateInfo
+        smai.allocationSize = sreq.size
+        smai.memoryTypeIndex = find_memory_type(phys, sreq.memoryTypeBits, swant)
+        srgb_mem <- allocate_memory(device, smai)
+        vk_check(vkBindImageMemory(dev, boost_value_to_vk(srgb_image), boost_value_to_vk(srgb_mem), 0ul), null)
+    }
 
     // descriptor set layout + pool: binding 0 = STORAGE_IMAGE, compute
     var dslci : DescriptorSetLayoutCreateInfo
@@ -1206,7 +1241,36 @@ def public compute_to_storage_image(var words : array<uint>; w, h : int) : array
         // GENERAL -> TRANSFER_SRC for the readback copy
         transition_image(cmd, image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
             shader_write, to_read, comp, xfer)
-        copy_image_to_buffer(cmd, image, readback, w, h)
+        if (srgb_encode) {
+            // blit the linear UNORM storage image into the sRGB intermediate (hardware applies the
+            // linear->sRGB encode at the format conversion), then read THAT back gamma-encoded.
+            var transfer_write : VkAccessFlags
+            transfer_write.transfer_write = true
+            transition_image(cmd, srgb_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+                none, transfer_write, top, xfer)
+            var region : VkImageBlit
+            region.srcSubresource.aspectMask.color = true
+            region.srcSubresource.layerCount = 1u
+            region.srcOffsets[1].x = w
+            region.srcOffsets[1].y = h
+            region.srcOffsets[1].z = 1
+            region.dstSubresource.aspectMask.color = true
+            region.dstSubresource.layerCount = 1u
+            region.dstOffsets[1].x = w
+            region.dstOffsets[1].y = h
+            region.dstOffsets[1].z = 1
+            unsafe {
+                vkCmdBlitImage(boost_value_to_vk(cmd),
+                    boost_value_to_vk(image),      VkImageLayout.TRANSFER_SRC_OPTIMAL,
+                    boost_value_to_vk(srgb_image), VkImageLayout.TRANSFER_DST_OPTIMAL,
+                    1u, addr(region), VkFilter.NEAREST)
+            }
+            transition_image(cmd, srgb_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+                transfer_write, to_read, xfer, xfer)
+            copy_image_to_buffer(cmd, srgb_image, readback, w, h)
+        } else {
+            copy_image_to_buffer(cmd, image, readback, w, h)
+        }
     }
     map_memory_to_array(device, readback.memory, uint64(w) * uint64(h) * 4ul) $(m) {
         pixels := m

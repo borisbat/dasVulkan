@@ -20,7 +20,7 @@ require math
 let public CUBE_W = 768
 let public CUBE_H = 768
 let CUBE_DEPTH_FMT = VkFormat.D32_SFLOAT
-let CUBE_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let CUBE_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 let TEX_DIM = 256
 
 let public N_VERTS = 24                    // 6 faces * 4 corners (per-face normals -> faceted look)

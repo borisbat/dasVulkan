@@ -17,7 +17,7 @@ require mandelbrot_tut_shaders
 //! black, outside is an escape-count ramp). mandelbrot_spv is the SPIR-V compute blob dasSpirv emitted
 //! from mandelbrot_tut_shaders.das.
 def public render_mandelbrot() : array<uint8> {
-    return <- compute_to_storage_image(mandelbrot_spv, MAND_DIM, MAND_DIM)
+    return <- compute_to_storage_image(mandelbrot_spv, MAND_DIM, MAND_DIM, true)
 }
 
 //! Sample the RGB of pixel (x,y) from a MAND_DIM*MAND_DIM RGBA8 buffer.

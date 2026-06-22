@@ -19,9 +19,9 @@ let TEST_TIME : float = 1.0
 let TEST_CAM  : float = 0.18
 
 def bg(p : int3) : bool {
-    // The clear color is (0.02, 0.0, 0.06) * 255 = (5.1, 0, 15.3). Tight on y: the dark indigo on
-    // the texture's ground (6, 6, 26) has nonzero green, so we use y < 4 to distinguish.
-    return p.x < 12 && p.y < 4 && p.z < 22
+    // The clear color is (0.02, 0.0, 0.06) sRGB-encoded to (39, 0, 69). Tight on y: the dark indigo
+    // on the texture's ground has nonzero green after sRGB encoding, so y < 4 still distinguishes.
+    return p.x < 50 && p.y < 4 && p.z < 80
 }
 
 [test]

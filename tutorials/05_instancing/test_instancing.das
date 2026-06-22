@@ -14,9 +14,9 @@ let TEST_TIME : float = 1.0
 let TEST_CAM  : float = 0.18         // camera off the +X axis, swarm rotates ~65 degrees
 
 def bg(p : int3) : bool {
-    // clear colour is (0.02, 0.0, 0.04) * 255 = (5.1, 0, 10.2). Tight on the rim-glow falloff: a
-    // dark rim contribution can lift b a few counts, so be loose on b and strict on r/g.
-    return p.x < 12 && p.y < 4 && p.z < 18
+    // clear colour is (0.02, 0.0, 0.04) linear, sRGB-encoded to (39, 0, 56). A dark rim contribution
+    // can lift b a few counts, so be loose on b and strict on r/g.
+    return p.x < 55 && p.y < 4 && p.z < 72
 }
 
 [test]

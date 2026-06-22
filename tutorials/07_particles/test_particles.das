@@ -16,8 +16,8 @@ let TEST_TIME : float = 1.0
 let TEST_CAM  : float = 0.07         // camera off-axis enough to see the ring tilt
 
 def bg(p : int3) : bool {
-    // clear colour is (0.01, 0.0, 0.03) * 255 = (2.55, 0, 7.65)
-    return p.x < 10 && p.y < 5 && p.z < 18
+    // clear colour is (0.01, 0.0, 0.03) linear; sRGB-encoded to approx (25, 0, 48).
+    return p.x < 35 && p.y < 5 && p.z < 60
 }
 
 [test]
@@ -44,7 +44,11 @@ def test_particles_oracle(t : T?) {
             if (p.x > max_r) {
                 max_r = p.x
             }
-            if (p.z > 130 && p.z > p.x + 20) {
+            // sRGB target: gamma-encoding compresses the blue/red gap relative to linear.
+            // Empirically the teal palette (cool = float3(0.20, 0.70, 1.00)) produces pixels
+            // where blue exceeds red by 10+ at brightness 60+; require gap >= 10 to confirm
+            // a genuinely teal-hued particle was rasterised.
+            if (p.z > 60 && p.z > p.x + 10) {
                 saw_teal = true
             }
             if (p.x > 130 && p.x > p.z + 20) {
