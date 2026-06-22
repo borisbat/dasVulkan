@@ -220,6 +220,7 @@ struct public DeferredResources {
     floor_albedo  : Texture            // floor brick: Color / NormalGL / AO
     floor_normal  : Texture
     floor_ao      : Texture
+    floor_roughness : Texture          // floor brick: Roughness (linear) -> drives floor spec
     gbuffer_sampler : Sampler          // NEAREST/clamp — exact G-buffer texel reads (ssao + lighting)
 
     rp_shadow     : RenderPass
@@ -291,6 +292,7 @@ def public finalize(var r : DeferredResources) {
         delete r.rp_gbuffer
         delete r.rp_shadow
         delete r.gbuffer_sampler
+        delete r.floor_roughness
         delete r.floor_ao
         delete r.floor_normal
         delete r.floor_albedo
@@ -399,6 +401,10 @@ def private build_df_textures(var r : DeferredResources; device : Device; phys :
         path_join(cat_tex_dir, "concrete_cat_statue_nor_gl_2k.jpg"), false)
     r.cat_arm <- load_texture_2d(device, phys, queue, pool,
         path_join(cat_tex_dir, "concrete_cat_statue_arm_2k.jpg"), false)
+    // Anisotropic filtering keeps the floor brick relief crisp at grazing angles (the tiled map
+    // minifies hard there). Feature-gated: lavapipe (CI) reports it unsupported -> this no-ops.
+    var dev_feats : VkPhysicalDeviceFeatures
+    vkGetPhysicalDeviceFeatures(phys, dev_feats)
     var csci : SamplerCreateInfo
     csci.magFilter = VkFilter.LINEAR
     csci.minFilter = VkFilter.LINEAR
@@ -407,6 +413,8 @@ def private build_df_textures(var r : DeferredResources; device : Device; phys :
     csci.addressModeV = VkSamplerAddressMode.REPEAT
     csci.addressModeW = VkSamplerAddressMode.REPEAT
     csci.maxLod = 16.0f
+    csci.anisotropyEnable = dev_feats.samplerAnisotropy
+    csci.maxAnisotropy = dev_feats.samplerAnisotropy != 0u ? 8.0f : 1.0f
     r.cat_sampler <- create_sampler(device, csci)
 
     // Floor brick maps (ambientCG Bricks031, CC0): Color sRGB, NormalGL + AO linear. Reuse cat_sampler.
@@ -417,6 +425,8 @@ def private build_df_textures(var r : DeferredResources; device : Device; phys :
         path_join(brick_dir, "Bricks031_1K-JPG_NormalGL.jpg"), false)
     r.floor_ao <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_AmbientOcclusion.jpg"), false)
+    r.floor_roughness <- load_texture_2d(device, phys, queue, pool,
+        path_join(brick_dir, "Bricks031_1K-JPG_Roughness.jpg"), false)
 
     // NEAREST/clamp sampler for the deferred G-buffer reads: the ssao + lighting passes need exact
     // texels — linear filtering would smear world-pos / normals across silhouettes. No mips.
@@ -561,7 +571,7 @@ def private build_df_descriptors(var r : DeferredResources; device : Device) {
     dpci.pPoolSizes |> push(p_ubo)
     var p_smp : DescriptorPoolSize
     p_smp.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
-    p_smp.descriptorCount = 16u                                   // gbuffer 6 + ssao 2 + lighting 4 + shadow + env
+    p_smp.descriptorCount = 17u                                   // gbuffer 7 + ssao 2 + lighting 4 + shadow + env
     dpci.pPoolSizes |> push(p_smp)
     r.desc_pool <- create_descriptor_pool(device, dpci)
 
@@ -580,6 +590,7 @@ def private build_df_descriptors(var r : DeferredResources; device : Device) {
     writes |> emplace(write_image_sampler(r.gbuffer_set, 4u, r.floor_albedo.view, r.cat_sampler))
     writes |> emplace(write_image_sampler(r.gbuffer_set, 5u, r.floor_normal.view, r.cat_sampler))
     writes |> emplace(write_image_sampler(r.gbuffer_set, 6u, r.floor_ao.view, r.cat_sampler))
+    writes |> emplace(write_image_sampler(r.gbuffer_set, 7u, r.floor_roughness.view, r.cat_sampler))
     // ssao set 0: xform UBO (b0) + sampled g_normal (b1) + g_worldpos (b2), NEAREST
     writes |> emplace(write_ubo(r.ssao_set, 0u, r.xform_ubo.buffer, XFORM_SIZE))
     writes |> emplace(write_image_sampler(r.ssao_set, 1u, r.g_normal.view, r.gbuffer_sampler))
@@ -1187,7 +1198,14 @@ def public build_deferred_context() : DeferredContext {
     volkLoadInstance(boost_value_to_vk(instance))
     let phys = select_physical_device(instance)
     let gfx = select_graphics_queue_family(phys)
-    var inscope device <- create_device(phys, gfx)
+    // Enable samplerAnisotropy when the device advertises it (off on lavapipe/CI) so the brick
+    // sampler can use anisotropic filtering; the sampler is gated on the same bit.
+    var avail_feats : VkPhysicalDeviceFeatures
+    vkGetPhysicalDeviceFeatures(phys, avail_feats)
+    var want_feats : VkPhysicalDeviceFeatures
+    want_feats.samplerAnisotropy = avail_feats.samplerAnisotropy
+    var no_ext : array<string>
+    var inscope device <- create_device(phys, gfx, no_ext, want_feats)
     volkLoadDevice(boost_value_to_vk(device))
     var queue = get_device_queue(device, gfx, 0u)
     var poolci : CommandPoolCreateInfo

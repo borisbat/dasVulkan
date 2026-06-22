@@ -109,6 +109,7 @@ var @uniform @set = 0 @binding = 1 shadow_map : sampler2DShadow
 var @uniform @set = 0 @binding = 2 brick_albedo : sampler2D
 var @uniform @set = 0 @binding = 3 brick_normal : sampler2D
 var @uniform @set = 0 @binding = 4 brick_ao     : sampler2D
+var @uniform @set = 0 @binding = 5 brick_roughness : sampler2D
 
 var @in @location = 0 f_world_pos    : float3
 var @in @location = 1 f_world_normal : float3
@@ -155,6 +156,14 @@ def private pcf_shadow(uv : float2; ref : float) : float {
 // space, so scale 1.0 maps one full brick tile across each face (legible courses + mortar).
 let BRICK_SCALE = 1.0
 
+// Bricks031 relief is shallow; boost the tangent xy so the brick reads bumpy even face-on (the cube's
+// top face, seen like a small floor, is otherwise nearly flat). Decode + boost + renormalize.
+let BRICK_NORMAL_STRENGTH = 3.0
+def private unpack_brick_normal(rgb : float3) : float3 {
+    let t = rgb * 2.0 - float3(1.0, 1.0, 1.0)
+    return normalize(float3(t.x * BRICK_NORMAL_STRENGTH, t.y * BRICK_NORMAL_STRENGTH, t.z))
+}
+
 //! Tri-planar brick albedo: sample the brick color on each axis-aligned plane and blend by the
 //! normal weights `wn`. Replaces the old `sin(uv*84)` micro-texture that aliased into banding.
 def private tri_albedo(p : float3; wn : float3) : float3 {
@@ -168,10 +177,9 @@ def private tri_albedo(p : float3; wn : float3) : float3 {
 //! plane, reorient it into world space using the geometric normal `n`, and blend by `wn`. Gives the
 //! bricks real relief under the moving sun without per-vertex tangents.
 def private tri_normal(p : float3; n : float3; wn : float3) : float3 {
-    let one = float3(1.0, 1.0, 1.0)
-    let tx = texture(brick_normal, float2(p.z, p.y) * BRICK_SCALE).rgb * 2.0 - one
-    let ty = texture(brick_normal, float2(p.x, p.z) * BRICK_SCALE).rgb * 2.0 - one
-    let tz = texture(brick_normal, float2(p.x, p.y) * BRICK_SCALE).rgb * 2.0 - one
+    let tx = unpack_brick_normal(texture(brick_normal, float2(p.z, p.y) * BRICK_SCALE).rgb)
+    let ty = unpack_brick_normal(texture(brick_normal, float2(p.x, p.z) * BRICK_SCALE).rgb)
+    let tz = unpack_brick_normal(texture(brick_normal, float2(p.x, p.y) * BRICK_SCALE).rgb)
     // reorient each plane's tangent normal into world space (whiteout), then triblend
     let cx = float3(abs(tx.z) * n.x, tx.y + n.y, tx.x + n.z)   // X plane -> .zyx
     let cy = float3(ty.x + n.x, abs(ty.z) * n.y, ty.y + n.z)   // Y plane -> .xzy
@@ -184,6 +192,14 @@ def private tri_ao(p : float3; wn : float3) : float {
     let ax = texture(brick_ao, float2(p.z, p.y) * BRICK_SCALE).x
     let ay = texture(brick_ao, float2(p.x, p.z) * BRICK_SCALE).x
     let az = texture(brick_ao, float2(p.x, p.y) * BRICK_SCALE).x
+    return ax * wn.x + ay * wn.y + az * wn.z
+}
+
+// Tri-planar roughness scalar (grayscale .r), blended by `wn`. Mortar rough, brick faces smoother.
+def private tri_rough(p : float3; wn : float3) : float {
+    let ax = texture(brick_roughness, float2(p.z, p.y) * BRICK_SCALE).x
+    let ay = texture(brick_roughness, float2(p.x, p.z) * BRICK_SCALE).x
+    let az = texture(brick_roughness, float2(p.x, p.y) * BRICK_SCALE).x
     return ax * wn.x + ay * wn.y + az * wn.z
 }
 
@@ -274,12 +290,15 @@ def main_fs {
         // Diffuse + Blinn-Phong off the PERTURBED world normal (brick relief); shadow `lit` stays
         // from the geometric depth pass. Brick is matte: wide specular lobe, low intensity.
         let ao = tri_ao(f_obj_pos, wn)
+        let rough = tri_rough(f_obj_pos, wn)
         let bndotl = max(dot(bn, l), 0.0)
         let h = normalize(l + view_dir)
         let ndoth = max(dot(bn, h), 0.0)
-        let spec = pow(ndoth, 48.0) * lit
+        // roughness drives the highlight: smoother brick faces -> tighter, brighter spec than rough mortar
+        let shininess = 8.0 + 56.0 * (1.0 - rough)
+        let spec = pow(ndoth, shininess) * lit
         let diffuse = sun * bndotl * lit
-        let specular = sun * spec * 0.35
+        let specular = sun * spec * (1.0 - rough) * 0.5
         // AO darkens the ambient (indirect) term in the mortar/pits; a light cavity term on the direct
         // diffuse keeps the recesses reading as recessed even under the sun.
         let col = ambient * cube_albedo * ao + cube_albedo * diffuse * (0.65 + 0.35 * ao) + specular
