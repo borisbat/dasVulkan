@@ -23,6 +23,8 @@ struct public SdfRenderer {
     image       : Image
     memory      : DeviceMemory
     view        : ImageView
+    srgb_image  : Image                  //!< R8G8B8A8_SRGB intermediate: linear storage image is blitted here so the readback gets gamma-encoded bytes
+    srgb_memory : DeviceMemory
     set_layout  : DescriptorSetLayout
     desc_pool   : DescriptorPool
     pipe_layout : PipelineLayout
@@ -39,6 +41,8 @@ def public finalize(var r : SdfRenderer) {
         delete r.pipe_layout
         delete r.desc_pool       // frees the descriptor set allocated from it
         delete r.set_layout
+        delete r.srgb_image
+        delete r.srgb_memory
         delete r.view
         delete r.image
         delete r.memory
@@ -92,6 +96,30 @@ def public build_sdf_renderer() : SdfRenderer {
     vci.subresourceRange.levelCount = 1u
     vci.subresourceRange.layerCount = 1u
     var inscope view <- create_image_view(device, vci)
+
+    // sRGB readback intermediate: the compute shader writes LINEAR colors into the UNORM storage image;
+    // we blit that into this R8G8B8A8_SRGB image so the hardware applies the linear->sRGB encode at the
+    // blit (TRANSFER_DST + TRANSFER_SRC only, NO storage usage -- storage images don't sRGB-encode on write).
+    let srgb_fmt = VkFormat.R8G8B8A8_SRGB
+    var sici = ImageCreateInfo(imageType = VkImageType._2D, format = srgb_fmt, mipLevels = 1u,
+        arrayLayers = 1u, tiling = VkImageTiling.OPTIMAL, initialLayout = VkImageLayout.UNDEFINED)
+    sici.extent.width = uint(SDF_DIM)
+    sici.extent.height = uint(SDF_DIM)
+    sici.extent.depth = 1u
+    sici.samples._1 = true
+    sici.usage.transfer_dst = true
+    sici.usage.transfer_src = true
+    var inscope srgb_image <- create_image(device, sici)
+    var sreq : VkMemoryRequirements
+    vkGetImageMemoryRequirements(dev, boost_value_to_vk(srgb_image), sreq)
+    var swant : VkMemoryPropertyFlags
+    swant.device_local = true
+    var smai = MemoryAllocateInfo(allocationSize = sreq.size,
+        memoryTypeIndex = find_memory_type(phys, sreq.memoryTypeBits, swant))
+    var inscope smem <- allocate_memory(device, smai)
+    vk_check(vkBindImageMemory(dev, boost_value_to_vk(srgb_image), boost_value_to_vk(smem), 0ul), null)
+    // no image view: this image is only a blit dst + readback src, never sampled / bound / attached
+    // (an ImageView would require SAMPLED/STORAGE/attachment usage, which it deliberately lacks).
 
     // One-time post-create layout transition UNDEFINED -> TRANSFER_SRC_OPTIMAL so render_sdf_frame
     // can assume a stable starting layout across all frames (first frame and every subsequent one
@@ -157,6 +185,7 @@ def public build_sdf_renderer() : SdfRenderer {
     return <- SdfRenderer(
         instance <- instance, device <- device, queue = queue, pool <- pool,
         image <- image, memory <- imem, view <- view,
+        srgb_image <- srgb_image, srgb_memory <- smem,
         set_layout <- set_layout, desc_pool <- desc_pool,
         pipe_layout <- pipe_layout, pipeline <- pipeline, set = raw_set,
         readback <- readback, buf_size = buf_size)
@@ -166,6 +195,7 @@ def public build_sdf_renderer() : SdfRenderer {
 def public render_sdf_frame(var r : SdfRenderer; time : float) : array<uint8> {
     var pixels : array<uint8>
     run_cmd_sync(r.device, r.pool, r.queue) $(cmd) {
+        let none          : VkAccessFlags
         var shader_write  : VkAccessFlags; shader_write.shader_write  = true
         var transfer_read : VkAccessFlags; transfer_read.transfer_read = true
         var comp          : VkPipelineStageFlags; comp.compute_shader   = true
@@ -185,7 +215,35 @@ def public render_sdf_frame(var r : SdfRenderer; time : float) : array<uint8> {
 
         transition_image(cmd, r.image, VkImageLayout.GENERAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
             shader_write, transfer_read, comp, xfer)
-        copy_image_to_buffer(cmd, r.image, r.readback, SDF_DIM, SDF_DIM)
+
+        // r.image (linear UNORM) is now TRANSFER_SRC. Blit it into the R8G8B8A8_SRGB intermediate so the
+        // hardware applies the linear->sRGB encode at the format conversion; the recording then reads
+        // gamma-encoded bytes. Bring srgb_image UNDEFINED -> TRANSFER_DST first (we overwrite it whole).
+        var transfer_write : VkAccessFlags; transfer_write.transfer_write = true
+        var top            : VkPipelineStageFlags; top.top_of_pipe = true
+        transition_image(cmd, r.srgb_image, VkImageLayout.UNDEFINED, VkImageLayout.TRANSFER_DST_OPTIMAL,
+            none, transfer_write, top, xfer)
+        var region : VkImageBlit
+        region.srcSubresource.aspectMask.color = true
+        region.srcSubresource.layerCount = 1u
+        region.srcOffsets[1].x = SDF_DIM
+        region.srcOffsets[1].y = SDF_DIM
+        region.srcOffsets[1].z = 1
+        region.dstSubresource.aspectMask.color = true
+        region.dstSubresource.layerCount = 1u
+        region.dstOffsets[1].x = SDF_DIM
+        region.dstOffsets[1].y = SDF_DIM
+        region.dstOffsets[1].z = 1
+        unsafe {
+            vkCmdBlitImage(boost_value_to_vk(cmd),
+                boost_value_to_vk(r.image),      VkImageLayout.TRANSFER_SRC_OPTIMAL,
+                boost_value_to_vk(r.srgb_image), VkImageLayout.TRANSFER_DST_OPTIMAL,
+                1u, addr(region), VkFilter.NEAREST)
+        }
+        // srgb_image -> TRANSFER_SRC so copy_image_to_buffer can read it
+        transition_image(cmd, r.srgb_image, VkImageLayout.TRANSFER_DST_OPTIMAL, VkImageLayout.TRANSFER_SRC_OPTIMAL,
+            transfer_write, transfer_read, xfer, xfer)
+        copy_image_to_buffer(cmd, r.srgb_image, r.readback, SDF_DIM, SDF_DIM)
     }
     map_memory_to_array(r.device, r.readback.memory, r.buf_size) $(m) {
         pixels := m

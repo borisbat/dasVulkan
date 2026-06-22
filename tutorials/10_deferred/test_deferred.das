@@ -26,7 +26,7 @@ def test_deferred_oracle(t : T?) {
     let r0 = int(lit_pixels[strip_off])
     let g0 = int(lit_pixels[strip_off + 1])
     let b0 = int(lit_pixels[strip_off + 2])
-    t |> success(r0 > 220 && g0 > 180 && b0 < 150,
+    t |> success(r0 > 220 && g0 > 180 && b0 < 210,
         "lit indicator strip is warm yellow (got {r0},{g0},{b0})")
 
     // ----- background (top-quarter sky) -----
@@ -95,7 +95,7 @@ def test_deferred_oracle(t : T?) {
     let ar = int(albedo_pixels[alb_strip])
     let ag = int(albedo_pixels[alb_strip + 1])
     let ab = int(albedo_pixels[alb_strip + 2])
-    t |> success(ar > 220 && ag < 150 && ab < 150,
+    t |> success(ar > 220 && ag < 210 && ab < 210,
         "ALBEDO indicator strip is warm red (got {ar},{ag},{ab})")
     delete albedo_pixels
 

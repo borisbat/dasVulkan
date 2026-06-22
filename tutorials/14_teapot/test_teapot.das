@@ -27,7 +27,7 @@ def private is_sky(c : int3) : bool {
 //! Ground floor: near-neutral gray (the checker), mid brightness — holds whether the tile is light,
 //! dark, or shadowed; distinct from the blue sky and the warm ceramic.
 def private is_floor(c : int3) : bool {
-    return abs(c.x - c.z) < 25 && c.x > 30 && c.x < 200
+    return abs(c.x - c.z) < 25 && c.x > 30 && c.x < 230
 }
 
 //! Average (r+g+b) over a box. Cancels the checker pattern so a shadowed region reads as a clean

@@ -184,12 +184,12 @@ def private blob_color(p : float3; t : float) : float3 {
     return float3(r, g, b) * lift
 }
 
-// Reinhard tone map + 2.2 gamma. Compresses any HDR overshoot (rim glow + sun disc) into [0,1].
+// Reinhard tone map. Compresses any HDR overshoot (rim glow + sun disc) into [0,1]. Output stays
+// LINEAR -- the linear->sRGB gamma encode happens at the sRGB-readback blit boundary (and the
+// sRGB swapchain blit for the window), not here.
 def private tonemap(c : float3) : float3 {
     let one = float3(1.0f, 1.0f, 1.0f)
-    let mapped = c / (one + c)
-    let inv_gamma = 1.0f / 2.2f
-    return pow(mapped, float3(inv_gamma, inv_gamma, inv_gamma))
+    return c / (one + c)
 }
 
 [vulkan_compute_shader(local_size_x=8, local_size_y=8, name="sdf_spv")]

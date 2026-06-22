@@ -18,7 +18,7 @@ require math
 let public SKY_W = 768
 let public SKY_H = 768
 let SKY_DEPTH_FMT = VkFormat.D32_SFLOAT
-let SKY_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let SKY_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 let FACE_DIM = 256
 let N_FACES = 6
 

@@ -14,18 +14,21 @@ require msaa_tut
 let TEST_TIME : float = 1.0
 let TEST_CAM  : float = 0.18
 
+// sRGB-encoded clear colour: linear (0.02, 0.0, 0.06) → sRGB ≈ (39, 0, 69) per hw encoder.
+// The thresholds below are tuned to accept this colour and reject anything brighter/different.
 def bg(p : int3) : bool {
-    return p.x < 12 && p.y < 4 && p.z < 22
+    return p.x < 50 && p.y < 5 && p.z < 80
 }
 
-//! Faint near-background pixels: above the clear color (bg.z ~15) but well below the solid lit spikes.
-//! These are the aliasing speckle on the thin spikes — abundant at 1x, averaged away by 4x MSAA.
+//! Faint near-background pixels: above the clear colour (bg.z ~69) but in the aliasing-speckle band.
+//! In sRGB space the speckle from thin-spike partial coverage lands in [74,120]; 1x has far more
+//! of these than 4x MSAA (which blends them away). Range tuned after sRGB format change (was [20,55]).
 def count_faint(pixels : array<uint8>) : int {
     var n = 0
     for (y in range(MSAA_H)) {
         for (x in range(MSAA_W)) {
             let z = px(pixels, x, y).z
-            if (z >= 20 && z <= 55) {
+            if (z >= 74 && z <= 120) {
                 n ++
             }
         }
@@ -78,7 +81,7 @@ def test_msaa_oracle(t : T?) {
 
     // THE MSAA assertion: 1x rasterization speckles the thin spikes with aliased partial-coverage
     // pixels; 4x MSAA averages them away. So the 1x image has far more faint near-background pixels
-    // (measured ~2.7x). A broken/no-op MSAA path would leave the two equal and fail this.
+    // (measured ~1.9x). A broken/no-op MSAA path would leave the two equal and fail this.
     let faint_on = count_faint(on)
     let faint_off = count_faint(off)
     t |> success(faint_off > faint_on * 3 / 2,

@@ -29,7 +29,7 @@ require math
 let public MSAA_W = 768
 let public MSAA_H = 768
 let MSAA_DEPTH_FMT = VkFormat.D32_SFLOAT
-let MSAA_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let MSAA_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 let TEX_DIM = 256
 
 // ===== procedural spiky ball (the AA-test mesh) =====

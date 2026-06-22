@@ -19,7 +19,7 @@ require math
 
 let public TEAPOT_W = 512
 let public TEAPOT_H = 512
-let TEAPOT_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let TEAPOT_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 let TEAPOT_DEPTH_FMT = VkFormat.D32_SFLOAT
 // std140: mvp(64)+model(64)+vp(64)+light_vp(64)+camera(16)+light(16)+cp[512]*16(8192)
 let TEAPOT_UBO_SIZE = 8480ul

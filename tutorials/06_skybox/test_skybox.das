@@ -64,7 +64,10 @@ def test_skybox_oracle(t : T?) {
     t |> success(saw_sphere_blue && saw_sphere_dark,
                  "reflective sphere present (blue zenith + dark ground reflection in centre)")
 
-    // 4. checkerboard floor: the bottom third shows both a bright (light tile) and a dark (dark tile) pixel
+    // 4. checkerboard floor: the bottom third shows both a bright (light tile) and a dark (dark tile) pixel.
+    // sRGB format (R8G8B8A8_SRGB) gamma-encodes the linear output, brightening both tile types:
+    //   light tiles: lum ~620-635 (old linear: ~430+); dark tiles: lum ~370-400 (old linear: ~60-240).
+    // The two clusters remain well separated (~230 lum apart), so contrast detection is still valid.
     var saw_light_tile = false
     var saw_dark_tile = false
     let fy0 = SKY_H * 7 / 10
@@ -72,8 +75,8 @@ def test_skybox_oracle(t : T?) {
         let j = fy0 + jj * 8
         for (ii in range(SKY_W / 8)) {
             let lum = get_lum(px(pixels, ii * 8, j))
-            if (lum > 430) { saw_light_tile = true }
-            if (lum > 60 && lum < 240) { saw_dark_tile = true }
+            if (lum > 560) { saw_light_tile = true }
+            if (lum > 200 && lum < 460) { saw_dark_tile = true }
         }
     }
     t |> success(saw_light_tile && saw_dark_tile, "checkerboard floor present (light + dark tiles)")

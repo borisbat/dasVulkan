@@ -19,7 +19,7 @@ require math
 let public INSTANCE_W = 768
 let public INSTANCE_H = 768
 let INSTANCE_DEPTH_FMT = VkFormat.D32_SFLOAT
-let INSTANCE_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let INSTANCE_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 
 //! 1000 cubes per draw call. Comfortably visible at 768x768 with ~6-unit swarm radius and the camera
 //! orbiting at distance 14 -- the centre band of the frame is dominantly cubes while the corners are

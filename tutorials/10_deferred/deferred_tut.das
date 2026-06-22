@@ -52,7 +52,7 @@ let ALBEDO_FMT   = VkFormat.R8G8B8A8_UNORM
 let NORMAL_FMT   = VkFormat.R16G16B16A16_SFLOAT
 let WORLDPOS_FMT = VkFormat.R16G16B16A16_SFLOAT
 let SSAO_FMT     = VkFormat.R8_UNORM
-let FINAL_FMT    = VkFormat.R8G8B8A8_UNORM
+let FINAL_FMT    = VkFormat.R8G8B8A8_SRGB   // sRGB: the final DISPLAY image, gamma-encoded on write (G-buffer formats above stay linear data)
 
 let XFORM_SIZE = 192ul                                     // 3 * float4x4
 let SCENE_SIZE = 192ul                                     // 4*float4 + 3*float4x4? no: 1 mat (64) + 2 vec (32) + 6 vec (96) = 192

@@ -19,7 +19,7 @@ require math
 let public PART_W = 768
 let public PART_H = 768
 let PART_DEPTH_FMT = VkFormat.D32_SFLOAT
-let PART_COLOR_FMT = VkFormat.R8G8B8A8_UNORM
+let PART_COLOR_FMT = VkFormat.R8G8B8A8_SRGB   // sRGB: gamma-encode the linear output on write (recording readback + window blit match)
 
 //! 1024 particles -- exactly 16 compute workgroups of local_size_x=64, no edge-case bounds check
 //! needed in the compute shader.
