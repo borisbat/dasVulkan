@@ -84,6 +84,17 @@ def public prepare_voiceover(apng_path : string;
     return true
 }
 
+// ffmpeg drawtext: even inside single quotes the filter-arg separator ':' (plus '%' for text
+// expansion and '\\' itself) leak into the parser, and a literal apostrophe must close/reopen the
+// quote. '=' is fine unescaped (proven by existing captions), so it is left alone.
+def private esc_drawtext(s : string) : string {
+    var r = replace(s, "\\", "\\\\")     // backslash first, so the escapes below aren't re-escaped
+    r = replace(r, ":", "\\:")
+    r = replace(r, "%", "\\%")
+    r = replace(r, "'", "'\\''")
+    return r
+}
+
 //! Same as convert_to_mp4 but also:
 //!   - mixes each prepared voiceover wav (delayed to its frame index) under the music bed,
 //!   - paints each caption via ffmpeg drawtext, timed to (line.frame/fps .. + line.dur_s + 0.4s).
@@ -118,7 +129,7 @@ def public convert_to_mp4_voiced(apng_path, music_feature, daslang_exe, out_mp4 
             if (i != 0) {
                 w |> write(",")
             }
-            w |> write("drawtext=fontfile='{font_file}':text='{g_lines[i].caption}'")
+            w |> write("drawtext=fontfile='{font_file}':text='{esc_drawtext(g_lines[i].caption)}'")
             w |> write(":fontsize=28:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=10")
             w |> write(":x=(w-text_w)/2:y=h-70")
             w |> write(":enable='between(t\\,{t_start}\\,{t_end})'")
@@ -137,6 +148,7 @@ def public convert_to_mp4_voiced(apng_path, music_feature, daslang_exe, out_mp4 
         w |> write("amix=inputs={1 + n_vo}:duration=longest:normalize=0[aout]")
     }
     var fargs <- ["ffmpeg", "-y", "-loglevel", "error", "-r", "{fps}", "-i", apng_path, "-i", music_wav]
+    fargs |> reserve(length(fargs) + n_vo * 2)
     for (i in range(n_vo)) {
         fargs |> push("-i")
         fargs |> push(g_lines[i].wav)

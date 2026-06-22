@@ -1,7 +1,7 @@
 options gen2
 options indenting = 4
 
-// Tutorial 09 recording driver (manual, local-only). Renders the cube in AUTO toggle mode for one
+// Tutorial 09 recording driver (manual, local-only). Renders the spiky AA-test ball in AUTO toggle mode for one
 // full camera orbit (30 fps * 30 s -> 900 frames). The 16-row mode-indicator strip flips between
 // bright green (4x MSAA) and red (1x rasterization) every 2 seconds, so a viewer literally watches
 // the edges go from jaggy to smooth and back. CI never runs this -- the tutorials .das_test skips
@@ -13,7 +13,6 @@ require ../msaa_tut.das
 require ../../recording/tutorial_record_voiced.das
 require daslib/fio
 require daslib/module_path
-require math
 
 [export]
 def main {
@@ -32,8 +31,8 @@ def main {
     // Captions stay canonical; voice text is respelled phonetically per skills/recording.md.
     say(30,  "dasVulkan tutorial 9 -- MSAA + dynamic rendering",
              "das Vulkan tutorial nine. M S A A. plus. Dynamic rendering.")
-    say(330, "Strip flips every 2 seconds. Green = 4x. Red = 1x",
-             "Watch the strip at the top. Green is four times M S A A. Red is one times. No anti aliasing.")
+    say(330, "Spiky silhouette. Green = 4x MSAA. Red = 1x",
+             "A hundred fifty spikes. Every edge a jaggy. Green is four times M S A A. Red is one times. No anti aliasing.")
     say(660, "VkPipelineRenderingCreateInfo. No render pass",
              "Pipeline carries the format info in p Next. No V K Render Pass. Vulkan one point three core.")
 
