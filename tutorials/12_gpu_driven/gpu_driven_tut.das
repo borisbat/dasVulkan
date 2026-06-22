@@ -1196,7 +1196,8 @@ def public record_frame(res : GpuDrivenResources; cmd : CommandBuffer; wall_x : 
         var no_mem : array<MemoryBarrier>
         var no_buf : array<BufferMemoryBarrier>
         var src : VkPipelineStageFlags
-        src.late_fragment_tests = true
+        src.early_fragment_tests = true       // the depth-only occluder pipeline has no fragment
+        src.late_fragment_tests = true        // shader, so its depth write lands in EARLY tests; cover both
         var dst : VkPipelineStageFlags
         dst.compute_shader = true
         let no_dep : VkDependencyFlags

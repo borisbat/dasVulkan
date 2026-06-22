@@ -1,5 +1,10 @@
 options gen2
 options indenting = 4
+// build_gpu_driven_resources is one large frame (the full GpuDrivenResources struct + ~40 inscope
+// locals). dastest runs each test in its own context sized from the program's `options stack`, whose
+// small default overflows on that frame (the `daslang` executable's default context stack is large,
+// so the window/recording drivers don't hit it). Bump it -- same precedent as the dasPEG tests.
+options stack = 1_048_576
 
 // Tutorial 12 pixel oracle (lavapipe in CI, real GPU locally). The wall is pinned at X = 0 so the
 // scene is fully deterministic: the central four columns of the cube field sit behind it, the outer

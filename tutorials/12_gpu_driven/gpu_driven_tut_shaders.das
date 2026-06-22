@@ -41,8 +41,8 @@ def hzb_mip0 {
 }
 
 // downsample: HZB[L][c] = max over the 2x2 footprint in level L-1 (conservative farthest occluder).
-// Power-of-two base size keeps every level an exact 2x reduction, so no edge-clamp is needed (an
-// out-of-bounds texelFetch returns 0 = near, which never raises a max of non-negative depths).
+// Every level is a power-of-two, exact 2x reduction and the host dispatches exactly (dim/8) groups, so
+// the 2x2 reads (s .. s+(1,1)) are always in bounds -- no edge-clamp and no out-of-bounds fetch.
 [vulkan_compute_shader(local_size_x=8, local_size_y=8, name="hzb_down_spv")]
 def hzb_down {
     let gid = gl_GlobalInvocationID
