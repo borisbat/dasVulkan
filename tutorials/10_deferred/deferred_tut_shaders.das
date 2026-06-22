@@ -122,10 +122,11 @@ var @uniform @set = 0 @binding = 2 cat_normal : sampler2D
 var @uniform @set = 0 @binding = 3 cat_arm    : sampler2D
 
 // Floor brick maps (ambientCG Bricks031, CC0): Color = sRGB albedo, NormalGL = tangent normal,
-// AmbientOcclusion = AO. World-XZ tiled.
+// AmbientOcclusion = AO, Roughness drives the spec. World-XZ tiled.
 var @uniform @set = 0 @binding = 4 floor_albedo : sampler2D
 var @uniform @set = 0 @binding = 5 floor_normal : sampler2D
 var @uniform @set = 0 @binding = 6 floor_ao     : sampler2D
+var @uniform @set = 0 @binding = 7 floor_roughness : sampler2D
 
 var @in @location = 0 f_world_pos    : float3
 var @in @location = 1 f_world_normal : float3
@@ -167,8 +168,12 @@ def gbuffer_fs {
         let uv = float2(f_world_pos.x, f_world_pos.z) * 0.35
         let fb_ao = texture(floor_ao, uv).x
         albedo = texture(floor_albedo, uv).rgb * (0.5 + 0.5 * fb_ao)
-        spec_intensity = 0.12
-        let tn = texture(floor_normal, uv).rgb * 2.0 - float3(1.0, 1.0, 1.0)
+        // brick is matte: mortar (rough) ~0 spec, brick faces (smoother) a touch more
+        spec_intensity = (1.0 - texture(floor_roughness, uv).x) * 0.4
+        // Bricks031 has shallow relief; boost the tangent xy so the mortar reads, then renormalize
+        // (the raw `*2-1` decode is NOT unit-length after bilinear/JPEG, and the xy is weak).
+        let tn_raw = texture(floor_normal, uv).rgb * 2.0 - float3(1.0, 1.0, 1.0)
+        let tn = normalize(float3(tn_raw.x * 3.0, tn_raw.y * 3.0, tn_raw.z))
         perturbed_normal = perturb_normal(n, f_world_pos, uv, tn)
     } else {
         // Cat: real concrete-statue PBR maps, UV-mapped. ARM packs AO/Roughness/Metallic; the diff is
@@ -181,7 +186,7 @@ def gbuffer_fs {
         let rough = arm.y
         albedo = alb * (0.55 + 0.45 * tex_ao)
         spec_intensity = (1.0 - rough) * 0.6
-        let tn = texture(cat_normal, f_uv).rgb * 2.0 - float3(1.0, 1.0, 1.0)
+        let tn = normalize(texture(cat_normal, f_uv).rgb * 2.0 - float3(1.0, 1.0, 1.0))
         perturbed_normal = perturb_normal(n, f_world_pos, f_uv, tn)
     }
 

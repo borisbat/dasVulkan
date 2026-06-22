@@ -213,6 +213,7 @@ struct public ShadowResources {
     brick_albedo : Texture          // ambientCG Bricks031 color (sRGB), tri-planar on the cube
     brick_normal : Texture          // ambientCG Bricks031 OpenGL normal (linear)
     brick_ao     : Texture          // ambientCG Bricks031 ambient occlusion (linear)
+    brick_roughness : Texture       // ambientCG Bricks031 roughness (linear) -> drives cube spec
     set_layouts  : array<DescriptorSetLayout>
     desc_pool    : DescriptorPool
     desc_set     : VkDescriptorSet
@@ -231,6 +232,7 @@ def public finalize(var r : ShadowResources) {
         delete r.pipe_layout
         delete r.desc_pool
         delete r.set_layouts
+        delete r.brick_roughness
         delete r.brick_ao
         delete r.brick_normal
         delete r.brick_albedo
@@ -533,6 +535,8 @@ def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;
         path_join(brick_dir, "Bricks031_1K-JPG_NormalGL.jpg"), false)    // linear normal
     var inscope brick_ao <- load_texture_2d(device, phys, queue, pool,
         path_join(brick_dir, "Bricks031_1K-JPG_AmbientOcclusion.jpg"), false)   // linear AO
+    var inscope brick_roughness <- load_texture_2d(device, phys, queue, pool,
+        path_join(brick_dir, "Bricks031_1K-JPG_Roughness.jpg"), false)          // linear roughness
     var tsci : SamplerCreateInfo
     tsci.magFilter = VkFilter.LINEAR
     tsci.minFilter = VkFilter.LINEAR
@@ -556,7 +560,7 @@ def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;
     ps0.descriptorCount = 1u
     var ps1 : DescriptorPoolSize
     ps1.type_ = VkDescriptorType.COMBINED_IMAGE_SAMPLER
-    ps1.descriptorCount = 4u    // shadow_map + brick_albedo + brick_normal + brick_ao
+    ps1.descriptorCount = 5u    // shadow_map + brick_albedo + brick_normal + brick_ao + brick_roughness
     dpci.pPoolSizes <- [ps0, ps1]
     var inscope desc_pool <- create_descriptor_pool(device, dpci)
 
@@ -630,6 +634,18 @@ def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;
     w4.pImageInfo |> push(ao_info)
     writes |> emplace(w4)
 
+    var w5 : WriteDescriptorSet
+    w5.dstSet = vk_value_to_boost(raw_set)
+    w5.dstBinding = 5u
+    w5.descriptorType = VkDescriptorType.COMBINED_IMAGE_SAMPLER
+    w5.descriptorCount = 1u
+    var rough_info : DescriptorImageInfo
+    rough_info.sampler = weak_copy(tex_sampler)
+    rough_info.imageView = weak_copy(brick_roughness.view)
+    rough_info.imageLayout = VkImageLayout.SHADER_READ_ONLY_OPTIMAL
+    w5.pImageInfo |> push(rough_info)
+    writes |> emplace(w5)
+
     var no_copies : array<CopyDescriptorSet>
     update_descriptor_sets(device, writes, no_copies)
 
@@ -665,6 +681,7 @@ def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;
     r.brick_albedo <- brick_albedo
     r.brick_normal <- brick_normal
     r.brick_ao <- brick_ao
+    r.brick_roughness <- brick_roughness
     r.set_layouts <- set_layouts
     r.desc_pool <- desc_pool
     r.desc_set = raw_set
