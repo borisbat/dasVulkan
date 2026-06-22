@@ -7,7 +7,7 @@ SPIR-V at compile time by `dasSpirv <https://github.com/GaijinEntertainment/daSc
 (no GLSL, no glslang) -- the same language as the host, compute and graphics alike.
 
 The series builds **graphics → compute → 3D scene → instancing → environment →
-GPU-driven scene → multi-pass → modern pipeline**: :doc:`01_triangle` is the canonical
+GPU-driven scene → multi-pass → modern pipeline → mesh shaders**: :doc:`01_triangle` is the canonical
 hello-triangle, :doc:`02_mandelbrot` and :doc:`03_sdf` swap to the compute pipeline,
 :doc:`04_cube` takes graphics into 3D with depth + UBO + push constant + texture,
 :doc:`05_instancing` draws 1000 cubes in one call, :doc:`06_skybox` wraps the scene in
@@ -15,9 +15,13 @@ a cubemap, :doc:`07_particles` hands the vertex stream itself to a compute shade
 :doc:`08_shadow` runs two render passes per frame sharing one depth image,
 :doc:`09_msaa` drops VkRenderPass entirely in favour of Vulkan 1.3 dynamic rendering plus
 4× MSAA with auto-resolve, :doc:`10_deferred` brings everything together
-in a multi-subpass deferred renderer with G-buffer + SSAO + shadow + many lights,
+in a three-pass deferred renderer (sampled G-buffer) with SSAO + shadow + many lights,
 and :doc:`11_hdr` adds an HDR offscreen target + Karis-style five-level bloom
-pyramid + ACES tonemap composite for the post-process rail.
+pyramid + ACES tonemap composite for the post-process rail. Finally
+:doc:`13_mesh` and :doc:`14_teapot` drop the vertex buffer entirely for the
+GPU-driven **mesh-shader** pipeline -- cluster culling, then on-GPU Bezier
+tessellation of the Utah teapot. (Tutorial 12 is reserved for GPU-driven
+indirect + bindless rendering.)
 Each tutorial's `Next` footer links to the one after.
 
 Every tutorial lives in its own self-contained directory under ``tutorials/`` in
@@ -26,7 +30,10 @@ the lavapipe CI regression gate, and a recording driver that renders the embedde
 ``.mp4``. The render behind each video is pixel-checked **every CI run** by the
 tutorial's oracle test; the ``.mp4`` is the documentation figure of that same
 verified render, regenerated manually with the local recording driver (which needs
-stbimage + audio + ffmpeg, so it does not run in CI).
+stbimage + audio + ffmpeg, so it does not run in CI). The mesh-shader tutorials
+(:doc:`13_mesh`, :doc:`14_teapot`) soft-skip on CI's software renderer, which
+lacks ``VK_EXT_mesh_shader``; 13_mesh's figure is a still image rather than a
+video.
 
 .. toctree::
    :maxdepth: 1
@@ -42,3 +49,5 @@ stbimage + audio + ffmpeg, so it does not run in CI).
    09_msaa
    10_deferred
    11_hdr
+   13_mesh
+   14_teapot
