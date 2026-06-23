@@ -91,6 +91,24 @@ def private generate_bind_uniform_dummy(fnMain : FunctionPtr) {
     }
 }
 
+// Opaque shader-resource markers (combined samplers, storage / separate images, the separate
+// sampler, subpass input). dasSpirv recognizes these by NAME (sampler_info / is_subpass_input_type
+// / classify_global) and binds them via descriptor-set writes, NOT mapped-memory UBO uploads — so
+// the @uniform / @push_constant collection walks below MUST skip them. We key off the type name
+// rather than an empty field list: the shared `sampler2D` / `sampler3D` / `image2D` carry a
+// GL-superset `texture2D : uint` handle for the dasOpenGL rail (daslib/shader_lingua_franca), so
+// "struct with zero fields" is no longer a reliable marker test (a non-empty sampler would be
+// miscollected as a UBO, corrupting the bind). Keep this set in sync with dasSpirv's
+// sampler_info / classify_global marker list.
+[macro_function]
+def private is_opaque_resource_struct(st : Structure?) : bool {
+    if (st == null) return false
+    let n = "{st.name}"
+    return (n == "sampler2D" || n == "sampler3D" || n == "samplerCube" || n == "sampler2DArray" ||
+            n == "sampler2DShadow" || n == "image2D" || n == "image3D" ||
+            n == "texture2D" || n == "sampler" || n == "subpassInput")
+}
+
 // Fill the dummy bind_uniform function body: for every @uniform struct global reachable from
 // fnMain, walk its std140 field layout and emit one write_field call per field. The whole body
 // is wrapped in `with_mapped_memory(device, memory) <| $(ptr : void?) { ... }` so each call to
@@ -119,13 +137,16 @@ def private generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
     var ubo_globals : array<Variable?>
     collect_dependencies(fnMain) $(_vfun, vvar) {
         for (vv in vvar) {
-            // Only struct-typed @uniform globals with at least one field (the std140 interface-block
-            // case). Sampler / image markers (sampler2D, sampler2DShadow, image2D, subpassInput …)
-            // are also `tStructure` at the AST level but with an empty field list — they bind via
-            // descriptor-set writes, not via mapped memory, so skip them here. Standalone scalars
-            // under @uniform are rejected by the SPIR-V emitter, so they never reach this point.
+            // Only struct-typed @uniform globals that are real std140 interface blocks. Sampler /
+            // image markers (sampler2D, sampler2DShadow, image2D, subpassInput …) are also
+            // `tStructure` at the AST level but bind via descriptor-set writes, not mapped memory —
+            // skip them by NAME (is_opaque_resource_struct), since the shared sampler2D/3D/image2D
+            // now carry a GL-superset field and are no longer empty. The empty() check stays as
+            // defence-in-depth. Standalone scalars under @uniform are rejected by the SPIR-V emitter,
+            // so they never reach this point.
             if (!(vv.annotation |> find_arg("uniform") is tBool) ||
                 vv._type == null || vv._type.baseType != Type.tStructure || vv._type.structType == null ||
+                is_opaque_resource_struct(vv._type.structType) ||
                 empty(vv._type.structType.fields)) continue
             ubo_globals |> push(vv)
         }
@@ -231,11 +252,12 @@ def private generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr; 
     var pc_globals : array<Variable?>
     collect_dependencies(fnMain) $(_vfun, vvar) {
         for (vv in vvar) {
-            // Same shape filter as the @uniform walk above (struct-typed with at least one field).
-            // The empty() check is defence-in-depth — sampler / image markers can't be @push_constant
-            // today, but the symmetry matches the @uniform guard and protects against a future leak.
+            // Same shape filter as the @uniform walk above. The marker-name + empty() checks are
+            // defence-in-depth — sampler / image markers can't be @push_constant today, but the
+            // symmetry matches the @uniform guard and protects against a future leak.
             if (!(vv.annotation |> find_arg("push_constant") is tBool) ||
                 vv._type == null || vv._type.baseType != Type.tStructure || vv._type.structType == null ||
+                is_opaque_resource_struct(vv._type.structType) ||
                 empty(vv._type.structType.fields)) continue
             pc_globals |> push(vv)
         }
