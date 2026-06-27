@@ -12,12 +12,13 @@ options indenting = 4
 // `require vulkan/vulkan_imgui_app`. Apps that draw their own geometry behind the UI use the
 // `harness_end_frame(scene)` overload to record into the same render pass as the UI.
 //
-// Standalone-windowed only for now (no headless / no live-host reload wiring yet); input is mouse
-// (position + 3 buttons) -- keyboard / scroll come next.
+// Standalone-windowed only for now (no headless / no live-host reload wiring yet); input is the GLFW
+// backend (ImGui_ImplGlfw) -- mouse, keyboard, and scroll.
 
 module vulkan_imgui_app shared public
 
 require imgui public
+require imgui_app
 require glfw/glfw_boost
 require vulkan public
 require vulkan/vulkan_boost public
@@ -26,7 +27,6 @@ require vulkan/vulkan_imgui_driver public
 require vulkan/vulkan_live public
 require imgui/imgui_theme_daslang
 require live_host public
-require math
 
 // ===== app state (one owning heap struct, held by a single pointer so teardown is explicit) =====
 
@@ -44,7 +44,6 @@ struct private VulkanApp {
     sync          : FrameSync
     igvk          : ImguiVkRenderer
     ctx           : ImGuiContext?
-    last_t        : float
     shot_was_down : bool
 }
 
@@ -53,6 +52,7 @@ def private finalize(var a : VulkanApp) {
         vkDeviceWaitIdle(boost_value_to_vk(a.device))
     }
     if (a.ctx != null) {
+        ImGui_ImplGlfw_Shutdown()
         DestroyContext(a.ctx)
         a.ctx = null
     }
@@ -137,11 +137,14 @@ def public harness_init(title : string; width : int = 800; height : int = 600) {
     var io & = unsafe(GetIO())
     io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures
     io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset
+    // GLFW platform backend: installs mouse/keyboard/scroll/char callbacks and feeds DisplaySize +
+    // DisplayFramebufferScale each frame (replaces the hand-rolled mouse-only polling).
+    ImGui_ImplGlfw_InitForVulkan(window, true)
     var inscope igvk <- imgui_vk_create(device, render_pass)
 
     g_app = new VulkanApp(window = window, instance <- instance, surface <- surface, phys = phys,
         gfx = gfx, device <- device, queue = queue, pool <- pool, swap <- swap, render_pass <- render_pass,
-        sync <- sync, igvk <- igvk, ctx = ctx, last_t = float(glfwGetTime()), shot_was_down = false)
+        sync <- sync, igvk <- igvk, ctx = ctx, shot_was_down = false)
 
     // register on the app's OWN swapchain field (not the moved-out local), so an in-place resize is seen
     vk_live_set_target(g_app.device, g_app.phys, g_app.queue, g_app.pool, g_app.swap)
@@ -162,32 +165,22 @@ def public harness_begin_frame() : bool {
     var fbh = 0
     glfwGetFramebufferSize(g_app.window, fbw, fbh)
     if (fbw == 0 || fbh == 0) {
-        g_app.last_t = float(glfwGetTime())   // keep the clock current so dt doesn't jump on restore
         glfwWaitEvents()
         return false
     }
     if (fbw != g_app.swap.width || fbh != g_app.swap.height) {
         recreate_swapchain(g_app.swap, g_app.device, g_app.phys, g_app.surface, g_app.render_pass, fbw, fbh)  // waits idle internally
     }
-
-    let t = float(glfwGetTime())
-    let dt = max(t - g_app.last_t, 0.0001f)
-    g_app.last_t = t
-
+    // Feeds DisplaySize/DisplayFramebufferScale, DeltaTime, and the polled mouse/keyboard/scroll events
+    // (callbacks installed by InitForVulkan) into io.
+    ImGui_ImplGlfw_NewFrame()
+    // The GLFW backend advances its frame clock only inside NewFrame, which we skip while minimized,
+    // so the first frame after a restore would otherwise see a huge DeltaTime. Clamp it (also absorbs
+    // debugger-pause / long-hitch spikes).
     var io & = unsafe(GetIO())
-    io.DisplaySize = float2(float(fbw), float(fbh))
-    io.DeltaTime = dt
-    // cursor pos is in window points but DisplaySize is framebuffer pixels -- scale to match on HiDPI
-    var winw = 0
-    var winh = 0
-    glfwGetWindowSize(g_app.window, unsafe(addr(winw)), unsafe(addr(winh)))
-    let csx = winw > 0 ? float(fbw) / float(winw) : 1.0f
-    let csy = winh > 0 ? float(fbh) / float(winh) : 1.0f
-    let mpos = glfwGetCursorPos(g_app.window)
-    io |> AddMousePosEvent(mpos.x * csx, mpos.y * csy)
-    io |> AddMouseButtonEvent(0, glfwGetMouseButton(g_app.window, 0) == 1)   // left
-    io |> AddMouseButtonEvent(1, glfwGetMouseButton(g_app.window, 1) == 1)   // right
-    io |> AddMouseButtonEvent(2, glfwGetMouseButton(g_app.window, 2) == 1)   // middle
+    if (io.DeltaTime > 0.1f) {
+        io.DeltaTime = 0.1f
+    }
     return true
 }
 
