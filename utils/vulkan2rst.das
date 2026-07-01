@@ -99,7 +99,7 @@ def document_vulkan_structs_anchors() {
             names |> push(to_lower(name))
         }
     }
-    sort(names)
+    names |> sort()
     let path = "{topic_root}/vulkan_structs_anchors.inc"
     var doc_file = fopen(path, "wb")
     if (doc_file == null) {
