@@ -230,9 +230,40 @@ def private arr_scalar_elem(reg : VkRegistry; tn : string) : string {
     return DAS_SCALAR_MAP?[bt] ?? ""
 }
 
+//! pX (const T*) and ppX (const T* const*) members are a mutually-exclusive union sharing
+//! one count (geometryCount governs both pGeometries and ppGeometries).  We bind the
+//! single-pointer form as array<T> and erase the double-pointer alternative; the single
+//! pointer then carries the authoritative count.  The pair is matched by element type
+//! across the two pointer depths, the double's len naming the single's len first
+//! ("geometryCount,1" vs "geometryCount").
+def private has_double_ptr_alt(s : VkStructDef; m : VkMember) : bool {
+    if (m.num_ptrs != 1 || !m.is_const || empty(m.len)) {
+        return false
+    }
+    for (o in s.members) {
+        if (o.num_ptrs == 2 && o.is_const && o.type_name == m.type_name &&
+                !empty(o.len) && o.len |> starts_with(m.len)) {
+            return true
+        }
+    }
+    return false
+}
+
+def private is_double_ptr_alt(s : VkStructDef; m : VkMember) : bool {
+    if (m.num_ptrs != 2 || !m.is_const || empty(m.len)) {
+        return false
+    }
+    for (o in s.members) {
+        if (o.num_ptrs == 1 && o.is_const && o.type_name == m.type_name &&
+                !empty(o.len) && m.len |> starts_with(o.len)) {
+            return true
+        }
+    }
+    return false
+}
+
 //! map a struct member to a boost field; FieldKind.hard signals "skip the whole struct".
 //! `mappable` is the set of struct names known to have a boost vk_view (for array-of-struct).
-[unused_argument(s)]
 def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m : VkMember; counts : table<string>; mappable : table<string>) : BoostField {
     var bf = BoostField(name = das_safe_name(m.name), raw_name = m.name)
     let tn = m.type_name
@@ -285,7 +316,8 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
         // "optional" here means this array's length is NOT the authoritative count:
         // optional="true" (may be null) or noautovalidity="true" (mutually-exclusive
         // arrays / imageless framebuffer -- the count member is primary, not the length).
-        bf.is_optional = m.optional_attr == "true" || m.noautovalidity == "true"
+        bf.is_optional = ((m.optional_attr == "true" || m.noautovalidity == "true") &&
+            !has_double_ptr_alt(s, m))
         if (elem_is_handle(em, tn)) {
             bf.kind = FieldKind.arr_handle
             bf.elem_boost = boost_name(tn)
@@ -347,6 +379,12 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     // what optional="true" permits.  Lets a struct emit when its only blockers
     // are optional raw pointers (e.g. pSampleMask, pSpecializationInfo).
     if (m.num_ptrs >= 1 && m.is_const && m.optional_attr == "true") {
+        bf.kind = FieldKind.erase
+        return <- bf
+    }
+    // a pX/ppX array union's double-pointer alternative -> erase; its single-pointer
+    // sibling (bound as array<T>) carries the data and the raw `pp` slot stays null.
+    if (is_double_ptr_alt(s, m)) {
         bf.kind = FieldKind.erase
         return <- bf
     }
@@ -964,6 +1002,7 @@ enum CmdArgKind {
     in_array_scalar //! count+const scalar/enum ptr -> array<scalar>
     in_array_handle //! count+const handle ptr -> array<BoostHandle>
     in_array_struct //! count+const mappable-struct ptr -> array<BoostStruct> (recursive vk_view)
+    in_array2_struct //! count+const T* const* mappable struct -> array<array<BoostStruct>> (jagged)
     in_scalar       //! by-value scalar / enum / flags
     in_string       //! const char*
     erasevkcount     //! input count member named by an input array's len -> uint(length(arr))
@@ -1092,6 +1131,16 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
             plan.args |> emplace(a)
             continue
         }
+        // jagged const T* const* of a mappable struct -> array<array<Boost>> (the inner
+        // length is per-element, carried by the owning struct; no count param to erase)
+        if (p.num_ptrs == 2 && p.is_const && !empty(p.len) && key_exists(view_set, p.type_name)) {
+            a.kind = CmdArgKind.in_array2_struct
+            a.elem_boost = boost_name(p.type_name)
+            a.elem_vktype = p.type_name
+            a.boost_type = "array<array<{a.elem_boost}>>"
+            plan.args |> emplace(a)
+            continue
+        }
         // function pointer / fixed-array / multi-ptr -> hard
         if (key_exists(reg.func_pointers, p.type_name) || !empty(p.arr_dims) || p.num_ptrs >= 2) {
             plan.emittable = false
@@ -1123,10 +1172,15 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
             plan.args |> emplace(a)
             continue
         }
-        // const array (len names a count param)
-        let hasvkcount = !empty(p.len) && p.is_const && p.num_ptrs == 1 && key_exists(param_names, p.len)
-        let arrayvkcount = das_safe_name(p.len)
-        if (hasvkcount && p.type_name != "void" && p.type_name != "char") {
+        // const array: len either names a count param (count derived from length and
+        // that param erased) or is a member of another struct param
+        // ("pBuildInfo::geometryCount") -- the latter has no count param to erase, the raw
+        // call takes only the array pointer and the caller matches the owning struct's count.
+        let len_is_param = !empty(p.len) && key_exists(param_names, p.len)
+        let hasvkcount = len_is_param && p.is_const && p.num_ptrs == 1
+        let member_len = !empty(p.len) && !len_is_param && p.is_const && p.num_ptrs == 1
+        let arrayvkcount = len_is_param ? das_safe_name(p.len) : ""
+        if ((hasvkcount || member_len) && p.type_name != "void" && p.type_name != "char") {
             if (is_handle) {
                 a.kind = CmdArgKind.in_array_handle
                 a.elem_boost = boost_name(p.type_name)
@@ -1255,6 +1309,8 @@ def private call_arg(a : CmdArg) : string {
         return "array_addr({a.pname})"
     } elif (a.kind == CmdArgKind.in_array_handle || a.kind == CmdArgKind.in_array_struct) {
         return "array_addr(vkraw_{a.pname})"
+    } elif (a.kind == CmdArgKind.in_array2_struct) {
+        return "unsafe(reinterpret<{a.elem_vktype}??>(array_addr(vkptr_{a.pname})))"
     } elif (a.kind == CmdArgKind.erasevkcount) {
         return "uint(length({a.count_for}))"
     } elif (a.kind == CmdArgKind.count_query) {
@@ -1278,7 +1334,7 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
             for (a in plan.args) {
                 let in_sig = (a.kind == CmdArgKind.in_handle || a.kind == CmdArgKind.in_view ||
                     a.kind == CmdArgKind.in_array_scalar || a.kind == CmdArgKind.in_array_handle ||
-                    a.kind == CmdArgKind.in_array_struct ||
+                    a.kind == CmdArgKind.in_array_struct || a.kind == CmdArgKind.in_array2_struct ||
                     a.kind == CmdArgKind.in_scalar || a.kind == CmdArgKind.in_string)
                 continue if (!in_sig)
                 if (!first) {
@@ -1287,7 +1343,8 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                 first = false
                 // in_array_scalar always needs var (array_addr); a view / struct-array needs var only
                 // when its vk_view mutates `b` (scratch fields) -- scratch-free views forward read-only.
-                var needs_var = a.kind == CmdArgKind.in_array_scalar
+                var needs_var = (a.kind == CmdArgKind.in_array_scalar ||
+                    a.kind == CmdArgKind.in_array2_struct)
                 if (a.kind == CmdArgKind.in_view) {
                     needs_var = key_exists(scratch_types, a.boost_type)
                 } elif (a.kind == CmdArgKind.in_array_struct) {
@@ -1321,6 +1378,22 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                     fprint(f, "    vkraw_{a.pname} |> resize(length({a.pname}))\n")
                     fprint(f, "    for (vki in range(length({a.pname}))) {OB}\n")
                     fprint(f, "        vkraw_{a.pname}[vki] = vk_view_create_unsafe({a.pname}[vki])\n")
+                    fprint(f, "    {CB}\n")
+                } elif (a.kind == CmdArgKind.in_array2_struct) {
+                    // jagged: raw inner arrays kept in vkraw2_, a data pointer per inner
+                    // in vkptr_; array_addr(vkptr_) is the const T* const* the raw call wants.
+                    // vkptr_ holds void? (not T?): a T? array would have das free each
+                    // interior pointer on delete (double-free), so keep it non-owning.
+                    fprint(f, "    var vkraw2_{a.pname} : array<array<{a.elem_vktype}>>\n")
+                    fprint(f, "    vkraw2_{a.pname} |> resize(length({a.pname}))\n")
+                    fprint(f, "    var vkptr_{a.pname} : array<void?>\n")
+                    fprint(f, "    vkptr_{a.pname} |> resize(length({a.pname}))\n")
+                    fprint(f, "    for (vki in range(length({a.pname}))) {OB}\n")
+                    fprint(f, "        vkraw2_{a.pname}[vki] |> resize(length({a.pname}[vki]))\n")
+                    fprint(f, "        for (vkj in range(length({a.pname}[vki]))) {OB}\n")
+                    fprint(f, "            vkraw2_{a.pname}[vki][vkj] = vk_view_create_unsafe({a.pname}[vki][vkj])\n")
+                    fprint(f, "        {CB}\n")
+                    fprint(f, "        vkptr_{a.pname}[vki] = unsafe(reinterpret<void?>(array_addr(vkraw2_{a.pname}[vki])))\n")
                     fprint(f, "    {CB}\n")
                 }
             }
@@ -1413,6 +1486,13 @@ def private emit_scratch_cleanup(f : file; plan : CmdPlan) {
         } elif (a.kind == CmdArgKind.in_array_struct) {
             fprint(f, "    for (vkv in {a.pname}) {OB} vk_view_destroy(vkv) {CB}\n")
             fprint(f, "    delete vkraw_{a.pname}\n")
+        } elif (a.kind == CmdArgKind.in_array2_struct) {
+            fprint(f, "    for (vkrow in {a.pname}) {OB}\n")
+            fprint(f, "        for (vkv in vkrow) {OB} vk_view_destroy(vkv) {CB}\n")
+            fprint(f, "    {CB}\n")
+            fprint(f, "    for (vki in range(length(vkraw2_{a.pname}))) {OB} delete vkraw2_{a.pname}[vki] {CB}\n")
+            fprint(f, "    delete vkraw2_{a.pname}\n")
+            fprint(f, "    delete vkptr_{a.pname}\n")
         }
     }
 }

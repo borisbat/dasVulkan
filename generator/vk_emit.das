@@ -909,6 +909,14 @@ def private map_param(reg : VkRegistry; em : EmitModel; p : VkMember) : MappedPa
             }
             return <- r
         }
+        if (np == 2 && cst) {
+            // const T* const* (jagged array of T): bind the double pointer NON-const so
+            // das sees a plain T?? matching array_addr of an array<T?>; the boost wrapper
+            // builds the pointer-of-pointers, the C call casts the const back on.
+            r.cpp_param = "{tn} ** {n}"
+            r.call_arg = "(const {tn} * const *){n}"
+            return <- r
+        }
         return MappedParam(ok = false, reason = "struct ptr depth {np}")
     }
     return MappedParam(ok = false, reason = "unknown param type {tn}")
