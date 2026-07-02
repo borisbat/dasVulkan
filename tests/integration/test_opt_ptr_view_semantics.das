@@ -46,4 +46,17 @@ def test_opt_ptr_view_semantics(t : T?) {
     let vdsai = vk_view_create_unsafe(dsai)
     t |> equal(int(vdsai.descriptorSetCount), 2)
     vk_view_destroy(dsai)
+
+    // fixed-array member copy: blendConstants float[4] must land in the raw struct element-exact,
+    // in order. Host-side and driver-independent, so it runs (and must pass) on EVERY CI lane --
+    // this is the marshal half of the CONSTANT_COLOR pixel oracle in test_pipeline_boost_structs,
+    // whose GPU half llvmpipe fails on the DRIVER side (ARGB blend-color misread; see that header).
+    var cb : PipelineColorBlendStateCreateInfo
+    cb.blendConstants = fixed_array(0.25f, 0.5f, 0.75f, 1.0f)
+    let vcb = vk_view_create_unsafe(cb)
+    t |> equal(vcb.blendConstants[0], 0.25f)
+    t |> equal(vcb.blendConstants[1], 0.5f)
+    t |> equal(vcb.blendConstants[2], 0.75f)
+    t |> equal(vcb.blendConstants[3], 1.0f)
+    vk_view_destroy(cb)
 }
