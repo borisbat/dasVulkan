@@ -10,6 +10,11 @@ SET(DAS_VULKAN_DIR ${CMAKE_CURRENT_LIST_DIR})
 SET(VULKAN_HEADERS_INCLUDE ${DAS_VULKAN_DIR}/vendor/Vulkan-Headers/include)
 SET(VOLK_DIR ${DAS_VULKAN_DIR}/vendor/volk)
 
+# Optional GLSL -> SPIR-V helper (DAS_VULKAN_COMPILE_SHADER) for apps that
+# author shaders in GLSL.  Inert unless called, so the module build stays
+# free of any Vulkan SDK dependency.
+include(${DAS_VULKAN_DIR}/cmake/DasVulkanCompileShader.cmake)
+
 # generated binding sources (produced by generator/generate.das). The chunk count
 # varies with the bound-surface size, so glob — delete src/dasVULKAN.gen_*.cpp
 # before regenerating, then re-run CMake configure so this glob re-evaluates.
