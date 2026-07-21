@@ -122,9 +122,9 @@ def private is_opaque_resource_struct(st : Structure?) : bool {
             n == "texture2D" || n == "sampler" || n == "subpassInput")
 }
 
-// Fill the dummy bind_uniform body: one write_field per std140 field of every @uniform struct global
-// reachable from fnMain, all wrapped in `with_mapped_memory(device, memory) <| $(ptr : void?)` so each
-// call does exactly one map/unmap cycle. Samplers/images bind via descriptor writes, not here.
+// Fill the dummy bind_uniform body: one write_field per std140 field of the FIRST @uniform block
+// reachable from fnMain, wrapped in `with_mapped_memory(device, memory) <| $(ptr : void?)` — one
+// map/unmap per call, host-visible memory ONLY. Samplers/images bind via descriptor writes, not here.
 [macro_function]
 def private generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
     var inner = new ExprBlock(at = fn.at)
@@ -139,7 +139,7 @@ def private generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
     ptr_arg._type.flags.constant = true
     inner.arguments |> emplace(ptr_arg)
 
-    // Fail-closed below: one (device, memory) pair per function, so >1 @uniform block corrupts the upload.
+    // Collect the @uniform struct globals reachable from fnMain; only the first is auto-bound (see below).
     var ubo_globals : array<Variable?>
     collect_dependencies(fnMain) $(_vfun, vvar) {
         for (vv in vvar) {
@@ -151,13 +151,14 @@ def private generate_bind_uniform(fnMain : FunctionPtr; var fn : FunctionPtr) {
             ubo_globals |> push(vv)
         }
     }
-    if (length(ubo_globals) > 1) {
-        macro_error(compiling_program(), ubo_globals[0].at,
-            "[vulkan_*_shader]: shader reaches {length(ubo_globals)} @uniform struct globals; bind_uniform_<shader>(device, memory) takes one memory allocation and would corrupt cross-block writes. Split into separate shaders, merge the UBOs into one struct, or wait for per-binding bind functions.")
-        unsafe { delete ubo_globals; }
-        return
-    }
-    for (vv in ubo_globals) {
+    // nolint:STYLE015
+    // Binds the FIRST reachable @uniform block only: one (device, memory) pair maps ONE allocation.
+    // A shader may legitimately reach several blocks (a per-frame block plus a shared lookup table);
+    // the rest are deliberately the host's. with_mapped_memory is valid ONLY for host-visible memory,
+    // so host-coherent must never be conflated with device-local (staged, NOT mappable) — the host
+    // uploads those through its own path.
+    if (!empty(ubo_globals)) {
+        let vv = ubo_globals[0]
         let st = vv._type.structType
         var layout_errors : array<string>
         var fields : array<BlockField>
