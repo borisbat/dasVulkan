@@ -359,6 +359,44 @@ def public create_device_storage_8_16(phys : VkPhysicalDevice; queue_family : ui
     return <- create_device(phys, queue_family, extensions, f2)
 }
 
+//! True iff ``phys`` advertises the cooperative-matrix feature (VK_KHR_cooperative_matrix — Tensor-Core
+//! MMA). Gate coopmat kernels with this; lavapipe and non-Tensor-Core GPUs miss it. (Enumerating the exact
+//! supported tile shapes is get_physical_device_cooperative_matrix_properties_k_h_r; the v1 emitter targets
+//! the f16 x f16 -> f32 16x16x16 subgroup tile, which every Tensor-Core GPU advertises.)
+def public cooperative_matrix_supported(phys : VkPhysicalDevice) : bool {
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fcm)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return fcm.cooperativeMatrix != 0u
+}
+
+//! Create a device with the cooperative-matrix feature + its prerequisites: storageBuffer16BitAccess +
+//! shaderFloat16 (the f16 tiles) and vulkanMemoryModel (coopmat ops carry implicit memory scope, so the
+//! emitted SPIR-V uses the Vulkan memory model). Enables the VK_KHR_cooperative_matrix device extension.
+//! Pairs with the coopmatLoad/MulAdd/Store emitter surface; gate with cooperative_matrix_supported.
+def public create_device_cooperative_matrix(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var f11 = VkPhysicalDeviceVulkan11Features()
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    f11.storageBuffer16BitAccess = 1u
+    f12.shaderFloat16 = 1u
+    f12.vulkanMemoryModel = 1u
+    fcm.cooperativeMatrix = 1u
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(f11)
+        f11.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(fcm)
+    }
+    var ext <- ["VK_KHR_cooperative_matrix"]
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
+}
+
 //! The physical device's subgroup properties: lane count (``subgroupSize`` — 32 on NV, 32/64 on
 //! AMD, 8 on lavapipe), the stages subgroup ops work in, and the supported operation classes.
 def public subgroup_properties(phys : VkPhysicalDevice) : VkPhysicalDeviceSubgroupProperties {
