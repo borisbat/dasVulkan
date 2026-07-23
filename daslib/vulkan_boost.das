@@ -360,9 +360,8 @@ def public create_device_storage_8_16(phys : VkPhysicalDevice; queue_family : ui
 }
 
 //! True iff ``phys`` advertises the cooperative-matrix feature (VK_KHR_cooperative_matrix — Tensor-Core
-//! MMA). Gate coopmat kernels with this; lavapipe and non-Tensor-Core GPUs miss it. (Enumerating the exact
-//! supported tile shapes is get_physical_device_cooperative_matrix_properties_k_h_r; the v1 emitter targets
-//! the f16 x f16 -> f32 16x16x16 subgroup tile, which every Tensor-Core GPU advertises.)
+//! MMA); lavapipe and non-Tensor-Core GPUs miss it. Exact tile shapes come from
+//! get_physical_device_cooperative_matrix_properties_k_h_r; every Tensor-Core GPU has the f16 16x16x16 tile.
 def public cooperative_matrix_supported(phys : VkPhysicalDevice) : bool {
     var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
     var f2 = VkPhysicalDeviceFeatures2()
@@ -374,9 +373,8 @@ def public cooperative_matrix_supported(phys : VkPhysicalDevice) : bool {
 }
 
 //! Create a device with the cooperative-matrix feature + its prerequisites: storageBuffer16BitAccess +
-//! shaderFloat16 (the f16 tiles) and vulkanMemoryModel (coopmat ops carry implicit memory scope, so the
-//! emitted SPIR-V uses the Vulkan memory model). Enables the VK_KHR_cooperative_matrix device extension.
-//! Pairs with the coopmatLoad/MulAdd/Store emitter surface; gate with cooperative_matrix_supported.
+//! shaderFloat16 (the f16 tiles) and vulkanMemoryModel (the emitted SPIR-V uses the Vulkan memory model),
+//! plus the VK_KHR_cooperative_matrix extension. Gate with ``cooperative_matrix_supported``.
 def public create_device_cooperative_matrix(phys : VkPhysicalDevice; queue_family : uint) : Device {
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
@@ -458,11 +456,9 @@ def public create_device_storage_8_16_int_dot(phys : VkPhysicalDevice; queue_fam
     return <- create_device(phys, queue_family, ext, f2)
 }
 
-//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (Tensor-Core MMA):
-//! the 8/16-bit storage + shaderInt8/Float16 + shaderIntegerDotProduct set, PLUS vulkanMemoryModel and
-//! cooperativeMatrix, and the VK_KHR_cooperative_matrix extension. Lets one device drive both the sdot4
-//! GEMV/GEMM kernels and the coopmat GEMM variants. Only create this when cooperative_matrix_supported —
-//! a device without the feature/extension fails create; callers gate and fall back to the plain helper.
+//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (vulkanMemoryModel,
+//! cooperativeMatrix, the VK_KHR_cooperative_matrix extension) — one device drives both the sdot4 kernels
+//! and the coopmat GEMM variants. Gate on ``cooperative_matrix_supported`` AND the storage/int-dot probes.
 def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; queue_family : uint) : Device {
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
@@ -488,7 +484,9 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
         ext |> push("VK_KHR_shader_integer_dot_product")
     }
-    return <- create_device(phys, queue_family, ext, f2)
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
 }
 
 //!@nolint
