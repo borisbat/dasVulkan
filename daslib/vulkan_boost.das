@@ -359,6 +359,42 @@ def public create_device_storage_8_16(phys : VkPhysicalDevice; queue_family : ui
     return <- create_device(phys, queue_family, extensions, f2)
 }
 
+//! True iff ``phys`` advertises the cooperative-matrix feature (VK_KHR_cooperative_matrix — Tensor-Core
+//! MMA); lavapipe and non-Tensor-Core GPUs miss it. Exact tile shapes come from
+//! get_physical_device_cooperative_matrix_properties_k_h_r; every Tensor-Core GPU has the f16 16x16x16 tile.
+def public cooperative_matrix_supported(phys : VkPhysicalDevice) : bool {
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fcm)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return fcm.cooperativeMatrix != 0u
+}
+
+//! Create a device with the cooperative-matrix feature + its prerequisites: storageBuffer16BitAccess +
+//! shaderFloat16 (the f16 tiles) and vulkanMemoryModel (the emitted SPIR-V uses the Vulkan memory model),
+//! plus the VK_KHR_cooperative_matrix extension. Gate with ``cooperative_matrix_supported``.
+def public create_device_cooperative_matrix(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var f11 = VkPhysicalDeviceVulkan11Features()
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    f11.storageBuffer16BitAccess = 1u
+    f12.shaderFloat16 = 1u
+    f12.vulkanMemoryModel = 1u
+    fcm.cooperativeMatrix = 1u
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(f11)
+        f11.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(fcm)
+    }
+    var ext <- ["VK_KHR_cooperative_matrix"]
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
+}
+
 //! The physical device's subgroup properties: lane count (``subgroupSize`` — 32 on NV, 32/64 on
 //! AMD, 8 on lavapipe), the stages subgroup ops work in, and the supported operation classes.
 def public subgroup_properties(phys : VkPhysicalDevice) : VkPhysicalDeviceSubgroupProperties {
@@ -418,6 +454,39 @@ def public create_device_storage_8_16_int_dot(phys : VkPhysicalDevice; queue_fam
         ext |> push("VK_KHR_shader_integer_dot_product")
     }
     return <- create_device(phys, queue_family, ext, f2)
+}
+
+//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (vulkanMemoryModel,
+//! cooperativeMatrix, the VK_KHR_cooperative_matrix extension) — one device drives both the sdot4 kernels
+//! and the coopmat GEMM variants. Gate on ``cooperative_matrix_supported`` AND the storage/int-dot probes.
+def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var f11 = VkPhysicalDeviceVulkan11Features()
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    f11.storageBuffer16BitAccess = 1u
+    f12.storageBuffer8BitAccess = 1u
+    f12.shaderFloat16 = 1u
+    f12.shaderInt8 = 1u
+    f12.vulkanMemoryModel = 1u
+    fdot.shaderIntegerDotProduct = 1u
+    fcm.cooperativeMatrix = 1u
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(f11)
+        f11.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(fdot)
+        fdot.pNext = addr<void?>(fcm)
+    }
+    var props : VkPhysicalDeviceProperties
+    vkGetPhysicalDeviceProperties(phys, props)
+    var ext <- ["VK_KHR_cooperative_matrix"]
+    if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
+        ext |> push("VK_KHR_shader_integer_dot_product")
+    }
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
 }
 
 //!@nolint
