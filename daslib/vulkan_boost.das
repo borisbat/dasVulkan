@@ -409,10 +409,16 @@ def public pipeline_exec_props_supported(phys : VkPhysicalDevice) : bool {
     return fpe.pipelineExecutableInfo != 0u
 }
 
-//! create_device_cooperative_matrix PLUS the Vulkan 1.3 subgroup-size-control pair (``subgroupSizeControl``
-//! + ``computeFullSubgroups``) so pipelines can pin ``requiredSubgroupSize``; instance must be api 1.3.
-//! Opportunistically enables VK_KHR_pipeline_executable_properties for dump_pipeline_executables.
+//! create_device_cooperative_matrix PLUS the Vulkan 1.3 subgroup-size-control pair so pipelines can pin
+//! ``requiredSubgroupSize``; each bit is enabled only when the device reports it (degrades to the plain
+//! coopmat device). Instance must be api 1.3; opportunistically enables VK_KHR_pipeline_executable_properties.
 def public create_device_coopmat_full_subgroups(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var q13 = VkPhysicalDeviceVulkan13Features()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(q13)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
     var f13 = VkPhysicalDeviceVulkan13Features()
@@ -421,8 +427,9 @@ def public create_device_coopmat_full_subgroups(phys : VkPhysicalDevice; queue_f
     f11.storageBuffer16BitAccess = 1u
     f12.shaderFloat16 = 1u
     f12.vulkanMemoryModel = 1u
-    f13.subgroupSizeControl = 1u
-    f13.computeFullSubgroups = 1u
+    // optional 1.3 bits: request only what the queried features report
+    f13.subgroupSizeControl = q13.subgroupSizeControl
+    f13.computeFullSubgroups = q13.computeFullSubgroups
     fcm.cooperativeMatrix = 1u
     fpe.pipelineExecutableInfo = 1u
     let with_exec_props = pipeline_exec_props_supported(phys)
@@ -2085,7 +2092,8 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
                 } elif (st.format == VkPipelineExecutableStatisticFormatKHR.INT64_KHR) {
                     v = "{st.value.i64}"
                 } elif (st.format == VkPipelineExecutableStatisticFormatKHR.UINT64_KHR) {
-                    v = "{int64(st.value.u64)}"   // decimal; das prints uint64 as 0x-hex
+                    // decimal via int64 when it fits; raw uint64 (prints 0x-hex) past INT64_MAX
+                    v = st.value.u64 <= 0x7FFFFFFFFFFFFFFFl ? "{int64(st.value.u64)}" : "{st.value.u64}"
                 } else {
                     v = "{st.value.f64}"
                 }
