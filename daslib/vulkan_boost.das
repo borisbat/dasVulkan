@@ -2066,7 +2066,7 @@ def private blob_text(var blob : array<uint8>) : string {
     if (empty(blob)) {
         return ""
     }
-    blob[length(blob) - 1] = uint8(0)   // spec says null-terminated; enforce against sloppy drivers
+    blob[length(blob) - 1] = uint8(0)   // last byte is the caller-reserved NUL slot, never content
     unsafe {
         return "{reinterpret<string>(addr(blob[0]))}"
     }
@@ -2109,7 +2109,8 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
             for (r in reps) {
                 var b : array<uint8>
                 if (int(r.dataSize) > 0) {
-                    b |> resize(int(r.dataSize))
+                    // text payloads reserve ONE extra byte for the terminating NUL (see blob_text)
+                    b |> resize(int(r.dataSize) + (r.isText != 0u ? 1 : 0))
                 }
                 blobs |> emplace(b)
             }
@@ -2122,6 +2123,7 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
                     for (ri in range(length(reps))) {
                         if (!empty(blobs[ri])) {
                             reps[ri].pData = addr<void?>(blobs[ri][0])
+                            reps[ri].dataSize = uint64(length(blobs[ri]))   // tell the driver about the reserved byte
                         }
                     }
                     vk_check(vkGetPipelineExecutableInternalRepresentationsKHR(boost_value_to_vk(device), vkinfo, vkcount, addr(reps[0])), null)
