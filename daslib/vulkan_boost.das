@@ -396,6 +396,19 @@ def public create_device_cooperative_matrix(phys : VkPhysicalDevice; queue_famil
     return <- dev
 }
 
+//! True iff ``phys`` advertises VK_KHR_pipeline_executable_properties AND its ``pipelineExecutableInfo``
+//! feature bit — drivers can list the extension with the feature off, and enabling both then fails vkCreateDevice.
+def public pipeline_exec_props_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_KHR_pipeline_executable_properties")) return false
+    var fpe = VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fpe)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return fpe.pipelineExecutableInfo != 0u
+}
+
 //! create_device_cooperative_matrix PLUS the Vulkan 1.3 subgroup-size-control pair (``subgroupSizeControl``
 //! + ``computeFullSubgroups``) so pipelines can pin ``requiredSubgroupSize``; instance must be api 1.3.
 //! Opportunistically enables VK_KHR_pipeline_executable_properties for dump_pipeline_executables.
@@ -412,7 +425,7 @@ def public create_device_coopmat_full_subgroups(phys : VkPhysicalDevice; queue_f
     f13.computeFullSubgroups = 1u
     fcm.cooperativeMatrix = 1u
     fpe.pipelineExecutableInfo = 1u
-    let with_exec_props = device_extension_available(phys, "VK_KHR_pipeline_executable_properties")
+    let with_exec_props = pipeline_exec_props_supported(phys)
     var f2 = VkPhysicalDeviceFeatures2()
     unsafe {
         f2.pNext = addr<void?>(f11)
