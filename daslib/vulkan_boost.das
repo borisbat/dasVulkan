@@ -2108,7 +2108,10 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
             blobs |> reserve(length(reps))
             for (r in reps) {
                 var b : array<uint8>
-                if (int(r.dataSize) > 0) {
+                if (r.dataSize > 0x7FFFFFF0ul) {
+                    // int-overflow guard: can't resize() past INT_MAX — leave the blob empty so the fill call skips it
+                    write(writer, "-- representation '{exec_cstr(r.name)}' too large ({int64(r.dataSize)} bytes), skipped --\n")
+                } elif (int(r.dataSize) > 0) {
                     // text payloads reserve ONE extra byte for the terminating NUL (see blob_text)
                     b |> resize(int(r.dataSize) + (r.isText != 0u ? 1 : 0))
                 }
@@ -2131,7 +2134,10 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
             }
             for (ri in range(length(reps))) {
                 let is_text = reps[ri].isText != 0u
-                write(writer, "[{ri}] {exec_cstr(reps[ri].name)} isText={is_text} dataSize={int(reps[ri].dataSize)}    ({exec_cstr(reps[ri].description)})\n")
+                // skipped-oversize reps keep the driver-reported size (pData null => driver rewrites it): no int() cast
+                let ds = reps[ri].dataSize
+                let ds_str = ds > 0x7FFFFFF0ul ? "{int64(ds)} (skipped)" : "{int(ds)}"
+                write(writer, "[{ri}] {exec_cstr(reps[ri].name)} isText={is_text} dataSize={ds_str}    ({exec_cstr(reps[ri].description)})\n")
                 if (is_text && !empty(blobs[ri])) {
                     write(writer, blob_text(blobs[ri]))
                     write(writer, "\n")
