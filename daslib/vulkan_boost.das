@@ -16,6 +16,7 @@ require vulkan/vulkan_handles public
 require vulkan/vulkan_structs public
 require vulkan/vulkan_commands public
 require vulkan/vulkan_cmds public
+require strings
 require daslib/defer
 
 // ===== selection =====
@@ -390,6 +391,62 @@ def public create_device_cooperative_matrix(phys : VkPhysicalDevice; queue_famil
         f12.pNext = addr<void?>(fcm)
     }
     var ext <- ["VK_KHR_cooperative_matrix"]
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
+}
+
+//! True iff ``phys`` advertises VK_KHR_pipeline_executable_properties AND its ``pipelineExecutableInfo``
+//! feature bit — drivers can list the extension with the feature off, and enabling both then fails vkCreateDevice.
+def public pipeline_exec_props_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_KHR_pipeline_executable_properties")) return false
+    var fpe = VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fpe)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return fpe.pipelineExecutableInfo != 0u
+}
+
+//! create_device_cooperative_matrix PLUS the Vulkan 1.3 subgroup-size-control pair so pipelines can pin
+//! ``requiredSubgroupSize``; each bit is enabled only when the device reports it (degrades to the plain
+//! coopmat device). Instance must be api 1.3; opportunistically enables VK_KHR_pipeline_executable_properties.
+def public create_device_coopmat_full_subgroups(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var q13 = VkPhysicalDeviceVulkan13Features()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(q13)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
+    var f11 = VkPhysicalDeviceVulkan11Features()
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var f13 = VkPhysicalDeviceVulkan13Features()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    var fpe = VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR()
+    f11.storageBuffer16BitAccess = 1u
+    f12.shaderFloat16 = 1u
+    f12.vulkanMemoryModel = 1u
+    // optional 1.3 bits: request only what the queried features report
+    f13.subgroupSizeControl = q13.subgroupSizeControl
+    f13.computeFullSubgroups = q13.computeFullSubgroups
+    fcm.cooperativeMatrix = 1u
+    fpe.pipelineExecutableInfo = 1u
+    let with_exec_props = pipeline_exec_props_supported(phys)
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(f11)
+        f11.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(f13)
+        f13.pNext = addr<void?>(fcm)
+        if (with_exec_props) {
+            fcm.pNext = addr<void?>(fpe)
+        }
+    }
+    var ext <- ["VK_KHR_cooperative_matrix"]
+    if (with_exec_props) {
+        ext |> push("VK_KHR_pipeline_executable_properties")
+    }
     var dev <- create_device(phys, queue_family, ext, f2)
     delete ext
     return <- dev
@@ -1994,6 +2051,104 @@ def public copy_image_to_buffer(cmd : CommandBuffer; image : Image; buffer : Hos
         vkCmdCopyImageToBuffer(boost_value_to_vk(cmd), boost_value_to_vk(image), VkImageLayout.TRANSFER_SRC_OPTIMAL,
             boost_value_to_vk(buffer.buffer), 1u, addr(region))
     }
+}
+
+// ===== pipeline executable introspection (VK_KHR_pipeline_executable_properties) =====
+
+def private exec_cstr(src : int8[VK_MAX_DESCRIPTION_SIZE]) : string {
+    var tmp = src
+    unsafe {
+        return "{reinterpret<string>(addr(tmp[0]))}"
+    }
+}
+
+def private blob_text(var blob : array<uint8>) : string {
+    if (empty(blob)) {
+        return ""
+    }
+    blob[length(blob) - 1] = uint8(0)   // last byte is the caller-reserved NUL slot, never content
+    unsafe {
+        return "{reinterpret<string>(addr(blob[0]))}"
+    }
+}
+
+//! One-string VK_KHR_pipeline_executable_properties report for `pipeline`: per-executable statistics
+//! (on NVIDIA: register count, binary size, ...) plus internal representations, `isText` payloads
+//! (disassembly) verbatim. Needs the capture_* pipeline flags + a device with pipelineExecutableInfo.
+def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : string {
+    var execs <- get_pipeline_executable_properties_k_h_r(device, PipelineInfoKHR(pipeline = weak_copy(pipeline)))
+    let s = build_string() $(writer) {
+        write(writer, "pipeline executables: {length(execs)}\n")
+        for (ei in range(length(execs))) {
+            write(writer, "== executable {ei}: {exec_cstr(execs[ei].name)} ==\n")
+            write(writer, "  {exec_cstr(execs[ei].description)} (stages {uint(execs[ei].stages)}, subgroupSize {int(execs[ei].subgroupSize)})\n")
+            let info = PipelineExecutableInfoKHR(pipeline = weak_copy(pipeline), executableIndex = uint(ei))
+            var stats <- get_pipeline_executable_statistics_k_h_r(device, info)
+            write(writer, "-- statistics ({length(stats)}) --\n")
+            for (st in stats) {
+                var v = ""
+                if (st.format == VkPipelineExecutableStatisticFormatKHR.BOOL32_KHR) {
+                    v = st.value.b32 != 0u ? "true" : "false"
+                } elif (st.format == VkPipelineExecutableStatisticFormatKHR.INT64_KHR) {
+                    v = "{st.value.i64}"
+                } elif (st.format == VkPipelineExecutableStatisticFormatKHR.UINT64_KHR) {
+                    // decimal via int64 when it fits; raw uint64 (prints 0x-hex) past INT64_MAX
+                    v = st.value.u64 <= 0x7FFFFFFFFFFFFFFFl ? "{int64(st.value.u64)}" : "{st.value.u64}"
+                } else {
+                    v = "{st.value.f64}"
+                }
+                write(writer, "{exec_cstr(st.name)} = {v}    ({exec_cstr(st.description)})\n")
+            }
+            delete stats
+            // two-call pattern round 2: the generated wrapper filled name/isText/dataSize with pData null;
+            // allocate each pData at its reported dataSize and re-query to pull the actual bytes
+            var reps <- get_pipeline_executable_internal_representations_k_h_r(device, info)
+            write(writer, "-- internal representations ({length(reps)}) --\n")
+            var blobs : array<array<uint8>>
+            blobs |> reserve(length(reps))
+            for (r in reps) {
+                var b : array<uint8>
+                if (r.dataSize > 0x7FFFFFF0ul) {
+                    // int-overflow guard: can't resize() past INT_MAX — leave the blob empty so the fill call skips it
+                    write(writer, "-- representation '{exec_cstr(r.name)}' too large ({int64(r.dataSize)} bytes), skipped --\n")
+                } elif (int(r.dataSize) > 0) {
+                    // text payloads reserve ONE extra byte for the terminating NUL (see blob_text)
+                    b |> resize(int(r.dataSize) + (r.isText != 0u ? 1 : 0))
+                }
+                blobs |> emplace(b)
+            }
+            if (!empty(reps)) {
+                var vkinfo = VkPipelineExecutableInfoKHR()
+                vkinfo.pipeline = boost_value_to_vk(pipeline)
+                vkinfo.executableIndex = uint(ei)
+                var vkcount = uint(length(reps))
+                unsafe {
+                    for (ri in range(length(reps))) {
+                        if (!empty(blobs[ri])) {
+                            reps[ri].pData = addr<void?>(blobs[ri][0])
+                            reps[ri].dataSize = uint64(length(blobs[ri]))   // tell the driver about the reserved byte
+                        }
+                    }
+                    vk_check(vkGetPipelineExecutableInternalRepresentationsKHR(boost_value_to_vk(device), vkinfo, vkcount, addr(reps[0])), null)
+                }
+            }
+            for (ri in range(length(reps))) {
+                let is_text = reps[ri].isText != 0u
+                // skipped-oversize reps keep the driver-reported size (pData null => driver rewrites it): no int() cast
+                let ds = reps[ri].dataSize
+                let ds_str = ds > 0x7FFFFFF0ul ? "{int64(ds)} (skipped)" : "{int(ds)}"
+                write(writer, "[{ri}] {exec_cstr(reps[ri].name)} isText={is_text} dataSize={ds_str}    ({exec_cstr(reps[ri].description)})\n")
+                if (is_text && !empty(blobs[ri])) {
+                    write(writer, blob_text(blobs[ri]))
+                    write(writer, "\n")
+                }
+            }
+            delete blobs
+            delete reps
+        }
+    }
+    delete execs
+    return s
 }
 
 // ===== hardware ray tracing rails (VK_KHR_ray_tracing_pipeline) =====
