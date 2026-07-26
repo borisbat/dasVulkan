@@ -321,6 +321,42 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
     return <- b
 }
 
+//! The features2 overload with MULTIPLE queue families — one queue per listed (distinct) family.
+//! The compute-tier creators use it to add a dedicated transfer queue beside the main one.
+def public create_device(phys : VkPhysicalDevice; queue_families : array<uint>; extensions : array<string>;
+                         var features2 : VkPhysicalDeviceFeatures2) : Device {
+    var prio = 1.0f
+    var qcis : array<VkDeviceQueueCreateInfo>
+    qcis |> resize(length(queue_families))
+    for (i in range(length(queue_families))) {
+        qcis[i] = VkDeviceQueueCreateInfo()
+        qcis[i].queueFamilyIndex = queue_families[i]
+        qcis[i].queueCount = 1u
+        unsafe {
+            qcis[i].pQueuePriorities = addr(prio)
+        }
+    }
+    features2.sType = VkStructureType.PHYSICAL_DEVICE_FEATURES_2
+    var ci = VkDeviceCreateInfo()
+    ci.queueCreateInfoCount = uint(length(queue_families))
+    unsafe {
+        ci.pQueueCreateInfos = addr(qcis[0])
+        ci.pNext = addr<void?>(features2)
+    }
+    if (!empty(extensions)) {
+        ci.enabledExtensionCount = uint(length(extensions))
+        unsafe {
+            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+        }
+    }
+    var h : VkDevice
+    vk_check(vkCreateDevice(phys, ci, null, h), null)
+    var b = vk_value_to_boost(h)
+    b._needs_delete = true
+    delete qcis
+    return <- b
+}
+
 //! True iff ``phys`` supports the 8/16-bit SSBO storage set the dasSpirv storage wave emits:
 //! ``storageBuffer16BitAccess`` (Vulkan11Features) + ``storageBuffer8BitAccess`` + ``shaderFloat16`` +
 //! ``shaderInt8`` (Vulkan12Features). Gate 8/16-bit kernels — old/software drivers can miss any bit.
@@ -513,21 +549,24 @@ def public create_device_storage_8_16_int_dot(phys : VkPhysicalDevice; queue_fam
     return <- create_device(phys, queue_family, ext, f2)
 }
 
-//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (gate on
-//! ``cooperative_matrix_supported`` + the storage/int-dot probes), and OPPORTUNISTICALLY (query-then-enable,
-//! like the coopmat2 creator): VK_EXT_memory_priority + pageable_device_local_memory (WDDM residency lever).
-def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; queue_family : uint) : Device {
+//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix, and OPPORTUNISTICALLY:
+//! memory_priority + pageable (residency), timelineSemaphore, external_memory_host. ``transfer_family`` >= 0
+//! adds a second queue (pair ``select_transfer_queue_family`` + a timeline semaphore to overlap uploads).
+def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; queue_family : uint; transfer_family : int = -1) : Device {
+    var q12 = VkPhysicalDeviceVulkan12Features()
     var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
     var qpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
     var q2 = VkPhysicalDeviceFeatures2()
     unsafe {
-        q2.pNext = addr<void?>(qmp)
+        q2.pNext = addr<void?>(q12)
+        q12.pNext = addr<void?>(qmp)
         qmp.pNext = addr<void?>(qpg)
     }
     vkGetPhysicalDeviceFeatures2(phys, q2)
     let with_memprio = device_extension_available(phys, "VK_EXT_memory_priority") && qmp.memoryPriority != 0u
     let with_pageable = (with_memprio && device_extension_available(phys, "VK_EXT_pageable_device_local_memory")
         && qpg.pageableDeviceLocalMemory != 0u)
+    let with_extmemhost = device_extension_available(phys, "VK_EXT_external_memory_host")
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
     var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
@@ -539,6 +578,7 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     f12.shaderFloat16 = 1u
     f12.shaderInt8 = 1u
     f12.vulkanMemoryModel = 1u
+    f12.timelineSemaphore = q12.timelineSemaphore
     fdot.shaderIntegerDotProduct = 1u
     fcm.cooperativeMatrix = 1u
     fmp.memoryPriority = 1u
@@ -568,7 +608,15 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     if (with_pageable) {
         ext |> push("VK_EXT_pageable_device_local_memory")
     }
-    var dev <- create_device(phys, queue_family, ext, f2)
+    if (with_extmemhost) {
+        ext |> push("VK_EXT_external_memory_host")
+    }
+    var fams <- [queue_family]
+    if (transfer_family >= 0 && uint(transfer_family) != queue_family) {
+        fams |> push(uint(transfer_family))
+    }
+    var dev <- create_device(phys, fams, ext, f2)
+    delete fams
     delete ext
     return <- dev
 }
@@ -661,17 +709,19 @@ def public select_transfer_queue_family(phys : VkPhysicalDevice) : int {
 }
 
 //! Superset of create_device_storage_8_16_int_dot_coopmat that ALSO enables VK_NV_cooperative_matrix2 +
-//! ``bufferDeviceAddress`` (gate with ``cooperative_matrix2_supported``), and OPPORTUNISTICALLY (query-then-
-//! enable): VK_NV_cooperative_vector, VK_EXT_memory_priority + pageable_device_local_memory (WDDM residency lever).
-def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint) : Device {
+//! ``bufferDeviceAddress`` (gate with ``cooperative_matrix2_supported``), plus the same opportunistic set
+//! (coopvec, residency levers, timelineSemaphore, external_memory_host) and ``transfer_family`` second queue.
+def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint; transfer_family : int = -1) : Device {
     // query the optional feature bits first — a pNext struct may only join the chain when its
     // extension is actually enabled, so each optional block is gated on ext + reported bit
+    var q12q = VkPhysicalDeviceVulkan12Features()
     var qcv = VkPhysicalDeviceCooperativeVectorFeaturesNV()
     var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
     var qpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
     var q2 = VkPhysicalDeviceFeatures2()
     unsafe {
-        q2.pNext = addr<void?>(qcv)
+        q2.pNext = addr<void?>(q12q)
+        q12q.pNext = addr<void?>(qcv)
         qcv.pNext = addr<void?>(qmp)
         qmp.pNext = addr<void?>(qpg)
     }
@@ -680,6 +730,7 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     let with_memprio = device_extension_available(phys, "VK_EXT_memory_priority") && qmp.memoryPriority != 0u
     let with_pageable = (with_memprio && device_extension_available(phys, "VK_EXT_pageable_device_local_memory")
         && qpg.pageableDeviceLocalMemory != 0u)
+    let with_extmemhost = device_extension_available(phys, "VK_EXT_external_memory_host")
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
     var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
@@ -694,6 +745,7 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     f12.shaderInt8 = 1u
     f12.vulkanMemoryModel = 1u
     f12.bufferDeviceAddress = 1u
+    f12.timelineSemaphore = q12q.timelineSemaphore
     fdot.shaderIntegerDotProduct = 1u
     fcm.cooperativeMatrix = 1u
     fcm2.cooperativeMatrixWorkgroupScope = 1u
@@ -739,9 +791,48 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     if (with_pageable) {
         ext |> push("VK_EXT_pageable_device_local_memory")
     }
-    var dev <- create_device(phys, queue_family, ext, f2)
+    if (with_extmemhost) {
+        ext |> push("VK_EXT_external_memory_host")
+    }
+    var fams <- [queue_family]
+    if (transfer_family >= 0 && uint(transfer_family) != queue_family) {
+        fams |> push(uint(transfer_family))
+    }
+    var dev <- create_device(phys, fams, ext, f2)
+    delete fams
     delete ext
     return <- dev
+}
+
+//! True iff ``phys`` reports the core-1.2 timelineSemaphore feature — the compute-tier creators
+//! enable it when present; gate transfer-queue overlap schemes on this.
+def public timeline_semaphore_supported(phys : VkPhysicalDevice) : bool {
+    var q12 = VkPhysicalDeviceVulkan12Features()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(q12)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
+    return q12.timelineSemaphore != 0u
+}
+
+//! True iff ``phys`` exposes VK_EXT_external_memory_host (the compute-tier creators enable it
+//! opportunistically) — host-pointer imports (e.g. a file mapping) become possible.
+def public external_memory_host_supported(phys : VkPhysicalDevice) : bool
+    => device_extension_available(phys, "VK_EXT_external_memory_host")
+
+//! ``minImportedHostPointerAlignment`` for host-pointer imports, or 0 when unsupported.
+def public external_memory_host_min_alignment(phys : VkPhysicalDevice) : uint64 {
+    if (!external_memory_host_supported(phys)) {
+        return 0ul
+    }
+    var emh = VkPhysicalDeviceExternalMemoryHostPropertiesEXT()
+    var p2 = VkPhysicalDeviceProperties2()
+    unsafe {
+        p2.pNext = addr<void?>(emh)
+    }
+    vkGetPhysicalDeviceProperties2(phys, p2)
+    return emh.minImportedHostPointerAlignment
 }
 
 //!@nolint
