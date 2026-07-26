@@ -513,14 +513,27 @@ def public create_device_storage_8_16_int_dot(phys : VkPhysicalDevice; queue_fam
     return <- create_device(phys, queue_family, ext, f2)
 }
 
-//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (vulkanMemoryModel,
-//! cooperativeMatrix, the VK_KHR_cooperative_matrix extension) — one device drives both the sdot4 kernels
-//! and the coopmat GEMM variants. Gate on ``cooperative_matrix_supported`` AND the storage/int-dot probes.
+//! Superset of create_device_storage_8_16_int_dot that ALSO enables cooperative matrix (gate on
+//! ``cooperative_matrix_supported`` + the storage/int-dot probes), and OPPORTUNISTICALLY (query-then-enable,
+//! like the coopmat2 creator): VK_EXT_memory_priority + pageable_device_local_memory (WDDM residency lever).
 def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
+    var qpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(qmp)
+        qmp.pNext = addr<void?>(qpg)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
+    let with_memprio = device_extension_available(phys, "VK_EXT_memory_priority") && qmp.memoryPriority != 0u
+    let with_pageable = (with_memprio && device_extension_available(phys, "VK_EXT_pageable_device_local_memory")
+        && qpg.pageableDeviceLocalMemory != 0u)
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
     var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
     var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    var fmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
+    var fpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
     f11.storageBuffer16BitAccess = 1u
     f12.storageBuffer8BitAccess = 1u
     f12.shaderFloat16 = 1u
@@ -528,12 +541,20 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     f12.vulkanMemoryModel = 1u
     fdot.shaderIntegerDotProduct = 1u
     fcm.cooperativeMatrix = 1u
+    fmp.memoryPriority = 1u
+    fpg.pageableDeviceLocalMemory = 1u
     var f2 = VkPhysicalDeviceFeatures2()
     unsafe {
         f2.pNext = addr<void?>(f11)
         f11.pNext = addr<void?>(f12)
         f12.pNext = addr<void?>(fdot)
         fdot.pNext = addr<void?>(fcm)
+        if (with_memprio) {
+            fcm.pNext = addr<void?>(fmp)
+        }
+        if (with_pageable) {
+            fmp.pNext = addr<void?>(fpg)
+        }
     }
     var props : VkPhysicalDeviceProperties
     vkGetPhysicalDeviceProperties(phys, props)
@@ -541,9 +562,31 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
         ext |> push("VK_KHR_shader_integer_dot_product")
     }
+    if (with_memprio) {
+        ext |> push("VK_EXT_memory_priority")
+    }
+    if (with_pageable) {
+        ext |> push("VK_EXT_pageable_device_local_memory")
+    }
     var dev <- create_device(phys, queue_family, ext, f2)
     delete ext
     return <- dev
+}
+
+//! True iff ``phys`` exposes VK_EXT_memory_priority with its feature bit — the exact gate the
+//! opportunistic creator blocks use, so a caller may chain ``VkMemoryPriorityAllocateInfoEXT``
+//! into its allocations exactly when a creator above enabled the extension.
+def public memory_priority_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_EXT_memory_priority")) {
+        return false
+    }
+    var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(qmp)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
+    return qmp.memoryPriority != 0u
 }
 
 //! True iff ``phys`` can create the cm2 device: VK_NV_cooperative_matrix2 (+ its VK_KHR_cooperative_matrix
