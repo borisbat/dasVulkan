@@ -581,15 +581,70 @@ def public cooperative_matrix2_properties(phys : VkPhysicalDevice) : VkPhysicalD
     return cp
 }
 
-//! Superset of create_device_storage_8_16_int_dot_coopmat that ALSO enables VK_NV_cooperative_matrix2
-//! (workgroup scope + flexible dims + tensor addressing + block loads) and ``bufferDeviceAddress`` —
-//! decode functions take PhysicalStorageBuffer pointers. Gate with ``cooperative_matrix2_supported``.
+//! True iff ``phys`` has VK_NV_cooperative_vector with its base feature bit — the Tensor-Core
+//! MATVEC path (f16, packed-s8, and fp8-matrix combos come from
+//! get_physical_device_cooperative_vector_properties_n_v).
+def public cooperative_vector_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_NV_cooperative_vector")) return false
+    var fcv = VkPhysicalDeviceCooperativeVectorFeaturesNV()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fcv)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return fcv.cooperativeVector != 0u
+}
+
+//! The first DEDICATED transfer queue family (transfer set, graphics+compute clear — the DMA copy
+//! engines), or -1 when the device exposes none. Pair with a timeline semaphore to overlap uploads
+//! with compute; fall back to the main queue on -1.
+def public select_transfer_queue_family(phys : VkPhysicalDevice) : int {
+    var qcount = 0u
+    vkGetPhysicalDeviceQueueFamilyProperties(phys, qcount, null)
+    if (qcount == 0u) return -1
+    var qprops : array<VkQueueFamilyProperties>
+    qprops |> resize(int(qcount))
+    unsafe {
+        vkGetPhysicalDeviceQueueFamilyProperties(phys, qcount, addr(qprops[0]))
+    }
+    var found = -1
+    for (q, qi in qprops, count()) {
+        if (found < 0 && q.queueFlags.transfer && !q.queueFlags.graphics && !q.queueFlags.compute) {
+            found = qi
+        }
+    }
+    delete qprops
+    return found
+}
+
+//! Superset of create_device_storage_8_16_int_dot_coopmat that ALSO enables VK_NV_cooperative_matrix2 +
+//! ``bufferDeviceAddress`` (gate with ``cooperative_matrix2_supported``), and OPPORTUNISTICALLY (query-then-
+//! enable): VK_NV_cooperative_vector, VK_EXT_memory_priority + pageable_device_local_memory (WDDM residency lever).
 def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    // query the optional feature bits first — a pNext struct may only join the chain when its
+    // extension is actually enabled, so each optional block is gated on ext + reported bit
+    var qcv = VkPhysicalDeviceCooperativeVectorFeaturesNV()
+    var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
+    var qpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
+    var q2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        q2.pNext = addr<void?>(qcv)
+        qcv.pNext = addr<void?>(qmp)
+        qmp.pNext = addr<void?>(qpg)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, q2)
+    let with_coopvec = device_extension_available(phys, "VK_NV_cooperative_vector") && qcv.cooperativeVector != 0u
+    let with_memprio = device_extension_available(phys, "VK_EXT_memory_priority") && qmp.memoryPriority != 0u
+    let with_pageable = (with_memprio && device_extension_available(phys, "VK_EXT_pageable_device_local_memory")
+        && qpg.pageableDeviceLocalMemory != 0u)
     var f11 = VkPhysicalDeviceVulkan11Features()
     var f12 = VkPhysicalDeviceVulkan12Features()
     var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
     var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
     var fcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
+    var fcv = VkPhysicalDeviceCooperativeVectorFeaturesNV()
+    var fmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
+    var fpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
     f11.storageBuffer16BitAccess = 1u
     f12.storageBuffer8BitAccess = 1u
     f12.shaderFloat16 = 1u
@@ -602,6 +657,9 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     fcm2.cooperativeMatrixFlexibleDimensions = 1u
     fcm2.cooperativeMatrixTensorAddressing = 1u
     fcm2.cooperativeMatrixBlockLoads = 1u
+    fcv.cooperativeVector = 1u
+    fmp.memoryPriority = 1u
+    fpg.pageableDeviceLocalMemory = 1u
     var f2 = VkPhysicalDeviceFeatures2()
     unsafe {
         f2.pNext = addr<void?>(f11)
@@ -609,12 +667,34 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
         f12.pNext = addr<void?>(fdot)
         fdot.pNext = addr<void?>(fcm)
         fcm.pNext = addr<void?>(fcm2)
+        if (with_coopvec) {
+            fcm2.pNext = addr<void?>(fcv)
+        }
+        if (with_memprio) {
+            if (with_coopvec) {
+                fcv.pNext = addr<void?>(fmp)
+            } else {
+                fcm2.pNext = addr<void?>(fmp)
+            }
+        }
+        if (with_pageable) {
+            fmp.pNext = addr<void?>(fpg)
+        }
     }
     var props : VkPhysicalDeviceProperties
     vkGetPhysicalDeviceProperties(phys, props)
     var ext <- ["VK_KHR_cooperative_matrix", "VK_NV_cooperative_matrix2"]
     if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
         ext |> push("VK_KHR_shader_integer_dot_product")
+    }
+    if (with_coopvec) {
+        ext |> push("VK_NV_cooperative_vector")
+    }
+    if (with_memprio) {
+        ext |> push("VK_EXT_memory_priority")
+    }
+    if (with_pageable) {
+        ext |> push("VK_EXT_pageable_device_local_memory")
     }
     var dev <- create_device(phys, queue_family, ext, f2)
     delete ext
