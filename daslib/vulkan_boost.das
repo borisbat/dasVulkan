@@ -546,6 +546,72 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     return <- dev
 }
 
+//! True iff ``phys`` has VK_NV_cooperative_matrix2 with the feature set the dasSpirv cm2 rails emit:
+//! workgroup-scope matrices, flexible dimensions, tensor addressing, and block loads (decode functions).
+def public cooperative_matrix2_supported(phys : VkPhysicalDevice) : bool {
+    if (!device_extension_available(phys, "VK_NV_cooperative_matrix2")) return false
+    var fcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fcm2)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return (fcm2.cooperativeMatrixWorkgroupScope != 0u && fcm2.cooperativeMatrixFlexibleDimensions != 0u
+        && fcm2.cooperativeMatrixTensorAddressing != 0u && fcm2.cooperativeMatrixBlockLoads != 0u)
+}
+
+//! The device's cm2 limits: workgroup-scope max workgroup size, max flexible dimension, and the
+//! shared memory the driver reserves for workgroup-scope staging (subtract from the 48KB budget).
+def public cooperative_matrix2_properties(phys : VkPhysicalDevice) : VkPhysicalDeviceCooperativeMatrix2PropertiesNV {
+    var cp = VkPhysicalDeviceCooperativeMatrix2PropertiesNV()
+    var p2 = VkPhysicalDeviceProperties2()
+    unsafe {
+        p2.pNext = addr<void?>(cp)
+    }
+    vkGetPhysicalDeviceProperties2(phys, p2)
+    return cp
+}
+
+//! Superset of create_device_storage_8_16_int_dot_coopmat that ALSO enables VK_NV_cooperative_matrix2
+//! (workgroup scope + flexible dims + tensor addressing + block loads) and ``bufferDeviceAddress`` —
+//! decode functions take PhysicalStorageBuffer pointers. Gate with ``cooperative_matrix2_supported``.
+def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint) : Device {
+    var f11 = VkPhysicalDeviceVulkan11Features()
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var fdot = VkPhysicalDeviceShaderIntegerDotProductFeatures()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
+    var fcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
+    f11.storageBuffer16BitAccess = 1u
+    f12.storageBuffer8BitAccess = 1u
+    f12.shaderFloat16 = 1u
+    f12.shaderInt8 = 1u
+    f12.vulkanMemoryModel = 1u
+    f12.bufferDeviceAddress = 1u
+    fdot.shaderIntegerDotProduct = 1u
+    fcm.cooperativeMatrix = 1u
+    fcm2.cooperativeMatrixWorkgroupScope = 1u
+    fcm2.cooperativeMatrixFlexibleDimensions = 1u
+    fcm2.cooperativeMatrixTensorAddressing = 1u
+    fcm2.cooperativeMatrixBlockLoads = 1u
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(f11)
+        f11.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(fdot)
+        fdot.pNext = addr<void?>(fcm)
+        fcm.pNext = addr<void?>(fcm2)
+    }
+    var props : VkPhysicalDeviceProperties
+    vkGetPhysicalDeviceProperties(phys, props)
+    var ext <- ["VK_KHR_cooperative_matrix", "VK_NV_cooperative_matrix2"]
+    if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
+        ext |> push("VK_KHR_shader_integer_dot_product")
+    }
+    var dev <- create_device(phys, queue_family, ext, f2)
+    delete ext
+    return <- dev
+}
+
 //!@nolint
 //! Create a device with the bindless feature set: ``descriptorIndexing`` plus
 //! ``shaderSampledImageArrayNonUniformIndexing`` (index a ``sampler2D[N]`` with ``nonuniformEXT``), via
