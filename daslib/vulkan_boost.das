@@ -546,16 +546,25 @@ def public create_device_storage_8_16_int_dot_coopmat(phys : VkPhysicalDevice; q
     return <- dev
 }
 
-//! True iff ``phys`` has VK_NV_cooperative_matrix2 with the feature set the dasSpirv cm2 rails emit:
-//! workgroup-scope matrices, flexible dimensions, tensor addressing, and block loads (decode functions).
+//! True iff ``phys`` can create the cm2 device: VK_NV_cooperative_matrix2 (+ its VK_KHR_cooperative_matrix
+//! dependency), the cm2 feature set the dasSpirv rails emit (wg scope, flexible dims, tensor addressing, block
+//! loads), and every bit create_device_storage_8_16_int_dot_coopmat2 enables (``cooperativeMatrix``, ``bufferDeviceAddress``).
 def public cooperative_matrix2_supported(phys : VkPhysicalDevice) : bool {
-    if (!device_extension_available(phys, "VK_NV_cooperative_matrix2")) return false
+    if (!device_extension_available(phys, "VK_NV_cooperative_matrix2")
+            || !device_extension_available(phys, "VK_KHR_cooperative_matrix")) {
+        return false
+    }
+    var f12 = VkPhysicalDeviceVulkan12Features()
+    var fcm = VkPhysicalDeviceCooperativeMatrixFeaturesKHR()
     var fcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
     var f2 = VkPhysicalDeviceFeatures2()
     unsafe {
-        f2.pNext = addr<void?>(fcm2)
+        f2.pNext = addr<void?>(f12)
+        f12.pNext = addr<void?>(fcm)
+        fcm.pNext = addr<void?>(fcm2)
     }
     vkGetPhysicalDeviceFeatures2(phys, f2)
+    if (fcm.cooperativeMatrix == 0u || f12.bufferDeviceAddress == 0u) return false
     return (fcm2.cooperativeMatrixWorkgroupScope != 0u && fcm2.cooperativeMatrixFlexibleDimensions != 0u
         && fcm2.cooperativeMatrixTensorAddressing != 0u && fcm2.cooperativeMatrixBlockLoads != 0u)
 }
