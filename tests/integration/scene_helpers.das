@@ -200,7 +200,7 @@ def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : 
                                expected : block<(x, y : int) : int4>) {
     let need = uint64(w) * uint64(h) * 4ul   // uint64 so the w*h*4 byte count can't overflow int
     if (uint64(long_length(pixels)) < need) {     // guard before indexing pixels[p+3]: a wrong-sized buffer
-        t |> success(false, "{lbl}: pixel buffer too small ({length(pixels)} < {need})")
+        t |> success(false, "{lbl}: pixel buffer too small ({long_length(pixels)} < {need})")
         return                               // is a clean test failure, not an out-of-bounds crash
     }
     var ok = true
