@@ -309,7 +309,7 @@ def private create_material(device : Device; phys : VkPhysicalDevice; queue : Vk
     var bytes <- gen_material_bytes(m)
     var staging_usage : VkBufferUsageFlags
     staging_usage.transfer_src = true
-    var inscope staging <- create_host_buffer(device, phys, uint64(length(bytes)), staging_usage)
+    var inscope staging <- create_host_buffer(device, phys, uint64(long_length(bytes)), staging_usage)
     upload_bytes(staging, device, bytes)
 
     var ici = ImageCreateInfo(imageType = VkImageType._2D, format = fmt,

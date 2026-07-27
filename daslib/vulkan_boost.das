@@ -1011,7 +1011,7 @@ def public get_device_queue(device : Device; queue_family, index : uint) : VkQue
 
 def public create_shader_module(device : Device; var code : array<uint8>) : ShaderModule {
     var ci = VkShaderModuleCreateInfo()
-    ci.codeSize = uint64(length(code))
+    ci.codeSize = uint64(long_length(code))
     unsafe {
         ci.pCode = addr<uint?>(code[0])
     }
@@ -2236,7 +2236,7 @@ def public map_memory_to_array(device : Device; memory : DeviceMemory; size : ui
     var arr : array<uint8>
     arr |> resize(int(size))
     unsafe {
-        memcpy(addr<void?>(arr[0]), mapped, int(size))
+        memcpy(addr<void?>(arr[0]), mapped, size)
     }
     vkUnmapMemory(boost_value_to_vk(device), boost_value_to_vk(memory))
     invoke(blk, arr)
@@ -2423,7 +2423,7 @@ def public dump_pipeline_executables(device : Device; pipeline : Pipeline) : str
                     for (ri in range(length(reps))) {
                         if (!empty(blobs[ri])) {
                             reps[ri].pData = addr<void?>(blobs[ri][0])
-                            reps[ri].dataSize = uint64(length(blobs[ri]))   // tell the driver about the reserved byte
+                            reps[ri].dataSize = uint64(long_length(blobs[ri]))   // tell the driver about the reserved byte
                         }
                     }
                     vk_check(vkGetPipelineExecutableInternalRepresentationsKHR(boost_value_to_vk(device), vkinfo, vkcount, addr(reps[0])), null)
@@ -2537,7 +2537,7 @@ def public get_ray_tracing_shader_group_handles(device : Device; pipeline : Pipe
     data |> resize(int(group_count * handle_size))
     unsafe {
         vk_check(vkGetRayTracingShaderGroupHandlesKHR(boost_value_to_vk(device), boost_value_to_vk(pipeline),
-            first_group, group_count, uint64(length(data)), addr<void?>(data[0])), null)
+            first_group, group_count, uint64(long_length(data)), addr<void?>(data[0])), null)
     }
     return <- data
 }
