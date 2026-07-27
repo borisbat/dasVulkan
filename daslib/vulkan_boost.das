@@ -325,6 +325,14 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
 //! The compute-tier creators use it to add a dedicated transfer queue beside the main one.
 def public create_device(phys : VkPhysicalDevice; queue_families : array<uint>; extensions : array<string>;
                          var features2 : VkPhysicalDeviceFeatures2) : Device {
+    // Vulkan requires each queueFamilyIndex at most once in pQueueCreateInfos, and an empty list
+    // would leave pQueueCreateInfos dangling — assert rather than dedupe, so a caller bug surfaces
+    assert(!empty(queue_families), "create_device: queue_families is empty")
+    for (i in range(length(queue_families))) {
+        for (j in range(i + 1, length(queue_families))) {
+            assert(queue_families[i] != queue_families[j], "create_device: duplicate queue family")
+        }
+    }
     var prio = 1.0f
     var qcis : array<VkDeviceQueueCreateInfo>
     qcis |> resize(length(queue_families))
