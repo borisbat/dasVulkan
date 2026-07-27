@@ -114,7 +114,7 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
     memories |> reserve(nb)
     for (bi in range(nb)) {
         var bci : BufferCreateInfo
-        bci.size = uint64(length(bufs[bi]))
+        bci.size = uint64(long_length(bufs[bi]))
         bci.usage.storage_buffer = true
         var buffer <- create_buffer(device, bci)
         var req : VkMemoryRequirements
@@ -129,8 +129,8 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
         var mapped : void? = null
         let mf : VkMemoryMapFlags
         unsafe {
-            vk_check(vkMapMemory(dev, boost_value_to_vk(memory), 0ul, uint64(length(bufs[bi])), mf, addr(mapped)), null)
-            memcpy(mapped, addr<void?>(bufs[bi][0]), length(bufs[bi]))
+            vk_check(vkMapMemory(dev, boost_value_to_vk(memory), 0ul, uint64(long_length(bufs[bi])), mf, addr(mapped)), null)
+            memcpy(mapped, addr<void?>(bufs[bi][0]), long_length(bufs[bi]))
         }
         vkUnmapMemory(dev, boost_value_to_vk(memory))
         buffers |> emplace(buffer)
@@ -168,7 +168,7 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
     for (bi in range(nb)) {
         var write = WriteDescriptorSet(dstSet = vk_value_to_boost(raw_set), dstBinding = uint(bi),
             descriptorType = VkDescriptorType.STORAGE_BUFFER, descriptorCount = 1u)
-        var binfo = DescriptorBufferInfo(buffer = weak_copy(buffers[bi]), range_ = uint64(length(bufs[bi])))
+        var binfo = DescriptorBufferInfo(buffer = weak_copy(buffers[bi]), range_ = uint64(long_length(bufs[bi])))
         write.pBufferInfo |> push(binfo)
         writes |> emplace(write)
     }
@@ -197,8 +197,8 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
         var mapped : void? = null
         let mf : VkMemoryMapFlags
         unsafe {
-            vk_check(vkMapMemory(dev, boost_value_to_vk(memories[bi]), 0ul, uint64(length(bufs[bi])), mf, addr(mapped)), null)
-            memcpy(addr<void?>(bufs[bi][0]), mapped, length(bufs[bi]))
+            vk_check(vkMapMemory(dev, boost_value_to_vk(memories[bi]), 0ul, uint64(long_length(bufs[bi])), mf, addr(mapped)), null)
+            memcpy(addr<void?>(bufs[bi][0]), mapped, long_length(bufs[bi]))
         }
         vkUnmapMemory(dev, boost_value_to_vk(memories[bi]))
     }

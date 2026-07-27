@@ -199,8 +199,8 @@ def public px(pixels : array<uint8>; x, y : int) : int3 {
 def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : string;
                                expected : block<(x, y : int) : int4>) {
     let need = uint64(w) * uint64(h) * 4ul   // uint64 so the w*h*4 byte count can't overflow int
-    if (uint64(length(pixels)) < need) {     // guard before indexing pixels[p+3]: a wrong-sized buffer
-        t |> success(false, "{lbl}: pixel buffer too small ({length(pixels)} < {need})")
+    if (uint64(long_length(pixels)) < need) {     // guard before indexing pixels[p+3]: a wrong-sized buffer
+        t |> success(false, "{lbl}: pixel buffer too small ({long_length(pixels)} < {need})")
         return                               // is a clean test failure, not an out-of-bounds crash
     }
     var ok = true
@@ -362,7 +362,7 @@ def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>
     let queue = get_device_queue(device, gfx, 0u)
     let fmt = VkFormat.R8G8B8A8_UNORM
     let byte_count = uint64(w) * uint64(h) * 4ul
-    assert(uint64(length(src)) == byte_count, "texelfetch_copy_rgba8: src must be exactly w*h*4 bytes")
+    assert(uint64(long_length(src)) == byte_count, "texelfetch_copy_rgba8: src must be exactly w*h*4 bytes")
 
     // source sampled texture (SAMPLED + TRANSFER_DST), device-local + view + NEAREST sampler
     var sici = ImageCreateInfo(imageType = VkImageType._2D, format = fmt,
@@ -572,7 +572,7 @@ def public render_sampler2darray() : array<uint8> {
     }
     var staging_usage : VkBufferUsageFlags
     staging_usage.transfer_src = true
-    var inscope staging <- make_host_buffer(device, phys, uint64(length(texels)), staging_usage)
+    var inscope staging <- make_host_buffer(device, phys, uint64(long_length(texels)), staging_usage)
     upload(device, staging.memory, texels)
     delete texels
 
