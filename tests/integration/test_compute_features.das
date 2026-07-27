@@ -130,7 +130,7 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
         let mf : VkMemoryMapFlags
         unsafe {
             vk_check(vkMapMemory(dev, boost_value_to_vk(memory), 0ul, uint64(long_length(bufs[bi])), mf, addr(mapped)), null)
-            memcpy(mapped, addr<void?>(bufs[bi][0]), length(bufs[bi]))
+            memcpy(mapped, addr<void?>(bufs[bi][0]), long_length(bufs[bi]))
         }
         vkUnmapMemory(dev, boost_value_to_vk(memory))
         buffers |> emplace(buffer)
@@ -198,7 +198,7 @@ def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : 
         let mf : VkMemoryMapFlags
         unsafe {
             vk_check(vkMapMemory(dev, boost_value_to_vk(memories[bi]), 0ul, uint64(long_length(bufs[bi])), mf, addr(mapped)), null)
-            memcpy(addr<void?>(bufs[bi][0]), mapped, length(bufs[bi]))
+            memcpy(addr<void?>(bufs[bi][0]), mapped, long_length(bufs[bi]))
         }
         vkUnmapMemory(dev, boost_value_to_vk(memories[bi]))
     }

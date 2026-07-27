@@ -2233,6 +2233,9 @@ def public map_memory_to_array(device : Device; memory : DeviceMemory; size : ui
     unsafe {
         vk_check(vkMapMemory(boost_value_to_vk(device), boost_value_to_vk(memory), 0ul, size, flags, addr(mapped)), null)
     }
+    // array is int-indexed, so a >2GB mapping cannot be represented here at all — assert rather
+    // than resize truncated and then memcpy the full width, which would run past the allocation
+    assert(size <= uint64(0x7FFFFFFF), "map_memory_to_array: mapping exceeds the int-indexed array cap")
     var arr : array<uint8>
     arr |> resize(int(size))
     unsafe {
