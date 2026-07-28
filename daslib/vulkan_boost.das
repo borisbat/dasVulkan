@@ -574,6 +574,11 @@ def public create_device_storage_8_16_int_dot(phys : VkPhysicalDevice; queue_fam
     if (props.apiVersion < make_api_version(1u, 3u, 0u)) {
         ext |> push("VK_KHR_shader_integer_dot_product")
     }
+    // opportunistic, matching the coopmat twins: mapped-host imports (the .dlim mirror rail)
+    // must not silently require a tensor-core device
+    if (device_extension_available(phys, "VK_EXT_external_memory_host")) {
+        ext |> push("VK_EXT_external_memory_host")
+    }
     return <- create_device(phys, queue_family, ext, f2)
 }
 
