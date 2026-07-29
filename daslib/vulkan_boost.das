@@ -308,10 +308,18 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pNext = addr<void?>(features2)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    // Portability devices (MoltenVK) list VK_KHR_portability_subset, and the spec REQUIRES
+    // enabling it then — vkCreateDevice fails INITIALIZATION_FAILED otherwise. Added
+    // transparently, mirroring create_instance's portability_enumeration handling.
+    var exts <- [for (e in extensions); e]
+    if (device_extension_available(phys, "VK_KHR_portability_subset")
+            && find_index(exts, "VK_KHR_portability_subset") < 0) {
+        exts |> push("VK_KHR_portability_subset")
+    }
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
