@@ -184,6 +184,16 @@ def public create_instance(application_name : string = ""; api_version : uint = 
     return <- create_instance(application_name, api_version, no_ext)
 }
 
+// Portability devices (MoltenVK) advertise VK_KHR_portability_subset and the spec REQUIRES
+// enabling it whenever advertised — vkCreateDevice fails otherwise. Appended transparently at
+// every raw vkCreateDevice site (create_instance's portability_enumeration twin).
+def private append_portability_subset(phys : VkPhysicalDevice; var exts : array<string>) {
+    if (device_extension_available(phys, "VK_KHR_portability_subset") &&
+            find_index(exts, "VK_KHR_portability_subset") < 0) {
+        exts |> push("VK_KHR_portability_subset")
+    }
+}
+
 def public create_device(phys : VkPhysicalDevice; queue_family : uint; extensions : array<string>) : Device {
     var no_features : VkPhysicalDeviceFeatures
     return <- create_device(phys, queue_family, extensions, no_features)
@@ -212,10 +222,12 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pEnabledFeatures = addr(features)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -244,10 +256,12 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pNext = addr<void?>(features13)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -276,10 +290,12 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pNext = addr<void?>(features12)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -308,10 +324,12 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pNext = addr<void?>(features2)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -336,12 +354,12 @@ def public create_device(phys : VkPhysicalDevice; queue_families : array<uint>; 
     var prio = 1.0f
     var qcis : array<VkDeviceQueueCreateInfo>
     qcis |> resize(length(queue_families))
-    for (i in range(length(queue_families))) {
-        qcis[i] = VkDeviceQueueCreateInfo()
-        qcis[i].queueFamilyIndex = queue_families[i]
-        qcis[i].queueCount = 1u
+    for (qf, qc in queue_families, qcis) {
+        qc = VkDeviceQueueCreateInfo()
+        qc.queueFamilyIndex = qf
+        qc.queueCount = 1u
         unsafe {
-            qcis[i].pQueuePriorities = addr(prio)
+            qc.pQueuePriorities = addr(prio)
         }
     }
     features2.sType = VkStructureType.PHYSICAL_DEVICE_FEATURES_2
@@ -351,10 +369,12 @@ def public create_device(phys : VkPhysicalDevice; queue_families : array<uint>; 
         ci.pQueueCreateInfos = addr(qcis[0])
         ci.pNext = addr<void?>(features2)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -719,7 +739,7 @@ def public select_transfer_queue_family(phys : VkPhysicalDevice) : int {
 //! Superset of create_device_storage_8_16_int_dot_coopmat that ALSO enables VK_NV_cooperative_matrix2 +
 //! ``bufferDeviceAddress`` (gate with ``cooperative_matrix2_supported``), plus the same opportunistic set
 //! (coopvec, residency levers, timelineSemaphore, external_memory_host) and ``transfer_family`` second queue.
-def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint; transfer_family : int = -1) : Device {
+def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; queue_family : uint; transfer_family : int = -1) : Device {   // nolint:STYLE038 — linear feature/extension pNext-chain assembly, one hop per capability
     // query the optional feature bits first — a pNext struct may only join the chain when its
     // extension is actually enabled, so each optional block is gated on ext + reported bit
     var q12q = VkPhysicalDeviceVulkan12Features()
@@ -882,6 +902,14 @@ def public create_device_draw_parameters(phys : VkPhysicalDevice; queue_family :
         ci.pEnabledFeatures = addr(base)
         ci.pNext = addr<void?>(f11)
     }
+    var exts : array<string>
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
+        unsafe {
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
+        }
+    }
     var h : VkDevice
     vk_check(vkCreateDevice(phys, ci, null, h), null)
     var b = vk_value_to_boost(h)
@@ -908,10 +936,12 @@ def public create_device(phys : VkPhysicalDevice; queue_family : uint; extension
         ci.pQueueCreateInfos = addr(qci)
         ci.pNext = addr<void?>(meshFeatures)
     }
-    if (!empty(extensions)) {
-        ci.enabledExtensionCount = uint(length(extensions))
+    var exts <- [for (e in extensions); e]
+    append_portability_subset(phys, exts)
+    if (!empty(exts)) {
+        ci.enabledExtensionCount = uint(length(exts))
         unsafe {
-            ci.ppEnabledExtensionNames = addr<void?>(extensions[0])
+            ci.ppEnabledExtensionNames = addr<void?>(exts[0])
         }
     }
     var h : VkDevice
@@ -985,6 +1015,7 @@ def public create_device_ray_tracing(phys : VkPhysicalDevice; queue_family : uin
     rtf.rayTracingPipeline = 1u
     var extensions <- ["VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline", "VK_KHR_deferred_host_operations"]
     extensions |> push_from(extra_extensions)
+    append_portability_subset(phys, extensions)
     var ci = VkDeviceCreateInfo()
     ci.queueCreateInfoCount = 1u
     ci.enabledExtensionCount = uint(length(extensions))
@@ -1260,7 +1291,7 @@ def public create_graphics_pipeline_simple(device : Device; render_pass : Render
 //! Graphics pipeline for VK_EXT_mesh_shader: a task -> mesh -> fragment chain with NO vertex-input and
 //! NO input-assembly state (a mesh pipeline amplifies geometry on the GPU, so both are ignored/null);
 //! rest matches create_graphics_pipeline_simple. Needs a mesh-shader device; draw cmd_draw_mesh_tasks_e_x_t.
-def public create_mesh_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+def public create_mesh_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 — linear CreateInfo assembly, the Vulkan pipeline-build shape
                                 task : ShaderModule; mesh : ShaderModule; frag : ShaderModule;
                                 width, height : int; dynamic_viewport : bool = false;
                                 enable_depth : bool = false) : Pipeline {
@@ -1357,7 +1388,7 @@ def public create_mesh_pipeline(device : Device; render_pass : RenderPass; layou
 //! Graphics pipeline for textured / lit 3D meshes: vertex-input bindings + attributes (a real vertex
 //! buffer, not `gl_VertexIndex` fabrication) and depth test + write on by default (LESS_OR_EQUAL) — the
 //! render pass MUST have a depth attachment then. `dynamic_viewport=true` for swapchain-resize windowing.
-def public create_graphics_pipeline_v3d(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+def public create_graphics_pipeline_v3d(device : Device; render_pass : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 — linear CreateInfo assembly, the Vulkan pipeline-build shape
                                         vert : ShaderModule; frag : ShaderModule; width, height : int;
                                         var vertex_bindings : array<VkVertexInputBindingDescription>;
                                         var vertex_attributes : array<VkVertexInputAttributeDescription>;
@@ -1465,7 +1496,7 @@ def public create_graphics_pipeline_v3d(device : Device; render_pass : RenderPas
 //! `RenderPass` — the pipeline carries a `VkPipelineRenderingCreateInfo` in pNext with the color/depth
 //! format and view mask. `samples` flows into both the multisample state and the rendering info.
 //! Tutorial 09 drives this with 4x MSAA.
-def public create_graphics_pipeline_dyn(device : Device;
+def public create_graphics_pipeline_dyn(device : Device;   // nolint:STYLE038 — linear CreateInfo assembly, the Vulkan pipeline-build shape
                                         color_format, depth_format : VkFormat;
                                         samples : VkSampleCountFlags;
                                         layout : PipelineLayout;
@@ -1708,7 +1739,7 @@ def public transition_image_aspect(cmd : CommandBuffer; image : Image; old_layou
 //! `srgb_encode` blits via R8G8B8A8_SRGB for display-ready bytes — storage writes do NOT gamma-encode.
 //! For the canonical authoring side see dasSpirv's image2D + imageStore — dasVulkan's storage-image
 //! tests and the Mandelbrot tutorial are worked examples.
-def public compute_to_storage_image(var words : array<uint>; w, h : int; srgb_encode : bool = false) : array<uint8> {
+def public compute_to_storage_image(var words : array<uint>; w, h : int; srgb_encode : bool = false) : array<uint8> {   // nolint:STYLE038 — whole one-shot compute round-trip (device→dispatch→readback), stages inseparable
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
         "compute_to_storage_image: w/h must be positive multiples of 8")
     if (volkInitialize() != 0) {
@@ -2237,7 +2268,7 @@ def public map_memory_to_array(device : Device; memory : DeviceMemory; size : ui
     // than resize truncated and then memcpy the full width, which would run past the allocation
     assert(size <= uint64(0x7FFFFFFF), "map_memory_to_array: mapping exceeds the int-indexed array cap")
     var arr : array<uint8>
-    arr |> resize(int(size))
+    arr |> resize(int64(size))
     unsafe {
         memcpy(addr<void?>(arr[0]), mapped, size)
     }
@@ -2627,6 +2658,7 @@ def public build_shader_binding_table(device : Device; phys : VkPhysicalDevice; 
                                       miss_count : uint; hit_count : uint) : ShaderBindingTable {
     let props = get_ray_tracing_properties(phys)
     let handle_size = uint64(props.shaderGroupHandleSize)
+    let hs = int(props.shaderGroupHandleSize)   // 32-bit twin for loop/index math; the u64 feeds alignment
     let record = align_up(handle_size, uint64(props.shaderGroupHandleAlignment))
     let base_align = uint64(props.shaderGroupBaseAlignment)
     let rgen_size = align_up(record, base_align)
@@ -2653,8 +2685,8 @@ def public build_shader_binding_table(device : Device; phys : VkPhysicalDevice; 
         } else {
             dst += int(rgen_size + miss_size) + (g - 1 - int(miss_count)) * int(record)
         }
-        for (b in range(int(handle_size))) {
-            records[dst + b] = handles[g * int(handle_size) + b]
+        for (b in range(hs)) {
+            records[dst + b] = handles[g * hs + b]
         }
     }
     sbt.buffer |> upload_bytes(device, records)
