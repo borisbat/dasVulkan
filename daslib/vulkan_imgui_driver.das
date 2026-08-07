@@ -132,7 +132,7 @@ def public finalize(var r : ImguiVkRenderer) {
 //! ImGui's pipeline: per-vertex (pos, uv, col-as-rgba8), alpha blend, no depth, no cull, dynamic
 //! viewport+scissor (paired with vulkan_window's draw_frame). Built against `render_pass` so it can
 //! draw into the same pass as the app's own geometry.
-def private build_imgui_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+def private build_imgui_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item pipeline setup
                                  vert, frag : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)
@@ -306,7 +306,7 @@ def private upload_pixels_to_image(device : Device; phys : VkPhysicalDevice; que
     var inscope staging <- create_host_buffer(device, phys, nbytes, staging_usage)
     map_and_write(device, staging.memory, nbytes) $(dst) {
         unsafe {
-            memcpy(dst, pixels, int(nbytes))
+            memcpy(dst, pixels, nbytes)
         }
     }
     run_cmd_sync(device, pool, queue) $(cmd) {
@@ -420,7 +420,7 @@ def public imgui_vk_update_textures(var r : ImguiVkRenderer; device : Device; ph
     for (i in range(length(pio.Textures))) {
         // const-strip: `pio` is const, so the element is a const-pointee pointer; SetTexID/SetStatus
         // below need a mutable ImTextureData.
-        var tex = unsafe(reinterpret<ImTextureData? -const>(pio.Textures[i]))
+        var tex = unsafe(reinterpret<ImTextureData?>(pio.Textures[i]))
         if (tex == null) {
             continue
         }
@@ -442,7 +442,7 @@ def public imgui_vk_update_textures(var r : ImguiVkRenderer; device : Device; ph
 
 //! Record the UI into `cmd` (inside an already-begun render pass). Uploads the merged vertex/index
 //! buffers, then replays each draw command with its own scissor + texture.
-def public imgui_vk_render(var r : ImguiVkRenderer; device : Device; phys : VkPhysicalDevice; cmd : CommandBuffer) {
+def public imgui_vk_render(var r : ImguiVkRenderer; device : Device; phys : VkPhysicalDevice; cmd : CommandBuffer) {   // nolint:STYLE038 - flat command-record run
     let dd = GetDrawData()
     // nothing to draw, or a zero DisplaySize (minimized/hidden) -- skip so ipc.scale never divides by 0
     if (dd == null || dd.TotalVtxCount == 0 || dd.DisplaySize.x <= 0.0f || dd.DisplaySize.y <= 0.0f) {

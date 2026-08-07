@@ -17,7 +17,7 @@ let public TEAPOT_CENTER = float3(0.26250, 0.00000, 1.57500)
 let public TEAPOT_EXTENT = 6.52500
 
 //! The 512 control points (32 patches x 16). Patch p = [p*16 .. p*16+15], row-major 4x4.
-def public teapot_control_points : array<float3> {
+def public teapot_control_points : array<float3> {   // nolint:STYLE038 - literal data table
     return <- [
         float3(1.40000, 0.00000, 2.40000),  // patch 0
         float3(1.40000, -0.78400, 2.40000),

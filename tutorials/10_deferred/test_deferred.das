@@ -17,7 +17,7 @@ let TEST_TIME : float = 2.0
 let TEST_CAM  : float = 0.25
 
 [test]
-def test_deferred_oracle(t : T?) {
+def test_deferred_oracle(t : T?) {   // nolint:STYLE038 - flat test cell
     var lit_pixels <- render_deferred_cube(TEST_TIME, TEST_CAM, DBG_LIT)
 
     // ----- top-strip indicator (sub-indicator-strip rows) -----

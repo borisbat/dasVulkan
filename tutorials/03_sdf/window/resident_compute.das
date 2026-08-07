@@ -43,7 +43,7 @@ def public finalize(var comp : ComputeImage) {
 //! Build the resident compute resources for `words` (a dasSpirv compute blob binding a storage image2D at
 //! set=0/binding=0 and a `float` push constant at offset 0). Rgba8, STORAGE (compute write) + TRANSFER_SRC
 //! (blit) + SAMPLED (texture); starts UNDEFINED -- record_compute fills it. w/h: positive multiples of 8.
-def public build_compute_image(device : Device; phys : VkPhysicalDevice; var words : array<uint>;
+def public build_compute_image(device : Device; phys : VkPhysicalDevice; var words : array<uint>;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                w, h : int) : ComputeImage {
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
         "build_compute_image: w/h must be positive multiples of 8")

@@ -239,7 +239,7 @@ def private generate_push_constants_dummy(fnMain : FunctionPtr) {
 // @push_constant struct global reachable from fnMain. stage_flags is this shader's own stage — if
 // several stages read it, each stage's push function runs (Vulkan accepts any declared subset).
 [macro_function]
-def private generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr; stage : ShaderStage) {
+def private generate_push_constants(fnMain : FunctionPtr; var fn : FunctionPtr; stage : ShaderStage) {   // nolint:STYLE038 - flat push-constant member walk
     let stage_uint = stage_to_uint(stage)
     var body = new ExprBlock(at = fn.at)
     // One push-constant block per stage in Vulkan, and offset is hard-coded 0 here, so >1 overlaps: fail closed.

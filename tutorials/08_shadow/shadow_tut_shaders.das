@@ -190,7 +190,7 @@ def private tri_rough(p : float3; wn : float3) : float {
 }
 
 [vulkan_fragment_shader(name="main_frag_spv")]
-def main_fs {
+def main_fs {   // nolint:STYLE038 - shader body - phases are pipeline-coupled
     let n = normalize(f_world_normal)
     let l = normalize(float3(cam.light_dir.x, cam.light_dir.y, cam.light_dir.z))
     let ndotl = max(dot(n, l), 0.0)

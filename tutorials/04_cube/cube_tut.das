@@ -269,7 +269,7 @@ def public finalize(var ctx : CubeContext) {
 //! Build the cube's render resources against a caller-owned (device, phys, queue, pool). Used by both
 //! build_cube_context (offscreen test/recording) and window/show_cube.das (swapchain blit). The pool's
 //! queue family must match `queue`'s -- the texture upload is recorded into pool and submitted on queue.
-def public build_cube_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : CubeResources {
+def public build_cube_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : CubeResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     let dev = boost_value_to_vk(device)
 
     var inscope color <- build_offscreen_target(device, phys, CUBE_W, CUBE_H, CUBE_COLOR_FMT)

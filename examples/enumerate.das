@@ -60,8 +60,8 @@ def main() : int {
         vkGetPhysicalDeviceMemoryProperties(d, mem)
         print("  memory heaps: {int(mem.memoryHeapCount)}\n")
         for (i in range(int(mem.memoryHeapCount))) {
-            let mb = mem.memoryHeaps[i].size / 1048576ul
-            print("    [{i}] {int(mb)} MB device_local={mem.memoryHeaps[i].flags.device_local}\n")
+            let mb = int(mem.memoryHeaps[i].size / 1048576ul)
+            print("    [{i}] {mb} MB device_local={mem.memoryHeaps[i].flags.device_local}\n")
         }
     }
     print("\nenumerate OK\n")

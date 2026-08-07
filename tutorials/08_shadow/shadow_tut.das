@@ -285,7 +285,7 @@ def private vertex_input() : VkPipelineVertexInputStateCreateInfo {
 }
 
 //! Inline shadow pipeline: vertex-only, no color attachments, depth bias enabled.
-def private build_shadow_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+def private build_shadow_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                   vert : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(1)
@@ -370,7 +370,7 @@ def private build_shadow_pipeline(device : Device; rp : RenderPass; layout : Pip
 }
 
 //! Inline main pipeline: vertex + fragment, color + depth attachments, two vertex attributes.
-def private build_main_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+def private build_main_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                 vert, frag : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)
@@ -472,7 +472,7 @@ def private build_main_pipeline(device : Device; rp : RenderPass; layout : Pipel
 
 //! Build the shadow tutorial resources against a caller-owned (device, phys, queue, pool). Used by
 //! both build_shadow_context (offscreen test/recording) and window/show_shadow.das (swapchain blit).
-def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;
+def public build_shadow_resources(device : Device; phys : VkPhysicalDevice;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                   queue : VkQueue; pool : CommandPool) : ShadowResources {
     var inscope color <- build_offscreen_target(device, phys, SCENE_W, SCENE_H, SCENE_COLOR_FMT)
     var inscope depth <- build_offscreen_depth(device, phys, SCENE_W, SCENE_H, SCENE_DEPTH_FMT)

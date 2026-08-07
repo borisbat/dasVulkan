@@ -269,7 +269,7 @@ def public finalize(var ctx : HdrContext) {
 
 // ===== build =====
 
-def public build_hdr_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : HdrResources {
+def public build_hdr_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : HdrResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     let _unused_queue = queue
     let _unused_pool = pool
 
@@ -947,7 +947,7 @@ def private set_pc(src_rcp_w, src_rcp_h, threshold, soft_knee, bloom_intensity :
 //! Record the full HDR + bloom + composite frame into `cmd`. Eleven render-pass instances; the
 //! final `rp_composite` ends with `ldr_color` in `TRANSFER_SRC_OPTIMAL` so the caller can blit it
 //! straight to the readback buffer or the swap target.
-def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {
+def public record_hdr_frame(res : HdrResources; cmd : CommandBuffer) {   // nolint:STYLE038 - flat command-record run
     let threshold = 1.0f
     let soft_knee = 0.5f
     let bloom_intensity = 0.12f

@@ -101,7 +101,7 @@ def gen_initial_particles(n : int) : array<float> {
 //! POINT_LIST graphics pipeline (one vertex per point) -- v3d hardcodes TRIANGLE_LIST, so this tutorial
 //! inlines its own. Same rasteriser/depth defaults as v3d (depth test + write on, LESS_OR_EQUAL), but
 //! cull mode is NONE (points have no winding) and the topology draws one screen-space point per vertex.
-def private build_points_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+def private build_points_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                   vert : ShaderModule; frag : ShaderModule; width, height : int;
                                   var vertex_bindings : array<VkVertexInputBindingDescription>;
                                   var vertex_attributes : array<VkVertexInputAttributeDescription>) : Pipeline {
@@ -265,7 +265,7 @@ def public finalize(var ctx : ParticlesContext) {
 //! Build the offscreen targets, the two pipelines (compute + graphics), and the once-seeded particle
 //! buffer against a caller-owned (device, phys, queue, pool). That buffer carries STORAGE_BUFFER |
 //! VERTEX_BUFFER usage, so the SAME VkBuffer binds as a compute SSBO and as a vertex stream.
-def public build_particles_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : ParticlesResources {
+def public build_particles_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : ParticlesResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     let _q = queue
     let _p = pool
     let dev = boost_value_to_vk(device)

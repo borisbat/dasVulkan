@@ -2,6 +2,8 @@ options gen2
 options _comment_hygiene = true
 options indenting = 4
 options persistent_heap = true
+options _cyclomatic_complexity = 0   // codegen emitter: per-field-kind arms are the domain shape
+options _function_length = 0
 
 module vk_emit_boost
 
@@ -572,7 +574,7 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
     fopen("{out_dir}/vulkan_structs.das", "wb") $(f) {
         panic("can't write vulkan_structs.das") if (f == null)
         fprint(f, GEN_HEADER)
-        fprint(f, "options gen2\noptions _comment_hygiene = true\noptions indenting = 4\n\nmodule vulkan_structs shared\n\n")
+        fprint(f, "options gen2\noptions _comment_hygiene = true\noptions indenting = 4\noptions _function_length = 0   // generated flat field-copy lists\n\nmodule vulkan_structs shared\n\n")
         fprint(f, "require vulkan public\nrequire vulkan/vulkan_ctors public\nrequire vulkan/vulkan_handles public\nrequire vulkan/vulkan_runtime public\nrequire math\n\n")
         for (vs in views) {
             let s & = unsafe(reg.structs[vs.s_index])
@@ -629,8 +631,8 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                 } elif (bf.kind == FieldKind.arr_struct) {
                     // recursively view each element in place (its sub-scratch lives in b.{bf.name}[i])
                     fprint(f, "    b._vk_view_{bf.name} |> resize(length(b.{bf.name}))\n")
-                    fprint(f, "    for (vki in range(length(b.{bf.name}))) {OB}\n")
-                    fprint(f, "        b._vk_view_{bf.name}[vki] = vk_view_create_unsafe(b.{bf.name}[vki])\n")
+                    fprint(f, "    for (vkv, vke in b._vk_view_{bf.name}, b.{bf.name}) {OB}\n")
+                    fprint(f, "        vkv = vk_view_create_unsafe(vke)\n")
                     fprint(f, "    {CB}\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
                 } elif (bf.kind == FieldKind.opt_struct_ptr) {
@@ -877,8 +879,8 @@ def private emit_batch_creator(f : file; ci : CreatorInfo; scratch_types : table
         fprint(f, "    let n = length(create_infos)\n")
         fprint(f, "    var vkraw : array<{ci.create_info_vk}>\n")
         fprint(f, "    vkraw |> resize(n)\n")
-        fprint(f, "    for (vki in range(n)) \{\n")
-        fprint(f, "        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])\n")
+        fprint(f, "    for (vkv, vke in vkraw, create_infos) \{\n")
+        fprint(f, "        vkv = vk_view_create_unsafe(vke)\n")
         fprint(f, "    \}\n")
     } else {
         fprint(f, "    let vci = vk_view_create_unsafe(create_info)\n")
@@ -1345,8 +1347,8 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                 } elif (a.kind == CmdArgKind.in_array_struct) {
                     fprint(f, "    var vkraw_{a.pname} : array<{a.elem_vktype}>\n")
                     fprint(f, "    vkraw_{a.pname} |> resize(length({a.pname}))\n")
-                    fprint(f, "    for (vki in range(length({a.pname}))) {OB}\n")
-                    fprint(f, "        vkraw_{a.pname}[vki] = vk_view_create_unsafe({a.pname}[vki])\n")
+                    fprint(f, "    for (vkv, vke in vkraw_{a.pname}, {a.pname}) {OB}\n")
+                    fprint(f, "        vkv = vk_view_create_unsafe(vke)\n")
                     fprint(f, "    {CB}\n")
                 } elif (a.kind == CmdArgKind.in_array2_struct) {
                     // vkptr_ holds void?, not T?: a T? array would have das free each interior pointer on delete (double-free)
@@ -1354,12 +1356,12 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                     fprint(f, "    vkraw2_{a.pname} |> resize(length({a.pname}))\n")
                     fprint(f, "    var vkptr_{a.pname} : array<void?>\n")
                     fprint(f, "    vkptr_{a.pname} |> resize(length({a.pname}))\n")
-                    fprint(f, "    for (vki in range(length({a.pname}))) {OB}\n")
-                    fprint(f, "        vkraw2_{a.pname}[vki] |> resize(length({a.pname}[vki]))\n")
-                    fprint(f, "        for (vkj in range(length({a.pname}[vki]))) {OB}\n")
-                    fprint(f, "            vkraw2_{a.pname}[vki][vkj] = vk_view_create_unsafe({a.pname}[vki][vkj])\n")
+                    fprint(f, "    for (vkr2, vkp, vke in vkraw2_{a.pname}, vkptr_{a.pname}, {a.pname}) {OB}\n")
+                    fprint(f, "        vkr2 |> resize(length(vke))\n")
+                    fprint(f, "        for (vkw, vkf in vkr2, vke) {OB}\n")
+                    fprint(f, "            vkw = vk_view_create_unsafe(vkf)\n")
                     fprint(f, "        {CB}\n")
-                    fprint(f, "        vkptr_{a.pname}[vki] = unsafe(reinterpret<void?>(array_addr(vkraw2_{a.pname}[vki])))\n")
+                    fprint(f, "        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))\n")
                     fprint(f, "    {CB}\n")
                 }
             }
@@ -1545,6 +1547,8 @@ def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
     emit_plain_commands_boost(reg, em, out_dir, plans, scratch_types)
     emit_lint_data(creators, plans, out_dir)
     to_log(LOG_INFO, "boost: {length(skip_log)} structs + {length(cmd_skip)} commands skipped (unmappable)\n")
-    struct_skips_out <- skip_log
-    cmd_skips_out <- cmd_skip
+    delete struct_skips_out
+    struct_skips_out <- skip_log   // nolint:PERF030 — released just above
+    delete cmd_skips_out
+    cmd_skips_out <- cmd_skip   // nolint:PERF030 — released just above
 }

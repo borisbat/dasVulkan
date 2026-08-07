@@ -324,7 +324,7 @@ def private gltf_vertex_layout(var bindings : array<VkVertexInputBindingDescript
 
 // v3d variant with blend + double-sided control (v3d hardcodes back-cull + opaque). Always built
 // with dynamic viewport/scissor so one pipeline serves any target size — gltf_vk_render sets them.
-def private create_gltf_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;
+def private create_gltf_pipeline(device : Device; render_pass : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item pipeline setup
                                  vert, frag : ShaderModule; blend_enable, double_sided : bool) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)
@@ -426,7 +426,7 @@ def private create_gltf_pipeline(device : Device; render_pass : RenderPass; layo
 //! Upload `scene` onto Vulkan resources against a caller-owned (device, phys, queue, pool). `render_pass`
 //! must be a color+depth pass with a UNORM color format (the shader sRGB-encodes); dynamic viewport/scissor
 //! means any target size works. The pool's queue family must match `queue` (texture staging records into it).
-def public gltf_vk_upload(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool;
+def public gltf_vk_upload(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool;   // nolint:STYLE037,STYLE038 - linear gltf-to-device upload walk, arms per accessor kind
                           render_pass : RenderPass; scene : GltfScene) : GltfVkModel {
     let dev = boost_value_to_vk(device)
     var model : GltfVkModel
