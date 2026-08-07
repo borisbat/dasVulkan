@@ -693,6 +693,21 @@ def public cooperative_matrix2_supported(phys : VkPhysicalDevice) : bool {
         && fcm2.cooperativeMatrixTensorAddressing != 0u && fcm2.cooperativeMatrixBlockLoads != 0u)
 }
 
+//! True when the device also carries the cm2 flash-attention trio — reductions, conversions,
+//! and per-element operations. ``create_device_storage_8_16_int_dot_coopmat2`` enables them
+//! opportunistically; gate shaders using coopmatReduce / coopmatPerElement / use casts on this.
+def public cooperative_matrix2_fa_supported(phys : VkPhysicalDevice) : bool {
+    if (!cooperative_matrix2_supported(phys)) return false
+    var fcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
+    var f2 = VkPhysicalDeviceFeatures2()
+    unsafe {
+        f2.pNext = addr<void?>(fcm2)
+    }
+    vkGetPhysicalDeviceFeatures2(phys, f2)
+    return (fcm2.cooperativeMatrixReductions != 0u && fcm2.cooperativeMatrixConversions != 0u
+        && fcm2.cooperativeMatrixPerElementOperations != 0u)
+}
+
 //! The device's cm2 limits: workgroup-scope max workgroup size, max flexible dimension, and the
 //! shared memory the driver reserves for workgroup-scope staging (subtract from the 48KB budget).
 def public cooperative_matrix2_properties(phys : VkPhysicalDevice) : VkPhysicalDeviceCooperativeMatrix2PropertiesNV {
@@ -751,12 +766,14 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     var qcv = VkPhysicalDeviceCooperativeVectorFeaturesNV()
     var qmp = VkPhysicalDeviceMemoryPriorityFeaturesEXT()
     var qpg = VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT()
+    var qcm2 = VkPhysicalDeviceCooperativeMatrix2FeaturesNV()
     var q2 = VkPhysicalDeviceFeatures2()
     unsafe {
         q2.pNext = addr<void?>(q12q)
         q12q.pNext = addr<void?>(qcv)
         qcv.pNext = addr<void?>(qmp)
         qmp.pNext = addr<void?>(qpg)
+        qpg.pNext = addr<void?>(qcm2)
     }
     vkGetPhysicalDeviceFeatures2(phys, q2)
     let with_coopvec = device_extension_available(phys, "VK_NV_cooperative_vector") && qcv.cooperativeVector != 0u
@@ -785,6 +802,11 @@ def public create_device_storage_8_16_int_dot_coopmat2(phys : VkPhysicalDevice; 
     fcm2.cooperativeMatrixFlexibleDimensions = 1u
     fcm2.cooperativeMatrixTensorAddressing = 1u
     fcm2.cooperativeMatrixBlockLoads = 1u
+    // the flash-attention trio (reduce combine fns, use conversions, per-element callbacks):
+    // opportunistic — enabled when reported, gate shader use with cooperative_matrix2_fa_supported
+    fcm2.cooperativeMatrixReductions = qcm2.cooperativeMatrixReductions
+    fcm2.cooperativeMatrixConversions = qcm2.cooperativeMatrixConversions
+    fcm2.cooperativeMatrixPerElementOperations = qcm2.cooperativeMatrixPerElementOperations
     fcv.cooperativeVector = 1u
     fmp.memoryPriority = 1u
     fpg.pageableDeviceLocalMemory = 1u
