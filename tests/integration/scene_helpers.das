@@ -69,7 +69,7 @@ def public render_triangle() : array<uint8> {
 }
 
 //! run the compute square (out[i] = i*i) over `n` elements and return the result
-def public run_compute(n : int) : array<uint> {
+def public run_compute(n : int) : array<uint> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
@@ -224,7 +224,7 @@ def public assert_pixels_exact(t : T?; pixels : array<uint8>; w, h : int; lbl : 
 //! the dasSpirv GPU gate: run an emitted SPIR-V compute blob (`words`) over `n` elements, descriptor
 //! layout / pool / update all through the BOOST path. The storage-buffer binding is descriptorCount=1
 //! with no immutable samplers -- the independent-count case erasure got wrong (0 => out[i] != i*i).
-def public run_compute_spirv(var words : array<uint>; n : int) : array<uint> {
+def public run_compute_spirv(var words : array<uint>; n : int) : array<uint> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
@@ -343,7 +343,7 @@ def public compute_image_rgba8(var words : array<uint>; w, h : int) : array<uint
 //! the dasSpirv texelFetch GPU gate: upload `src` (w*h RGBA8) as a sampled texture at set=0/binding=0,
 //! run a compute blob (`words`) that texelFetch-copies it into a storage image at binding=1, read back.
 //! Exact-analytic: the caller asserts readback == `src`, proving texelFetch indexes the right texel.
-def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>; w, h : int) : array<uint8> {
+def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>; w, h : int) : array<uint8> {   // nolint:STYLE038 - flat command-record run
     // the dispatch is w/8 x h/8 (8x8 local size); require exact multiples so no texels are silently
     // skipped and extents are never 0/negative -- a misuse fails deterministically here.
     assert(w > 0 && h > 0 && (w % 8) == 0 && (h % 8) == 0,
@@ -530,7 +530,7 @@ def public texelfetch_copy_rgba8(var words : array<uint>; var src : array<uint8>
 //! the dasSpirv sampler2DArray GPU gate: render a fullscreen quad sampling a 4-layer 2D array texture,
 //! the layer chosen per screen quadrant -- proving the Arrayed image + layer (.z) coordinate select
 //! the right layer. Layer colors are red/green/blue/yellow (0..3). Returns RGBA (TRI_W*TRI_H*4).
-def public render_sampler2darray() : array<uint8> {
+def public render_sampler2darray() : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
@@ -693,7 +693,7 @@ def public render_sampler2darray() : array<uint8> {
 //! the dasSpirv separate-image+sampler GPU gate: a fullscreen quad sampling a standalone texture2D
 //! (binding 0, SAMPLED_IMAGE) + standalone sampler (binding 1, SAMPLER) via sampleTexture. The 2x2
 //! checkerboard (red/green/blue/yellow) puts one texel per quadrant. Returns RGBA (TRI_W*TRI_H*4).
-def public render_separate_image_sampler() : array<uint8> {
+def public render_separate_image_sampler() : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }
@@ -894,7 +894,7 @@ def private upload(device : Device; memory : DeviceMemory; var data : array<auto
 //! Phase-4 GPU gate: a textured quad transformed by a UBO MVP and tinted by a push constant; returns
 //! RGBA (TRI_W*TRI_H*4). MVP scales 0.6 and translates x by +0.4 -- that translation lives in matrix
 //! column 3, so a right-shifted quad proves ColMajor; tint=(1,1,0) zeroes blue (white texel -> yellow).
-def public render_textured_quad() : array<uint8> {
+def public render_textured_quad() : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

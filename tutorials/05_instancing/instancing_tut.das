@@ -204,7 +204,7 @@ def public finalize(var ctx : InstancingContext) {
 //! Build the offscreen render targets, the 2-binding vertex input pipeline, descriptors and the
 //! readback buffer against a caller-owned (device, phys, queue, pool). Used by the offscreen test +
 //! recording driver via build_instancing_context, and by window/show_instancing.das directly.
-def public build_instancing_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : InstancingResources {
+def public build_instancing_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : InstancingResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     // queue/pool are unused here (no texture upload), but the signature mirrors build_cube_resources
     // so the windowed driver pattern carries across tutorials.
     let _unused_queue = queue

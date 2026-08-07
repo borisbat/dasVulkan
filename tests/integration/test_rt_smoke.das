@@ -73,7 +73,7 @@ def rt_available : bool {
 }
 
 [test]
-def test_rt_smoke(t : T?) {
+def test_rt_smoke(t : T?) {   // nolint:STYLE038 - flat test cell
     if (!rt_available()) {
         feint("VK_KHR_ray_tracing_pipeline not supported by this device; skipping (CI lavapipe has no RT)\n")
         return

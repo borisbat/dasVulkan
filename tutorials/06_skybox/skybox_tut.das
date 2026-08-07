@@ -300,7 +300,7 @@ def public finalize(var ctx : SkyboxContext) {
 //! Foreground (sphere/floor) pipeline: vertex + fragment, pos+normal vertex input (stride 24), depth
 //! test + write LESS, NO culling (so the procedural sphere/floor winding is irrelevant). Shares the
 //! skybox's pipeline layout (same UBO + cubemap bindings).
-def private build_scene_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+def private build_scene_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                  vert, frag : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)
@@ -400,7 +400,7 @@ def private build_scene_pipeline(device : Device; rp : RenderPass; layout : Pipe
 //! Build the offscreen targets, the cubemap (uploaded + transitioned to SHADER_READ_ONLY), and the
 //! depth-trick pipeline against a caller-owned (device, phys, queue, pool). Used by both
 //! build_skybox_context (offscreen test + recording) and window/show_skybox.das (swapchain blit).
-def public build_skybox_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : SkyboxResources {
+def public build_skybox_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : SkyboxResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     let dev = boost_value_to_vk(device)
 
     var inscope color <- build_offscreen_target(device, phys, SKY_W, SKY_H, SKY_COLOR_FMT)

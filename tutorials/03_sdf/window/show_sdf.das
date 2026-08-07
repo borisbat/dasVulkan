@@ -19,7 +19,7 @@ require resident_compute
 require daslib/defer
 
 [export]
-def main {
+def main {   // nolint:STYLE038 - flat viewer lifecycle scaffold
     if (volkInitialize() != 0) {
         panic("no vulkan loader")
     }
@@ -85,7 +85,7 @@ def main {
         if (fbw != swap.width || fbh != swap.height) {
             vkDeviceWaitIdle(boost_value_to_vk(device))
             delete swap
-            swap <- create_swapchain(device, phys, surface, fbw, fbh)
+            swap <- create_swapchain(device, phys, surface, fbw, fbh)   // nolint:PERF030 - deleted just above
         }
         let t = float(glfwGetTime())
         let ok = present_frame(device, queue, swap, pool, sync) $(cmd; target; _idx) {
@@ -133,7 +133,7 @@ def main {
         if (!ok) {
             vkDeviceWaitIdle(boost_value_to_vk(device))
             delete swap
-            swap <- create_swapchain(device, phys, surface, fbw, fbh)
+            swap <- create_swapchain(device, phys, surface, fbw, fbh)   // nolint:PERF030 - deleted just above
         }
     }
     vkDeviceWaitIdle(boost_value_to_vk(device))

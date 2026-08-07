@@ -14,7 +14,7 @@ require vulkan/vulkan_boost
 require compute_shaders
 
 [test]
-def test_batch_creators(t : T?) {
+def test_batch_creators(t : T?) {   // nolint:STYLE038 - flat test cell
     if (volkInitialize() != 0) {
         t |> failure("no Vulkan loader")
         return

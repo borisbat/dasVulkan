@@ -129,7 +129,7 @@ def main() : int {
     let em <- build_emit_model(reg)
     var raw_cmd_skips : array<string>
     if (!cfg.no_cpp) {
-        raw_cmd_skips <- emit_all(reg, em, out_dir)
+        raw_cmd_skips <- emit_all(reg, em, out_dir)   // nolint:PERF030 - fresh empty local, filled at most once
     }
     var boost_struct_skips : array<string>
     var boost_cmd_skips : array<string>

@@ -40,7 +40,7 @@ def compute_shared {
 }
 
 // ===== Host dispatch =====
-def private run_compute_shared() : array<uint> {
+def private run_compute_shared() : array<uint> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

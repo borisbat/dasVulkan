@@ -51,7 +51,7 @@ let TEX_W = 256
 let TEX_H = 256
 let UBO_SIZE = 16ul
 
-def private render_multi() : array<uint8> {
+def private render_multi() : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

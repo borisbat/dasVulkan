@@ -43,7 +43,7 @@ def private is_llvmpipe() : bool {
 }
 
 [test]
-def test_pipeline_boost_structs(t : T?) {
+def test_pipeline_boost_structs(t : T?) {   // nolint:STYLE038 - flat test cell
     if (volkInitialize() != 0) {
         t |> failure("no Vulkan loader")
         return

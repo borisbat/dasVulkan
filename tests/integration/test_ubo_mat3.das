@@ -55,7 +55,7 @@ def ubo_mat3_frag {
 let TEX_W = 256
 let TEX_H = 256
 
-def private render_mat3() : array<uint8> {
+def private render_mat3() : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

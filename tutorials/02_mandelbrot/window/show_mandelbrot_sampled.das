@@ -26,7 +26,7 @@ require mandelbrot_compute
 require daslib/defer
 
 [export]
-def main {
+def main {   // nolint:STYLE038 - flat viewer lifecycle scaffold
     if (volkInitialize() != 0) {
         panic("no vulkan loader")
     }

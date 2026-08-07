@@ -170,7 +170,7 @@ def private set_live_viewport(cmd : CommandBuffer; width, height : int) {
     delete scis
 }
 
-def public vk_live_draw_frame(render_pass : RenderPass; sync : FrameSync; clear : VkClearValue;
+def public vk_live_draw_frame(render_pass : RenderPass; sync : FrameSync; clear : VkClearValue;   // nolint:STYLE038 - flat frame-record scaffold
                               dynamic_viewport : bool; blk : block<(cmd : CommandBuffer) : void>) : bool {
     //! acquire -> record (render pass + `blk`) -> submit -> present on the `vk_live_set_target` target;
     //! drop-in for vulkan_window's `draw_frame` that also tracks the presented image and feeds the APNG

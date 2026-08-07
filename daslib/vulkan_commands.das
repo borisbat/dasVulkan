@@ -115,8 +115,8 @@ def create_graphics_pipelines(device : Device; pipelineCache : PipelineCache; va
     let n = length(create_infos)
     var vkraw : array<VkGraphicsPipelineCreateInfo>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkPipeline>
     vkout |> resize(n)
@@ -142,8 +142,8 @@ def create_compute_pipelines(device : Device; pipelineCache : PipelineCache; cre
     let n = length(create_infos)
     var vkraw : array<VkComputePipelineCreateInfo>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkPipeline>
     vkout |> resize(n)
@@ -311,8 +311,8 @@ def create_shared_swapchains_k_h_r(device : Device; var create_infos : array<Swa
     let n = length(create_infos)
     var vkraw : array<VkSwapchainCreateInfoKHR>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkSwapchainKHR>
     vkout |> resize(n)
@@ -415,8 +415,8 @@ def create_ray_tracing_pipelines_n_v(device : Device; pipelineCache : PipelineCa
     let n = length(create_infos)
     var vkraw : array<VkRayTracingPipelineCreateInfoNV>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkPipeline>
     vkout |> resize(n)
@@ -442,8 +442,8 @@ def create_ray_tracing_pipelines_k_h_r(device : Device; deferredOperation : Defe
     let n = length(create_infos)
     var vkraw : array<VkRayTracingPipelineCreateInfoKHR>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkPipeline>
     vkout |> resize(n)
@@ -601,8 +601,8 @@ def create_data_graph_pipelines_a_r_m(device : Device; deferredOperation : Defer
     let n = length(create_infos)
     var vkraw : array<VkDataGraphPipelineCreateInfoARM>
     vkraw |> resize(n)
-    for (vki in range(n)) {
-        vkraw[vki] = vk_view_create_unsafe(create_infos[vki])
+    for (vkv, vke in vkraw, create_infos) {
+        vkv = vk_view_create_unsafe(vke)
     }
     var vkout : array<VkPipeline>
     vkout |> resize(n)

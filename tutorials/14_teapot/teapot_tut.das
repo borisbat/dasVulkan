@@ -299,7 +299,7 @@ def private build_mesh_shadow_pipeline(device : Device; rp : RenderPass; layout 
 
 //! Build the teapot render resources against a caller-owned (device, phys, queue, pool). Uploads the
 //! Newell control net into the UBO's cp[] once; the per-frame transform is restamped each frame.
-def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : TeapotResources {
+def public build_teapot_resources(device : Device; phys : VkPhysicalDevice) : TeapotResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     var inscope color <- build_offscreen_target(device, phys, TEAPOT_W, TEAPOT_H, TEAPOT_COLOR_FMT)
     var inscope depth <- build_offscreen_depth(device, phys, TEAPOT_W, TEAPOT_H, TEAPOT_DEPTH_FMT)
     var inscope render_pass <- create_render_pass_color_depth(device, TEAPOT_COLOR_FMT, TEAPOT_DEPTH_FMT)

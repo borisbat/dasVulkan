@@ -356,7 +356,7 @@ def private point_light_contrib(pos : float4; col : float4; p : float3; n : floa
 }
 
 [vulkan_fragment_shader(name="lighting_frag_spv")]
-def lighting_fs {
+def lighting_fs {   // nolint:STYLE038 - shader body - phases are pipeline-coupled
     // 16-row mode-indicator strip (drawn in shader, so window + recording + test all see it).
     if (gl_FragCoord.y < 16.0) {
         if (dbg.debug_mode == 1) {

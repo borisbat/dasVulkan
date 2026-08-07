@@ -61,7 +61,7 @@ def cmt_kernel {
     var acc : coopmatAcc_f32_16x16
     coopmatLoad(a, cmt_a, 0, 16, 0)
     coopmatLoad(b, cmt_b, 0, 16, 1)
-    acc = coopmatMulAdd(a, b, acc)   // nolint:STYLE011 — MulAdd seeds from its own zero-init tile
+    acc = coopmatMulAdd(a, b, acc)
     coopmatStore(acc, cmt_c, 0, 16, 1)
 }
 
@@ -90,7 +90,7 @@ def gq8_kernel {
 // One host-visible coherent STORAGE buffer per binding, uploaded from / read back into `bufs`
 // (bufs[i] -> binding i). `spec` empty = plain pipeline; `storage_8_16`/`int_dot`/`coopmat` pick the
 // matching feature-enabled device — gate on probe_support(), else device creation fails.
-def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : uint;
+def run_multi(var words : array<uint>; var bufs : array<array<uint8>>; groups : uint;   // nolint:STYLE038 - flat command-record run
               spec : array<SpecConstantValue>; storage_8_16 : bool; int_dot : bool = false;
               coopmat : bool = false) {
     if (volkInitialize() != 0) {

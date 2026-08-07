@@ -554,7 +554,7 @@ def private build_depth_pipeline(device : Device; rp : RenderPass; layout : Pipe
 //! full graphics pipeline (vertex+fragment, color+depth, dynamic viewport) with caller-chosen vertex
 //! input, depth-write and alpha-blend. Covers all four color-pass pipelines: main + occluder-solid (blend
 //! off), god + occluder-ghost (blend on; ghost skips depth-write so the wall doesn't stamp over cubes).
-def private build_color_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+def private build_color_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                  vert, frag : ShaderModule;
                                  var vbindings : array<VkVertexInputBindingDescription>;
                                  var vattrs : array<VkVertexInputAttributeDescription>;
@@ -784,7 +784,7 @@ def public finalize(var ctx : GpuDrivenContext) {
 
 // ===== build =====
 
-def public build_gpu_driven_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : GpuDrivenResources {
+def public build_gpu_driven_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : GpuDrivenResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     // ----- offscreen targets -----
     var samples1 : VkSampleCountFlags
     samples1._1 = true
@@ -1059,7 +1059,7 @@ def private compute_barrier(cmd : CommandBuffer) {
 
 //! Record the whole GPU-driven frame for a given wall X. One command buffer, five passes, the barrier
 //! chain between them. Leaves out_color in TRANSFER_SRC_OPTIMAL for the caller's readback / present.
-def public record_frame(res : GpuDrivenResources; cmd : CommandBuffer; wall_x : float) {
+def public record_frame(res : GpuDrivenResources; cmd : CommandBuffer; wall_x : float) {   // nolint:STYLE038 - flat command-record run
     let raw = boost_value_to_vk(cmd)
 
     // ===== pass 1: occluder depth pre-pass (camera view) =====

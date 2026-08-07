@@ -2,6 +2,8 @@ options gen2
 options _comment_hygiene = true
 options indenting = 4
 options persistent_heap = true
+options _cyclomatic_complexity = 0   // codegen emitter: per-type-kind arms are the domain shape
+options _function_length = 0
 
 module vk_emit shared
 

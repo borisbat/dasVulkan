@@ -66,7 +66,7 @@ def create_shader_module(device : VkDevice; var code : array<uint>) : VkShaderMo
 }
 
 [export]
-def main() : int {
+def main() : int {   // nolint:STYLE038 - flat example scaffold
     if (volkInitialize() != 0) {
         to_log(LOG_ERROR, "no Vulkan loader\n")
         return 1

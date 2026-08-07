@@ -100,7 +100,7 @@ def private render_draw_id() : array<uint8> {
     indirect_usage.indirect_buffer = true
     var inscope indirect_buf <- create_host_buffer(device, phys, buf_bytes, indirect_usage)
     var indirect_bytes : array<uint8>
-    indirect_bytes |> resize(int(buf_bytes))
+    indirect_bytes |> resize(int64(buf_bytes))
     for (k in range(N_DRAW)) {
         // every draw: 6 vertices, 1 instance; the shader keys off gl_DrawID + gl_VertexIndex, so first{Vertex,Instance} stay 0.
         write_u32_at(indirect_bytes, k * int(stride) + 0,  6u)    // vertexCount

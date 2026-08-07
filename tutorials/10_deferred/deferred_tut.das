@@ -712,7 +712,7 @@ def private att_ref(att : uint; layout : VkImageLayout) : VkAttachmentReference 
 
 // ===== pipeline builders =====
 
-def private build_shadow_pipeline_d(device : Device; rp : RenderPass; layout : PipelineLayout; vert : ShaderModule) : Pipeline {
+def private build_shadow_pipeline_d(device : Device; rp : RenderPass; layout : PipelineLayout; vert : ShaderModule) : Pipeline {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(1)
     stages[0] = VkPipelineShaderStageCreateInfo()
@@ -810,7 +810,7 @@ def private build_shadow_pipeline_d(device : Device; rp : RenderPass; layout : P
     return <- b
 }
 
-def private build_gbuffer_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;
+def private build_gbuffer_pipeline(device : Device; rp : RenderPass; layout : PipelineLayout;   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
                                    vert : ShaderModule; frag : ShaderModule) : Pipeline {
     var stages : array<VkPipelineShaderStageCreateInfo>
     stages |> resize(2)

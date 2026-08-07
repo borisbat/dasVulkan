@@ -144,7 +144,7 @@ def private create_1x1_texture(device : Device; phys : VkPhysicalDevice; queue :
     return <- Tex(image <- img, memory <- mem, view <- view)
 }
 
-def private render_one_id(id : int) : array<uint8> {
+def private render_one_id(id : int) : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

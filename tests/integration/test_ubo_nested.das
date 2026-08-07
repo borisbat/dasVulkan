@@ -131,7 +131,7 @@ def private write_float4_at(var bytes : array<uint8>; off : int; v : float4) {
     }
 }
 
-def private render_one_id(id : int) : array<uint8> {
+def private render_one_id(id : int) : array<uint8> {   // nolint:STYLE038 - flat command-record run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

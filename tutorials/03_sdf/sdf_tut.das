@@ -55,7 +55,7 @@ def public finalize(var r : SdfRenderer) {
 
 //! Initialize Vulkan, build the storage image + compute pipeline for sdf_spv, and allocate a host
 //! readback buffer. Long-lived across frames -- call render_sdf_frame to redispatch with a new time.
-def public build_sdf_renderer() : SdfRenderer {
+def public build_sdf_renderer() : SdfRenderer {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     if (volkInitialize() != 0) {
         panic("no Vulkan loader")
     }

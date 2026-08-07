@@ -304,7 +304,7 @@ def public finalize(var ctx : MsaaContext) {
 
 //! Build the MSAA cube's render resources. The pool's queue family must equal `queue`'s family --
 //! the texture upload is recorded into pool and submitted on queue.
-def public build_msaa_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : MsaaResources {
+def public build_msaa_resources(device : Device; phys : VkPhysicalDevice; queue : VkQueue; pool : CommandPool) : MsaaResources {   // nolint:STYLE038 - flat one-call-per-item Vulkan setup run
     let dev = boost_value_to_vk(device)
 
     // 4x MSAA color target: rendered into, never blitted from (cannot carry transfer_src).
@@ -582,7 +582,7 @@ def public final_image(res : MsaaResources; use_msaa : bool) : Image {
 //! Record the cube draw with dynamic rendering. `use_msaa` picks 4x MSAA + resolve or 1x raster; each
 //! path has its own pipeline + color/depth attachments built up front, so toggling needs no rebuild.
 //! Ends with the chosen final image (resolve or 1x color) in TRANSFER_SRC_OPTIMAL, ready for blit.
-def public record_msaa_render(res : MsaaResources; cmd : CommandBuffer; use_msaa : bool = true) {
+def public record_msaa_render(res : MsaaResources; cmd : CommandBuffer; use_msaa : bool = true) {   // nolint:STYLE038 - flat command-record run
     var to_color : VkAccessFlags
     to_color.color_attachment_write = true
     var to_depth : VkAccessFlags

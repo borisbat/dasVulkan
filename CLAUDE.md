@@ -172,9 +172,11 @@ third windowed compute tutorial appears.
   has a Metal arm (`src/dasVULKAN.metal.mm`, `vkCreateMetalSurfaceEXT` from a
   `CAMetalLayer`); `das_volkInitialize` finds the loader that volk's built-in
   macOS search misses, by dlopen'ing the Homebrew/SDK paths; `create_instance`
-  auto-enables `VK_KHR_portability_enumeration`; and every device creator
-  auto-enables `VK_KHR_portability_subset` when the device advertises it (the
-  spec requires enabling it, or `vkCreateDevice` fails). Windowed apps call
+  auto-enables `VK_KHR_portability_enumeration`; and every boost-layer device
+  creator auto-enables `VK_KHR_portability_subset` when the device advertises
+  it (the spec requires enabling it, or `vkCreateDevice` fails). Raw
+  `vkCreateDevice` call sites (some examples/tutorials) must append it
+  themselves on portability devices. Windowed apps call
   `glfwInitVulkanLoader(vk_get_instance_proc_addr())` before `glfwInit`. See
   `ROADMAP.md`.
 - **Commit messages:** the Bash-tool shell wrapper eval's backticks in a
