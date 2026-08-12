@@ -1548,7 +1548,7 @@ def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
     emit_lint_data(creators, plans, out_dir)
     to_log(LOG_INFO, "boost: {length(skip_log)} structs + {length(cmd_skip)} commands skipped (unmappable)\n")
     delete struct_skips_out
-    struct_skips_out <- skip_log   // nolint:PERF030 — released just above
+    struct_skips_out <- skip_log
     delete cmd_skips_out
-    cmd_skips_out <- cmd_skip   // nolint:PERF030 — released just above
+    cmd_skips_out <- cmd_skip
 }
