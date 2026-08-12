@@ -2140,7 +2140,7 @@ def public upload_bytes(buf : HostBuffer; device : Device; var data : array<auto
 //! (VUID-VkBufferCreateInfo-size-00912), so an empty array can't produce a valid buffer.
 def public create_host_buffer_from_bytes(device : Device; phys : VkPhysicalDevice;
                                          usage : VkBufferUsageFlags; var data : array<auto(TT)>) : HostBuffer {
-    assert(!empty(data), "create_host_buffer_from_bytes: empty data — VkBuffer.size must be > 0")
+    assert(!empty(data), "create_host_buffer_from_bytes: empty data - VkBuffer.size must be > 0")
     let nbytes = uint64(length(data) * typeinfo sizeof(type<TT>))
     var hb <- create_host_buffer(device, phys, nbytes, usage)
     hb |> upload_bytes(device, data)

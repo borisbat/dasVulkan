@@ -45,7 +45,7 @@ class VulkanLintVisitor : AstVisitor {
         let wrapper = VK_WRAPPED?[fname] ?? ""
         if (wrapper != "") {
             compiling_program() |> macro_error(expr.at,
-                "VK001: raw {fname} has a boost wrapper '{wrapper}' — prefer it. For a deliberate raw call, put 'options _allow_vulkan_raw = true' at the top of the file.")
+                "VK001: raw {fname} has a boost wrapper '{wrapper}' - prefer it. For a deliberate raw call, put 'options _allow_vulkan_raw = true' at the top of the file.")
         }
     }
 }

@@ -65,7 +65,7 @@ def private load_pixels(path : string; hdr : bool; var w, h : int&; var bytes : 
     w = simg.width
     h = simg.height
     delete bytes
-    bytes <- simg.bytes   // nolint:PERF030 - released just above
+    bytes <- simg.bytes
     return true
 }
 
