@@ -1,6 +1,10 @@
 options gen2
 options _comment_hygiene = true
 options rtti = true
+// This file emits RST prose - section titles carry em-dashes that render on the docs site.
+// The option is environment-independent; a per-line nolint is not, because STYLE039's default
+// is path-gated (on under daslib/ and modules/) and dasVulkan is checked out standalone in CI.
+options _ascii_strings = false
 
 require strings
 require daslib/fio
@@ -30,7 +34,7 @@ def document_module_vulkan_runtime() {
         group_by_regex("Ownership",       mod, %regex~^weak_copy$%%),
         group_by_regex("Versioning",      mod, %regex~^make_api_version$%%)
     )
-    document("Runtime — result checking, array interop, ownership, versioning", mod, "vulkan_runtime.rst", groups)   // nolint:STYLE039 - em-dash renders in the published RST title
+    document("Runtime — result checking, array interop, ownership, versioning", mod, "vulkan_runtime.rst", groups)
 }
 
 def document_module_vulkan_handles() {
@@ -42,7 +46,7 @@ def document_module_vulkan_handles() {
         hide_group(group_by_regex("Finalizers",  mod, %regex~^finalize$%%)),
         hide_group(group_by_regex("Marshalling", mod, %regex~^(boost_value_to_vk|vk_value_to_boost)$%%))
     )
-    document("Handles — RAII ownership wrappers (one per Vulkan handle)", mod, "vulkan_handles.rst", groups)   // nolint:STYLE039 - em-dash renders in the published RST title
+    document("Handles — RAII ownership wrappers (one per Vulkan handle)", mod, "vulkan_handles.rst", groups)
 }
 
 def document_module_vulkan_commands() {
@@ -58,7 +62,7 @@ def document_module_vulkan_commands() {
         group_by_regex("Surfaces & swapchains", mod, %regex~^create_(display_mode_k_h_r|display_plane_surface_k_h_r|headless_surface_e_x_t|swapchain.*|shared_swapchains_k_h_r)$%%),
         group_by_regex("Acceleration & advanced", mod, %regex~^create_(acceleration_structure.*|micromap_e_x_t|optical_flow_session_n_v|external_compute_queue_n_v|cu_function_n_v_x|tensor_view_a_r_m|tensor_a_r_m|video_session_k_h_r|video_session_parameters_k_h_r)$%%)
     )
-    document("Commands — RAII creators returning owning handle wrappers", mod, "vulkan_commands.rst", groups)   // nolint:STYLE039 - em-dash renders in the published RST title
+    document("Commands — RAII creators returning owning handle wrappers", mod, "vulkan_commands.rst", groups)
 }
 
 def document_module_vulkan_boost() {
@@ -78,7 +82,7 @@ def document_module_vulkan_boost() {
         group_by_regex("Pipeline introspection", mod, %regex~^(pipeline_exec_props_supported|dump_pipeline_executables)$%%),
         hide_group(group_by_regex("Finalizers", mod, %regex~^finalize$%%))
     )
-    document("Boost — selection, builders, block brackets, conveniences", mod, "vulkan_boost.rst", groups)   // nolint:STYLE039 - em-dash renders in the published RST title
+    document("Boost — selection, builders, block brackets, conveniences", mod, "vulkan_boost.rst", groups)
 }
 
 def document_module_vulkan_window() {
@@ -90,7 +94,7 @@ def document_module_vulkan_window() {
         group_by_regex("Frame loop", mod, %regex~^(draw_frame|present_frame)$%%),
         hide_group(group_by_regex("Finalizers", mod, %regex~^finalize$%%))
     )
-    document("Window — surface, swapchain, frame sync, and the present loop", mod, "vulkan_window.rst", groups)   // nolint:STYLE039 - em-dash renders in the published RST title
+    document("Window — surface, swapchain, frame sync, and the present loop", mod, "vulkan_window.rst", groups)
 }
 
 def document_vulkan_structs_anchors() {
