@@ -327,11 +327,7 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     }
     // arrays: a len that names a count member
     let hasvkcount = !empty(m.len) && key_exists(counts, m.len)
-    // a const void payload -> array<uint8>: vk.xml gives such a member a len,
-    // and that len is always its size in BYTES.  The raw slot stays void?, so
-    // the scratch pointer is reinterpreted the way a flags array's is.  Only
-    // const: a non-const void payload is written by the call, and the scratch
-    // a view copies into never reaches the caller back.
+    // vk.xml gives a void payload's len in BYTES; a non-const one is skipped because the call writes it and a view's scratch never reaches the caller
     if (hasvkcount && m.num_ptrs == 1 && m.is_const && tn == "void") {
         bf.kind = FieldKind.arr_scalar
         bf.count_member = m.len
@@ -1251,8 +1247,7 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
         plan.skip = "{c.name}: {out_value_count} out params (only single out supported)"
         return <- plan
     }
-    // a two-call enumerate returns its array, which leaves nowhere to put a second
-    // out param
+    // a two-call enumerate returns its array, leaving nowhere for a second out param
     if (plan.has_out_array && plan.has_out_value) {
         plan.emittable = false
         plan.skip = "{c.name}: out param {plan.out_value_pname} beside an enumerated array"
@@ -1408,7 +1403,7 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                 emit_call_args(f, plan, "null")
                 fprint(f, "){lhs_close}\n")
                 fprint(f, "    var vklist : array<{plan.out_array_elem}>\n")
-                fprint(f, "    vklist |> resize(int(vkcount))\n")
+                fprint(f, "    vklist |> resize({plan.count_is_64 ? "int64" : "int"}(vkcount))\n")
                 if (has_stype_ctor(reg, em, plan.out_array_elem)) {
                     fprint(f, "    for (vki in range(int(vkcount))) {OB}\n")
                     fprint(f, "        vklist[vki] = {plan.out_array_elem}()\n")
@@ -1417,8 +1412,7 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                 fprint(f, "    if (vkcount > {plan.count_is_64 ? "0ul" : "0u"}) {OB}\n")
                 fprint(f, "        unsafe {OB}\n")
                 fprint(f, "            {lhs_open}{plan.command}(")
-                // already inside `unsafe`, so the byte payload's cast to the raw
-                // void? slot takes no wrap of its own
+                // already inside `unsafe`, so the byte payload cast takes no wrap of its own
                 emit_call_args(f, plan, plan.out_array_is_bytes
                     ? "addr<void?>(vklist[0])" : "addr(vklist[0])")
                 fprint(f, "){lhs_close}\n")

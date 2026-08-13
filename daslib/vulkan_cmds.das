@@ -278,7 +278,7 @@ def get_pipeline_cache_data(device : Device; pipelineCache : PipelineCache; var 
     var vkcount = 0ul
     vk_check(vkGetPipelineCacheData(boost_value_to_vk(device), boost_value_to_vk(pipelineCache), vkcount, null), result)
     var vklist : array<uint8>
-    vklist |> resize(int(vkcount))
+    vklist |> resize(int64(vkcount))
     if (vkcount > 0ul) {
         unsafe {
             vk_check(vkGetPipelineCacheData(boost_value_to_vk(device), boost_value_to_vk(pipelineCache), vkcount, addr<void?>(vklist[0])), result)
@@ -1403,7 +1403,7 @@ def get_validation_cache_data_e_x_t(device : Device; validationCache : Validatio
     var vkcount = 0ul
     vk_check(vkGetValidationCacheDataEXT(boost_value_to_vk(device), boost_value_to_vk(validationCache), vkcount, null), result)
     var vklist : array<uint8>
-    vklist |> resize(int(vkcount))
+    vklist |> resize(int64(vkcount))
     if (vkcount > 0ul) {
         unsafe {
             vk_check(vkGetValidationCacheDataEXT(boost_value_to_vk(device), boost_value_to_vk(validationCache), vkcount, addr<void?>(vklist[0])), result)
@@ -1430,7 +1430,7 @@ def get_shader_info_a_m_d(device : Device; pipeline : Pipeline; shaderStage : Vk
     var vkcount = 0ul
     vk_check(vkGetShaderInfoAMD(boost_value_to_vk(device), boost_value_to_vk(pipeline), shaderStage, infoType, vkcount, null), result)
     var vklist : array<uint8>
-    vklist |> resize(int(vkcount))
+    vklist |> resize(int64(vkcount))
     if (vkcount > 0ul) {
         unsafe {
             vk_check(vkGetShaderInfoAMD(boost_value_to_vk(device), boost_value_to_vk(pipeline), shaderStage, infoType, vkcount, addr<void?>(vklist[0])), result)
@@ -2901,7 +2901,7 @@ def get_shader_binary_data_e_x_t(device : Device; shader : ShaderEXT; var result
     var vkcount = 0ul
     vk_check(vkGetShaderBinaryDataEXT(boost_value_to_vk(device), boost_value_to_vk(shader), vkcount, null), result)
     var vklist : array<uint8>
-    vklist |> resize(int(vkcount))
+    vklist |> resize(int64(vkcount))
     if (vkcount > 0ul) {
         unsafe {
             vk_check(vkGetShaderBinaryDataEXT(boost_value_to_vk(device), boost_value_to_vk(shader), vkcount, addr<void?>(vklist[0])), result)
