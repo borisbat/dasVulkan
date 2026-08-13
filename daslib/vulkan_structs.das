@@ -23663,3 +23663,27 @@ def vk_view_destroy(_b : DataGraphPipelineOpticalFlowDispatchInfoARM) {
     pass
 }
 
+// One view per element of a jagged argument, into raw storage the caller owns.  The
+// interior pointers are void?, never T?: a T? array has das free each one on delete,
+// and these point into vkraw2's rows rather than at anything of their own.
+def vk_views2_create(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) {
+    vkraw2 |> resize(length(boost))
+    vkptr |> resize(length(boost))
+    for (vkr2, vkp, vke in vkraw2, vkptr, boost) {
+        vkr2 |> resize(length(vke))
+        for (vkw, vkf in vkr2, vke) {
+            vkw = vk_view_create_unsafe(vkf)
+        }
+        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))
+    }
+}
+
+def vk_views2_destroy(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) {
+    for (vkrow in boost) {
+        for (vkv in vkrow) { vk_view_destroy(vkv) }
+    }
+    for (vkrow2 in vkraw2) { delete vkrow2 }
+    delete vkraw2
+    delete vkptr
+}
+

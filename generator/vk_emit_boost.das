@@ -587,6 +587,33 @@ def private len_max_expr(arrs : array<string>; count_type : string) : string {
     }
 }
 
+// A pointer-of-pointers argument views the same way in every command that takes one, so
+// the loop is a pair of generics here rather than a copy in each wrapper.
+def private emit_jagged_view_helpers(f : file) {
+    fprint(f, "// One view per element of a jagged argument, into raw storage the caller owns.  The\n")
+    fprint(f, "// interior pointers are void?, never T?: a T? array has das free each one on delete,\n")
+    fprint(f, "// and these point into vkraw2's rows rather than at anything of their own.\n")
+    fprint(f, "def vk_views2_create(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) \{\n")
+    fprint(f, "    vkraw2 |> resize(length(boost))\n")
+    fprint(f, "    vkptr |> resize(length(boost))\n")
+    fprint(f, "    for (vkr2, vkp, vke in vkraw2, vkptr, boost) \{\n")
+    fprint(f, "        vkr2 |> resize(length(vke))\n")
+    fprint(f, "        for (vkw, vkf in vkr2, vke) \{\n")
+    fprint(f, "            vkw = vk_view_create_unsafe(vkf)\n")
+    fprint(f, "        \}\n")
+    fprint(f, "        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))\n")
+    fprint(f, "    \}\n")
+    fprint(f, "\}\n\n")
+    fprint(f, "def vk_views2_destroy(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) \{\n")
+    fprint(f, "    for (vkrow in boost) \{\n")
+    fprint(f, "        for (vkv in vkrow) \{ vk_view_destroy(vkv) \}\n")
+    fprint(f, "    \}\n")
+    fprint(f, "    for (vkrow2 in vkraw2) \{ delete vkrow2 \}\n")
+    fprint(f, "    delete vkraw2\n")
+    fprint(f, "    delete vkptr\n")
+    fprint(f, "\}\n\n")
+}
+
 [unused_argument(em)]
 def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : string; views : array<ViewStruct>) {
     fopen("{out_dir}/vulkan_structs.das", "wb") $(f) {
@@ -713,6 +740,7 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
             }
             fprint(f, "\}\n\n")
         }
+        emit_jagged_view_helpers(f)
     }
     to_log(LOG_INFO, "boost: {length(views)} vk_view structs -> vulkan_structs.das\n")
 }
@@ -1378,18 +1406,9 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                     fprint(f, "        vkv = vk_view_create_unsafe(vke)\n")
                     fprint(f, "    {CB}\n")
                 } elif (a.kind == CmdArgKind.in_array2_struct) {
-                    // vkptr_ holds void?, not T?: a T? array would have das free each interior pointer on delete (double-free)
                     fprint(f, "    var vkraw2_{a.pname} : array<array<{a.elem_vktype}>>\n")
-                    fprint(f, "    vkraw2_{a.pname} |> resize(length({a.pname}))\n")
                     fprint(f, "    var vkptr_{a.pname} : array<void?>\n")
-                    fprint(f, "    vkptr_{a.pname} |> resize(length({a.pname}))\n")
-                    fprint(f, "    for (vkr2, vkp, vke in vkraw2_{a.pname}, vkptr_{a.pname}, {a.pname}) {OB}\n")
-                    fprint(f, "        vkr2 |> resize(length(vke))\n")
-                    fprint(f, "        for (vkw, vkf in vkr2, vke) {OB}\n")
-                    fprint(f, "            vkw = vk_view_create_unsafe(vkf)\n")
-                    fprint(f, "        {CB}\n")
-                    fprint(f, "        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))\n")
-                    fprint(f, "    {CB}\n")
+                    fprint(f, "    vk_views2_create({a.pname}, vkraw2_{a.pname}, vkptr_{a.pname})\n")
                 }
             }
             // --- the call(s) ---
@@ -1490,12 +1509,7 @@ def private emit_scratch_cleanup(f : file; plan : CmdPlan) {
             fprint(f, "    for (vkv in {a.pname}) {OB} vk_view_destroy(vkv) {CB}\n")
             fprint(f, "    delete vkraw_{a.pname}\n")
         } elif (a.kind == CmdArgKind.in_array2_struct) {
-            fprint(f, "    for (vkrow in {a.pname}) {OB}\n")
-            fprint(f, "        for (vkv in vkrow) {OB} vk_view_destroy(vkv) {CB}\n")
-            fprint(f, "    {CB}\n")
-            fprint(f, "    for (vkrow2 in vkraw2_{a.pname}) {OB} delete vkrow2 {CB}\n")
-            fprint(f, "    delete vkraw2_{a.pname}\n")
-            fprint(f, "    delete vkptr_{a.pname}\n")
+            fprint(f, "    vk_views2_destroy({a.pname}, vkraw2_{a.pname}, vkptr_{a.pname})\n")
         }
     }
 }
