@@ -3417,50 +3417,6 @@ def vk_view_destroy(var b : ValidationFeaturesEXT) {
     delete b._vk_view_pDisabledValidationFeatures
 }
 
-struct LayerSettingsCreateInfoEXT {
-    next : void?
-    pSettings : array<LayerSettingEXT>
-    _vk_view_pSettings : array<VkLayerSettingEXT>
-}
-def vk_view_create_unsafe(var b : LayerSettingsCreateInfoEXT) : VkLayerSettingsCreateInfoEXT {
-    var vk = VkLayerSettingsCreateInfoEXT()
-    vk.pNext = b.next
-    b._vk_view_pSettings |> resize(length(b.pSettings))
-    for (vkv, vke in b._vk_view_pSettings, b.pSettings) {
-        vkv = vk_view_create_unsafe(vke)
-    }
-    vk.pSettings = array_addr(b._vk_view_pSettings)
-    vk.settingCount = uint(length(b.pSettings))
-    return <- vk
-}
-def vk_view_destroy(var b : LayerSettingsCreateInfoEXT) {
-    for (vki in range(length(b.pSettings))) {
-        vk_view_destroy(b.pSettings[vki])
-    }
-    delete b._vk_view_pSettings
-}
-
-struct LayerSettingEXT {
-    pLayerName : string
-    pSettingName : string
-    type_ : VkLayerSettingTypeEXT
-    pValues : array<uint8>
-    _vk_view_pValues : array<uint8>
-}
-def vk_view_create_unsafe(var b : LayerSettingEXT) : VkLayerSettingEXT {
-    var vk = VkLayerSettingEXT()
-    vk.pLayerName = b.pLayerName
-    vk.pSettingName = b.pSettingName
-    vk.type_ = b.type_
-    b._vk_view_pValues := b.pValues
-    vk.pValues = unsafe(reinterpret<void?>(array_addr(b._vk_view_pValues)))
-    vk.valueCount = uint(length(b.pValues))
-    return <- vk
-}
-def vk_view_destroy(var b : LayerSettingEXT) {
-    delete b._vk_view_pValues
-}
-
 struct PipelineRasterizationStateRasterizationOrderAMD {
     next : void?
     rasterizationOrder : VkRasterizationOrderAMD

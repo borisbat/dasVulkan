@@ -282,6 +282,11 @@ def private is_double_ptr_alt(s : VkStructDef; m : VkMember) : bool {
 
 //! map a struct member to a boost field; FieldKind.hard signals "skip the whole struct".
 //! `mappable` is the set of struct names known to have a boost vk_view (for array-of-struct).
+//! a len member that denotes a SIZE IN BYTES rather than a count of elements
+def private len_is_bytes(len : string) : bool {
+    return len == "size" || len |> ends_with("Size")
+}
+
 def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m : VkMember; counts : table<string>; mappable : table<string>) : BoostField {
     var bf = BoostField(name = das_safe_name(m.name), raw_name = m.name)
     let tn = m.type_name
@@ -327,8 +332,8 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     }
     // arrays: a len that names a count member
     let hasvkcount = !empty(m.len) && key_exists(counts, m.len)
-    // vk.xml gives a void payload's len in BYTES; a non-const one is skipped because the call writes it and a view's scratch never reaches the caller
-    if (hasvkcount && m.num_ptrs == 1 && m.is_const && tn == "void") {
+    // bytes only where the len MEANS bytes: a count-shaped one counts typed values whose stride comes from a sibling field, and non-const is written by the call
+    if (hasvkcount && m.num_ptrs == 1 && m.is_const && tn == "void" && len_is_bytes(m.len)) {
         bf.kind = FieldKind.arr_scalar
         bf.count_member = m.len
         bf.boost_type = "array<uint8>"
@@ -460,6 +465,9 @@ def private first_hard_reason(reg : VkRegistry; em : EmitModel; s : VkStructDef;
     for (m in s.members) {
         let bf <- classify_field(reg, em, s, m, counts, mappable)
         if (bf.kind == FieldKind.hard) {
+            if (m.num_ptrs == 1 && m.is_const && m.type_name == "void" && !empty(m.len)) {
+                return "{s.name}: member {m.name} len {m.len} counts typed values, stride from a sibling field"
+            }
             return "{s.name}: member {m.name} ({m.type_name} x{m.num_ptrs}) not mappable"
         }
     }
