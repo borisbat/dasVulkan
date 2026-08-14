@@ -274,6 +274,19 @@ def get_image_subresource_layout(device : Device; image : Image; pSubresource : 
     return vkout
 }
 
+def get_pipeline_cache_data(device : Device; pipelineCache : PipelineCache; var result : VkResult? = null) : array<uint8> {
+    var vkcount = 0ul
+    vk_check(vkGetPipelineCacheData(boost_value_to_vk(device), boost_value_to_vk(pipelineCache), vkcount, null), result)
+    var vklist : array<uint8>
+    vklist |> resize(int64(vkcount))
+    if (vkcount > 0ul) {
+        unsafe {
+            vk_check(vkGetPipelineCacheData(boost_value_to_vk(device), boost_value_to_vk(pipelineCache), vkcount, addr<void?>(vklist[0])), result)
+        }
+    }
+    return <- vklist
+}
+
 def merge_pipeline_caches(device : Device; dstCache : PipelineCache; pSrcCaches : array<PipelineCache>; var result : VkResult? = null) {
     var vkraw_pSrcCaches <- [for (h in pSrcCaches); boost_value_to_vk(h)]
     vk_check(vkMergePipelineCaches(boost_value_to_vk(device), boost_value_to_vk(dstCache), uint(length(pSrcCaches)), array_addr(vkraw_pSrcCaches)), result)
@@ -812,6 +825,12 @@ def debug_marker_set_object_name_e_x_t(device : Device; pNameInfo : DebugMarkerO
     let vkview_pNameInfo = vk_view_create_unsafe(pNameInfo)
     defer() { vk_view_destroy(pNameInfo) }
     vk_check(vkDebugMarkerSetObjectNameEXT(boost_value_to_vk(device), vkview_pNameInfo), result)
+}
+
+def debug_marker_set_object_tag_e_x_t(device : Device; var pTagInfo : DebugMarkerObjectTagInfoEXT; var result : VkResult? = null) {
+    let vkview_pTagInfo = vk_view_create_unsafe(pTagInfo)
+    defer() { vk_view_destroy(pTagInfo) }
+    vk_check(vkDebugMarkerSetObjectTagEXT(boost_value_to_vk(device), vkview_pTagInfo), result)
 }
 
 def cmd_debug_marker_begin_e_x_t(commandBuffer : CommandBuffer; pMarkerInfo : DebugMarkerMarkerInfoEXT) {
@@ -1380,6 +1399,19 @@ def get_device_queue2(device : Device; pQueueInfo : DeviceQueueInfo2) : Queue {
     return vk_value_to_boost(vkout)
 }
 
+def get_validation_cache_data_e_x_t(device : Device; validationCache : ValidationCacheEXT; var result : VkResult? = null) : array<uint8> {
+    var vkcount = 0ul
+    vk_check(vkGetValidationCacheDataEXT(boost_value_to_vk(device), boost_value_to_vk(validationCache), vkcount, null), result)
+    var vklist : array<uint8>
+    vklist |> resize(int64(vkcount))
+    if (vkcount > 0ul) {
+        unsafe {
+            vk_check(vkGetValidationCacheDataEXT(boost_value_to_vk(device), boost_value_to_vk(validationCache), vkcount, addr<void?>(vklist[0])), result)
+        }
+    }
+    return <- vklist
+}
+
 def merge_validation_caches_e_x_t(device : Device; dstCache : ValidationCacheEXT; pSrcCaches : array<ValidationCacheEXT>; var result : VkResult? = null) {
     var vkraw_pSrcCaches <- [for (h in pSrcCaches); boost_value_to_vk(h)]
     vk_check(vkMergeValidationCachesEXT(boost_value_to_vk(device), boost_value_to_vk(dstCache), uint(length(pSrcCaches)), array_addr(vkraw_pSrcCaches)), result)
@@ -1392,6 +1424,19 @@ def get_descriptor_set_layout_support(device : Device; var pCreateInfo : Descrip
     var vkout = VkDescriptorSetLayoutSupport()
     vkGetDescriptorSetLayoutSupport(boost_value_to_vk(device), vkview_pCreateInfo, vkout)
     return vkout
+}
+
+def get_shader_info_a_m_d(device : Device; pipeline : Pipeline; shaderStage : VkShaderStageFlags; infoType : VkShaderInfoTypeAMD; var result : VkResult? = null) : array<uint8> {
+    var vkcount = 0ul
+    vk_check(vkGetShaderInfoAMD(boost_value_to_vk(device), boost_value_to_vk(pipeline), shaderStage, infoType, vkcount, null), result)
+    var vklist : array<uint8>
+    vklist |> resize(int64(vkcount))
+    if (vkcount > 0ul) {
+        unsafe {
+            vk_check(vkGetShaderInfoAMD(boost_value_to_vk(device), boost_value_to_vk(pipeline), shaderStage, infoType, vkcount, addr<void?>(vklist[0])), result)
+        }
+    }
+    return <- vklist
 }
 
 def set_local_dimming_a_m_d(device : Device; swapChain : SwapchainKHR; localDimmingEnable : uint) {
@@ -1415,6 +1460,12 @@ def set_debug_utils_object_name_e_x_t(device : Device; pNameInfo : DebugUtilsObj
     let vkview_pNameInfo = vk_view_create_unsafe(pNameInfo)
     defer() { vk_view_destroy(pNameInfo) }
     vk_check(vkSetDebugUtilsObjectNameEXT(boost_value_to_vk(device), vkview_pNameInfo), result)
+}
+
+def set_debug_utils_object_tag_e_x_t(device : Device; var pTagInfo : DebugUtilsObjectTagInfoEXT; var result : VkResult? = null) {
+    let vkview_pTagInfo = vk_view_create_unsafe(pTagInfo)
+    defer() { vk_view_destroy(pTagInfo) }
+    vk_check(vkSetDebugUtilsObjectTagEXT(boost_value_to_vk(device), vkview_pTagInfo), result)
 }
 
 def queue_begin_debug_utils_label_e_x_t(queue : Queue; pLabelInfo : DebugUtilsLabelEXT) {
@@ -1955,25 +2006,12 @@ def cmd_build_acceleration_structures_k_h_r(commandBuffer : CommandBuffer; var p
         vkv = vk_view_create_unsafe(vke)
     }
     var vkraw2_ppBuildRangeInfos : array<array<VkAccelerationStructureBuildRangeInfoKHR>>
-    vkraw2_ppBuildRangeInfos |> resize(length(ppBuildRangeInfos))
     var vkptr_ppBuildRangeInfos : array<void?>
-    vkptr_ppBuildRangeInfos |> resize(length(ppBuildRangeInfos))
-    for (vkr2, vkp, vke in vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos, ppBuildRangeInfos) {
-        vkr2 |> resize(length(vke))
-        for (vkw, vkf in vkr2, vke) {
-            vkw = vk_view_create_unsafe(vkf)
-        }
-        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))
-    }
+    vk_views2_create(ppBuildRangeInfos, vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos)
     vkCmdBuildAccelerationStructuresKHR(boost_value_to_vk(commandBuffer), uint(length(pInfos)), array_addr(vkraw_pInfos), unsafe(reinterpret<VkAccelerationStructureBuildRangeInfoKHR??>(array_addr(vkptr_ppBuildRangeInfos))))
     for (vkv in pInfos) { vk_view_destroy(vkv) }
     delete vkraw_pInfos
-    for (vkrow in ppBuildRangeInfos) {
-        for (vkv in vkrow) { vk_view_destroy(vkv) }
-    }
-    for (vkrow2 in vkraw2_ppBuildRangeInfos) { delete vkrow2 }
-    delete vkraw2_ppBuildRangeInfos
-    delete vkptr_ppBuildRangeInfos
+    vk_views2_destroy(ppBuildRangeInfos, vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos)
 }
 
 def build_acceleration_structures_k_h_r(device : Device; deferredOperation : DeferredOperationKHR; var pInfos : array<AccelerationStructureBuildGeometryInfoKHR>; var ppBuildRangeInfos : array<array<AccelerationStructureBuildRangeInfoKHR>>; var result : VkResult? = null) {
@@ -1983,25 +2021,12 @@ def build_acceleration_structures_k_h_r(device : Device; deferredOperation : Def
         vkv = vk_view_create_unsafe(vke)
     }
     var vkraw2_ppBuildRangeInfos : array<array<VkAccelerationStructureBuildRangeInfoKHR>>
-    vkraw2_ppBuildRangeInfos |> resize(length(ppBuildRangeInfos))
     var vkptr_ppBuildRangeInfos : array<void?>
-    vkptr_ppBuildRangeInfos |> resize(length(ppBuildRangeInfos))
-    for (vkr2, vkp, vke in vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos, ppBuildRangeInfos) {
-        vkr2 |> resize(length(vke))
-        for (vkw, vkf in vkr2, vke) {
-            vkw = vk_view_create_unsafe(vkf)
-        }
-        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))
-    }
+    vk_views2_create(ppBuildRangeInfos, vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos)
     vk_check(vkBuildAccelerationStructuresKHR(boost_value_to_vk(device), boost_value_to_vk(deferredOperation), uint(length(pInfos)), array_addr(vkraw_pInfos), unsafe(reinterpret<VkAccelerationStructureBuildRangeInfoKHR??>(array_addr(vkptr_ppBuildRangeInfos)))), result)
     for (vkv in pInfos) { vk_view_destroy(vkv) }
     delete vkraw_pInfos
-    for (vkrow in ppBuildRangeInfos) {
-        for (vkv in vkrow) { vk_view_destroy(vkv) }
-    }
-    for (vkrow2 in vkraw2_ppBuildRangeInfos) { delete vkrow2 }
-    delete vkraw2_ppBuildRangeInfos
-    delete vkptr_ppBuildRangeInfos
+    vk_views2_destroy(ppBuildRangeInfos, vkraw2_ppBuildRangeInfos, vkptr_ppBuildRangeInfos)
 }
 
 def get_acceleration_structure_device_address_k_h_r(device : Device; pInfo : AccelerationStructureDeviceAddressInfoKHR) : uint64 {
@@ -2846,6 +2871,19 @@ def unmap_memory2(device : Device; pMemoryUnmapInfo : MemoryUnmapInfo; var resul
     vk_check(vkUnmapMemory2(boost_value_to_vk(device), vkview_pMemoryUnmapInfo), result)
 }
 
+def get_shader_binary_data_e_x_t(device : Device; shader : ShaderEXT; var result : VkResult? = null) : array<uint8> {
+    var vkcount = 0ul
+    vk_check(vkGetShaderBinaryDataEXT(boost_value_to_vk(device), boost_value_to_vk(shader), vkcount, null), result)
+    var vklist : array<uint8>
+    vklist |> resize(int64(vkcount))
+    if (vkcount > 0ul) {
+        unsafe {
+            vk_check(vkGetShaderBinaryDataEXT(boost_value_to_vk(device), boost_value_to_vk(shader), vkcount, addr<void?>(vklist[0])), result)
+        }
+    }
+    return <- vklist
+}
+
 def set_swapchain_present_timing_queue_size_e_x_t(device : Device; swapchain : SwapchainKHR; size : uint; var result : VkResult? = null) {
     vk_check(vkSetSwapchainPresentTimingQueueSizeEXT(boost_value_to_vk(device), boost_value_to_vk(swapchain), size), result)
 }
@@ -2878,6 +2916,12 @@ def cmd_bind_descriptor_sets2(commandBuffer : CommandBuffer; var pBindDescriptor
     let vkview_pBindDescriptorSetsInfo = vk_view_create_unsafe(pBindDescriptorSetsInfo)
     defer() { vk_view_destroy(pBindDescriptorSetsInfo) }
     vkCmdBindDescriptorSets2(boost_value_to_vk(commandBuffer), vkview_pBindDescriptorSetsInfo)
+}
+
+def cmd_push_constants2(commandBuffer : CommandBuffer; var pPushConstantsInfo : PushConstantsInfo) {
+    let vkview_pPushConstantsInfo = vk_view_create_unsafe(pPushConstantsInfo)
+    defer() { vk_view_destroy(pPushConstantsInfo) }
+    vkCmdPushConstants2(boost_value_to_vk(commandBuffer), vkview_pPushConstantsInfo)
 }
 
 def cmd_push_descriptor_set2(commandBuffer : CommandBuffer; var pPushDescriptorSetInfo : PushDescriptorSetInfo) {

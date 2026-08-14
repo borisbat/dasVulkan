@@ -282,6 +282,11 @@ def private is_double_ptr_alt(s : VkStructDef; m : VkMember) : bool {
 
 //! map a struct member to a boost field; FieldKind.hard signals "skip the whole struct".
 //! `mappable` is the set of struct names known to have a boost vk_view (for array-of-struct).
+//! a len member that denotes a SIZE IN BYTES rather than a count of elements
+def private len_is_bytes(len : string) : bool {
+    return len == "size" || len |> ends_with("Size")
+}
+
 def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m : VkMember; counts : table<string>; mappable : table<string>) : BoostField {
     var bf = BoostField(name = das_safe_name(m.name), raw_name = m.name)
     let tn = m.type_name
@@ -327,6 +332,15 @@ def private classify_field(reg : VkRegistry; em : EmitModel; s : VkStructDef; m 
     }
     // arrays: a len that names a count member
     let hasvkcount = !empty(m.len) && key_exists(counts, m.len)
+    // bytes only where the len MEANS bytes: a count-shaped one counts typed values whose stride comes from a sibling field, and non-const is written by the call
+    if (hasvkcount && m.num_ptrs == 1 && m.is_const && tn == "void" && len_is_bytes(m.len)) {
+        bf.kind = FieldKind.arr_scalar
+        bf.count_member = m.len
+        bf.boost_type = "array<uint8>"
+        bf.elem_vktype = "uint8"
+        bf.arr_raw_ptr = "void?"
+        return <- bf
+    }
     if (hasvkcount && m.num_ptrs == 1 && tn != "void" && tn != "char") {
         bf.count_member = m.len
         // "optional" here = this array's length is NOT authoritative; the count member is primary
@@ -451,6 +465,9 @@ def private first_hard_reason(reg : VkRegistry; em : EmitModel; s : VkStructDef;
     for (m in s.members) {
         let bf <- classify_field(reg, em, s, m, counts, mappable)
         if (bf.kind == FieldKind.hard) {
+            if (m.num_ptrs == 1 && m.is_const && m.type_name == "void" && !empty(m.len)) {
+                return "{s.name}: member {m.name} len {m.len} counts typed values, stride from a sibling field"
+            }
             return "{s.name}: member {m.name} ({m.type_name} x{m.num_ptrs}) not mappable"
         }
     }
@@ -554,19 +571,55 @@ def private count_authoritative_array(vs : ViewStruct; raw_count : string) : str
     return first
 }
 
-//! uint expression for the largest length among `arrs` (fallback for an independent count)
-def private len_max_expr(arrs : array<string>) : string {
-    return "0u" if (empty(arrs))
+//! one array field's length as `count_type`: the cast is the count member's own
+//! type, since das promotes nothing.  A 64-bit count takes long_length -- widening
+//! length's own 32-bit result gets past no limit it already hit (LINT017).
+def private count_len_expr(count_type, arr : string) : string {
+    let bits64 = count_type == "uint64" || count_type == "int64"
+    return "{count_type}({bits64 ? "long_length" : "length"}(b.{arr}))"
+}
+
+//! `count_type` expression for the largest length among `arrs` (fallback for an
+//! independent count)
+def private len_max_expr(arrs : array<string>; count_type : string) : string {
+    return "{count_type}(0)" if (empty(arrs))
     let extra = length(arrs) - 1
     return build_string() $(var w) {
         for (_i in range(extra)) {
             w |> write("max(")
         }
-        w |> write("uint(length(b.{arrs[0]}))")
+        w |> write(count_len_expr(count_type, arrs[0]))
         for (i in range(1, length(arrs))) {
-            w |> write(", uint(length(b.{arrs[i]})))")
+            w |> write(", {count_len_expr(count_type, arrs[i])})")
         }
     }
+}
+
+// A pointer-of-pointers argument views the same way in every command that takes one, so
+// the loop is a pair of generics here rather than a copy in each wrapper.
+def private emit_jagged_view_helpers(f : file) {
+    fprint(f, "// One view per element of a jagged argument, into raw storage the caller owns.  The\n")
+    fprint(f, "// interior pointers are void?, never T?: a T? array has das free each one on delete,\n")
+    fprint(f, "// and these point into vkraw2's rows rather than at anything of their own.\n")
+    fprint(f, "def vk_views2_create(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) \{\n")
+    fprint(f, "    vkraw2 |> resize(length(boost))\n")
+    fprint(f, "    vkptr |> resize(length(boost))\n")
+    fprint(f, "    for (vkr2, vkp, vke in vkraw2, vkptr, boost) \{\n")
+    fprint(f, "        vkr2 |> resize(length(vke))\n")
+    fprint(f, "        for (vkw, vkf in vkr2, vke) \{\n")
+    fprint(f, "            vkw = vk_view_create_unsafe(vkf)\n")
+    fprint(f, "        \}\n")
+    fprint(f, "        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))\n")
+    fprint(f, "    \}\n")
+    fprint(f, "\}\n\n")
+    fprint(f, "def vk_views2_destroy(var boost : array<array<auto(BT)>>; var vkraw2 : array<array<auto(VT)>>; var vkptr : array<void?>) \{\n")
+    fprint(f, "    for (vkrow in boost) \{\n")
+    fprint(f, "        for (vkv in vkrow) \{ vk_view_destroy(vkv) \}\n")
+    fprint(f, "    \}\n")
+    fprint(f, "    for (vkrow2 in vkraw2) \{ delete vkrow2 \}\n")
+    fprint(f, "    delete vkraw2\n")
+    fprint(f, "    delete vkptr\n")
+    fprint(f, "\}\n\n")
 }
 
 [unused_argument(em)]
@@ -586,6 +639,9 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                 }
                 if (bf.kind == FieldKind.next_ptr) {
                     fprint(f, "    next : void?\n")
+                } elif (bf.kind == FieldKind.opt_struct_ptr) {
+                    // borrowed, never owned: @do_not_delete stops the finalize that would free the caller's local
+                    fprint(f, "    @do_not_delete {bf.name} : {bf.boost_type}\n")
                 } else {
                     fprint(f, "    {bf.name} : {bf.boost_type}\n")
                 }
@@ -599,7 +655,6 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
             // opt_struct_ptr scratch: pointee clone + raw view + `_present` so vk_view_destroy only tears down what was populated
             for (bf in vs.fields) {
                 if (bf.kind == FieldKind.opt_struct_ptr) {
-                    fprint(f, "    _vk_view_{bf.name}_value : {bf.elem_boost}\n")
                     fprint(f, "    _vk_view_{bf.name}_vk : {bf.elem_vktype}\n")
                     fprint(f, "    _vk_view_{bf.name}_present : bool\n")
                 }
@@ -636,11 +691,10 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    {CB}\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
                 } elif (bf.kind == FieldKind.opt_struct_ptr) {
-                    // clone the pointee into scratch, then null the borrowed field: the default finalize deletes a populated T? and a borrowed local is not a heap chunk
+                    // viewed where the caller keeps it, so this struct embeds only the raw view and stays copyable
                     fprint(f, "    unsafe {OB}\n")
                     fprint(f, "        if (b.{bf.name} != null) {OB}\n")
-                    fprint(f, "            b._vk_view_{bf.name}_value := *b.{bf.name}\n")
-                    fprint(f, "            b._vk_view_{bf.name}_vk = vk_view_create_unsafe(b._vk_view_{bf.name}_value)\n")
+                    fprint(f, "            b._vk_view_{bf.name}_vk = vk_view_create_unsafe(*b.{bf.name})\n")
                     fprint(f, "            b._vk_view_{bf.name}_present = true\n")
                     fprint(f, "            vk.{bf.name} = addr(b._vk_view_{bf.name}_vk)\n")
                     fprint(f, "            b.{bf.name} = null\n")
@@ -653,11 +707,11 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                 let cm = das_safe_name(bf.raw_name)
                 if (bf.kind == FieldKind.count_independent) {
                     let arrs <- count_referencing_arrays(vs, bf.raw_name)
-                    fprint(f, "    vk.{cm} = b.{bf.name} != 0u ? b.{bf.name} : {len_max_expr(arrs)}\n")
+                    fprint(f, "    vk.{cm} = b.{bf.name} != 0u ? b.{bf.name} : {len_max_expr(arrs, bf.boost_type)}\n")
                 } elif (bf.kind == FieldKind.erase) {
                     let auth = count_authoritative_array(vs, bf.raw_name)
                     if (!empty(auth)) {
-                        fprint(f, "    vk.{cm} = uint(length(b.{auth}))\n")
+                        fprint(f, "    vk.{cm} = {count_len_expr(bf.boost_type, auth)}\n")
                     }
                 }
             }
@@ -682,9 +736,8 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    delete b._vk_view_{bf.name}\n")
                     any_scratch = true
                 } elif (bf.kind == FieldKind.opt_struct_ptr) {
-                    // tear down the cloned pointee only if it was actually populated
+                    // the pointee was the caller's, so releasing is just dropping the claim one was taken
                     fprint(f, "    if (b._vk_view_{bf.name}_present) {OB}\n")
-                    fprint(f, "        vk_view_destroy(b._vk_view_{bf.name}_value)\n")
                     fprint(f, "        b._vk_view_{bf.name}_present = false\n")
                     fprint(f, "    {CB}\n")
                     any_scratch = true
@@ -695,6 +748,7 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
             }
             fprint(f, "\}\n\n")
         }
+        emit_jagged_view_helpers(f)
     }
     to_log(LOG_INFO, "boost: {length(views)} vk_view structs -> vulkan_structs.das\n")
 }
@@ -1016,6 +1070,7 @@ struct CmdPlan {
     has_out_array : bool
     out_array_pname : string
     out_array_elem : string        //! raw elem type (array<elem>)
+    out_array_is_bytes : bool      //! enumerate writes a void payload -> array<uint8>
     count_query_pname : string
     count_is_64 : bool             //! enumerate count is size_t (uint64) not uint32
     direct_ret : string            //! non-void non-VkResult scalar return ("" if none)
@@ -1074,10 +1129,12 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
     for (p, i in c.params, range(n)) {
         if (p.num_ptrs == 1 && !p.is_const && (p.type_name == "uint32_t" || p.type_name == "size_t")) {
             for (q, j in c.params, range(n)) {
+                let bytes = q.type_name == "void" && q.num_ptrs == 1
                 if (j != i && !empty(q.len) && q.len == p.name && q.num_ptrs >= 1 && !q.is_const &&
-                        q.type_name != "void" && mappable_value_type(reg, em, q.type_name)) {
+                        (bytes || (q.type_name != "void" && mappable_value_type(reg, em, q.type_name)))) {
                     enum_count = i
                     enum_array = j
+                    plan.out_array_is_bytes = bytes
                     plan.count_is_64 = p.type_name == "size_t"
                 }
             }
@@ -1105,7 +1162,7 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
             a.kind = CmdArgKind.out_array
             plan.has_out_array = true
             plan.out_array_pname = a.pname
-            plan.out_array_elem = p.type_name
+            plan.out_array_elem = plan.out_array_is_bytes ? "uint8" : p.type_name
             plan.args |> emplace(a)
             continue
         }
@@ -1224,6 +1281,12 @@ def private plan_command(reg : VkRegistry; em : EmitModel; c : VkCommandDef; vie
     if (out_value_count > 1) {
         plan.emittable = false
         plan.skip = "{c.name}: {out_value_count} out params (only single out supported)"
+        return <- plan
+    }
+    // a two-call enumerate returns its array, leaving nowhere for a second out param
+    if (plan.has_out_array && plan.has_out_value) {
+        plan.emittable = false
+        plan.skip = "{c.name}: out param {plan.out_value_pname} beside an enumerated array"
         return <- plan
     }
     // link each erasevkcount to the array param it counts (-> uint(length(arr)))
@@ -1351,18 +1414,9 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                     fprint(f, "        vkv = vk_view_create_unsafe(vke)\n")
                     fprint(f, "    {CB}\n")
                 } elif (a.kind == CmdArgKind.in_array2_struct) {
-                    // vkptr_ holds void?, not T?: a T? array would have das free each interior pointer on delete (double-free)
                     fprint(f, "    var vkraw2_{a.pname} : array<array<{a.elem_vktype}>>\n")
-                    fprint(f, "    vkraw2_{a.pname} |> resize(length({a.pname}))\n")
                     fprint(f, "    var vkptr_{a.pname} : array<void?>\n")
-                    fprint(f, "    vkptr_{a.pname} |> resize(length({a.pname}))\n")
-                    fprint(f, "    for (vkr2, vkp, vke in vkraw2_{a.pname}, vkptr_{a.pname}, {a.pname}) {OB}\n")
-                    fprint(f, "        vkr2 |> resize(length(vke))\n")
-                    fprint(f, "        for (vkw, vkf in vkr2, vke) {OB}\n")
-                    fprint(f, "            vkw = vk_view_create_unsafe(vkf)\n")
-                    fprint(f, "        {CB}\n")
-                    fprint(f, "        vkp = unsafe(reinterpret<void?>(array_addr(vkr2)))\n")
-                    fprint(f, "    {CB}\n")
+                    fprint(f, "    vk_views2_create({a.pname}, vkraw2_{a.pname}, vkptr_{a.pname})\n")
                 }
             }
             // --- the call(s) ---
@@ -1376,16 +1430,18 @@ def private emit_plain_commands_boost(reg : VkRegistry; em : EmitModel; out_dir 
                 emit_call_args(f, plan, "null")
                 fprint(f, "){lhs_close}\n")
                 fprint(f, "    var vklist : array<{plan.out_array_elem}>\n")
-                fprint(f, "    vklist |> resize(int(vkcount))\n")
+                fprint(f, "    vklist |> resize({plan.count_is_64 ? "int64" : "int"}(vkcount))\n")
                 if (has_stype_ctor(reg, em, plan.out_array_elem)) {
                     fprint(f, "    for (vki in range(int(vkcount))) {OB}\n")
                     fprint(f, "        vklist[vki] = {plan.out_array_elem}()\n")
                     fprint(f, "    {CB}\n")
                 }
-                fprint(f, "    if (vkcount > 0u) {OB}\n")
+                fprint(f, "    if (vkcount > {plan.count_is_64 ? "0ul" : "0u"}) {OB}\n")
                 fprint(f, "        unsafe {OB}\n")
                 fprint(f, "            {lhs_open}{plan.command}(")
-                emit_call_args(f, plan, "addr(vklist[0])")
+                // already inside `unsafe`, so the byte payload cast takes no wrap of its own
+                emit_call_args(f, plan, plan.out_array_is_bytes
+                    ? "addr<void?>(vklist[0])" : "addr(vklist[0])")
                 fprint(f, "){lhs_close}\n")
                 fprint(f, "        {CB}\n")
                 fprint(f, "    {CB}\n")
@@ -1461,12 +1517,7 @@ def private emit_scratch_cleanup(f : file; plan : CmdPlan) {
             fprint(f, "    for (vkv in {a.pname}) {OB} vk_view_destroy(vkv) {CB}\n")
             fprint(f, "    delete vkraw_{a.pname}\n")
         } elif (a.kind == CmdArgKind.in_array2_struct) {
-            fprint(f, "    for (vkrow in {a.pname}) {OB}\n")
-            fprint(f, "        for (vkv in vkrow) {OB} vk_view_destroy(vkv) {CB}\n")
-            fprint(f, "    {CB}\n")
-            fprint(f, "    for (vkrow2 in vkraw2_{a.pname}) {OB} delete vkrow2 {CB}\n")
-            fprint(f, "    delete vkraw2_{a.pname}\n")
-            fprint(f, "    delete vkptr_{a.pname}\n")
+            fprint(f, "    vk_views2_destroy({a.pname}, vkraw2_{a.pname}, vkptr_{a.pname})\n")
         }
     }
 }
@@ -1526,8 +1577,25 @@ def private emit_lint_data(creators : array<CreatorInfo>; plans : array<CmdPlan>
 
 //! `struct_skips_out` / `cmd_skips_out` receive the boost-layer skip logs so generate.das can
 //! fold them into the skip-ratchet report
+def private is_array_field(bf : BoostField) : bool {
+    return (bf.kind == FieldKind.arr_scalar || bf.kind == FieldKind.arr_handle
+        || bf.kind == FieldKind.arr_struct)
+}
+
+// an array field is what makes a boost struct non-copyable, and das MOVES a non-copyable element out of an array literal
+def private collect_non_copyable(views : array<ViewStruct>; var out : array<string>) {
+    for (vs in views) {
+        var reasons <- [for (bf in vs.fields); "{bf.name} : {bf.boost_type}"; where is_array_field(bf)]
+        if (!empty(reasons)) {
+            out |> push("{vs.boost}: {join(reasons, ", ")}")
+        }
+        delete reasons
+    }
+}
+
 def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
-                      var struct_skips_out : array<string>; var cmd_skips_out : array<string>) {
+                      var struct_skips_out : array<string>; var cmd_skips_out : array<string>;
+                      var non_copyable_out : array<string>) {
     var skip_log : array<string>
     emit_ctors(reg, em, out_dir)
     let owners <- derive_owners(reg, em)
@@ -1551,4 +1619,8 @@ def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
     struct_skips_out <- skip_log
     delete cmd_skips_out
     cmd_skips_out <- cmd_skip
+    var non_copyable : array<string>
+    collect_non_copyable(views, non_copyable)
+    delete non_copyable_out
+    non_copyable_out <- non_copyable
 }
