@@ -639,6 +639,9 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                 }
                 if (bf.kind == FieldKind.next_ptr) {
                     fprint(f, "    next : void?\n")
+                } elif (bf.kind == FieldKind.opt_struct_ptr) {
+                    // borrowed, never owned: @do_not_delete stops the finalize that would free the caller's local
+                    fprint(f, "    @do_not_delete {bf.name} : {bf.boost_type}\n")
                 } else {
                     fprint(f, "    {bf.name} : {bf.boost_type}\n")
                 }
@@ -652,7 +655,6 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
             // opt_struct_ptr scratch: pointee clone + raw view + `_present` so vk_view_destroy only tears down what was populated
             for (bf in vs.fields) {
                 if (bf.kind == FieldKind.opt_struct_ptr) {
-                    fprint(f, "    _vk_view_{bf.name}_value : {bf.elem_boost}\n")
                     fprint(f, "    _vk_view_{bf.name}_vk : {bf.elem_vktype}\n")
                     fprint(f, "    _vk_view_{bf.name}_present : bool\n")
                 }
@@ -689,11 +691,10 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    {CB}\n")
                     fprint(f, "    vk.{bf.name} = array_addr(b._vk_view_{bf.name})\n")
                 } elif (bf.kind == FieldKind.opt_struct_ptr) {
-                    // clone the pointee into scratch, then null the borrowed field: the default finalize deletes a populated T? and a borrowed local is not a heap chunk
+                    // viewed where the caller keeps it, so this struct embeds only the raw view and stays copyable
                     fprint(f, "    unsafe {OB}\n")
                     fprint(f, "        if (b.{bf.name} != null) {OB}\n")
-                    fprint(f, "            b._vk_view_{bf.name}_value := *b.{bf.name}\n")
-                    fprint(f, "            b._vk_view_{bf.name}_vk = vk_view_create_unsafe(b._vk_view_{bf.name}_value)\n")
+                    fprint(f, "            b._vk_view_{bf.name}_vk = vk_view_create_unsafe(*b.{bf.name})\n")
                     fprint(f, "            b._vk_view_{bf.name}_present = true\n")
                     fprint(f, "            vk.{bf.name} = addr(b._vk_view_{bf.name}_vk)\n")
                     fprint(f, "            b.{bf.name} = null\n")
@@ -735,9 +736,8 @@ def private emit_structs_boost(reg : VkRegistry; em : EmitModel; out_dir : strin
                     fprint(f, "    delete b._vk_view_{bf.name}\n")
                     any_scratch = true
                 } elif (bf.kind == FieldKind.opt_struct_ptr) {
-                    // tear down the cloned pointee only if it was actually populated
+                    // the pointee was the caller's, so releasing is just dropping the claim one was taken
                     fprint(f, "    if (b._vk_view_{bf.name}_present) {OB}\n")
-                    fprint(f, "        vk_view_destroy(b._vk_view_{bf.name}_value)\n")
                     fprint(f, "        b._vk_view_{bf.name}_present = false\n")
                     fprint(f, "    {CB}\n")
                     any_scratch = true
@@ -1577,8 +1577,25 @@ def private emit_lint_data(creators : array<CreatorInfo>; plans : array<CmdPlan>
 
 //! `struct_skips_out` / `cmd_skips_out` receive the boost-layer skip logs so generate.das can
 //! fold them into the skip-ratchet report
+def private is_array_field(bf : BoostField) : bool {
+    return (bf.kind == FieldKind.arr_scalar || bf.kind == FieldKind.arr_handle
+        || bf.kind == FieldKind.arr_struct)
+}
+
+// an array field is what makes a boost struct non-copyable, and das MOVES a non-copyable element out of an array literal
+def private collect_non_copyable(views : array<ViewStruct>; var out : array<string>) {
+    for (vs in views) {
+        var reasons <- [for (bf in vs.fields); "{bf.name} : {bf.boost_type}"; where is_array_field(bf)]
+        if (!empty(reasons)) {
+            out |> push("{vs.boost}: {join(reasons, ", ")}")
+        }
+        delete reasons
+    }
+}
+
 def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
-                      var struct_skips_out : array<string>; var cmd_skips_out : array<string>) {
+                      var struct_skips_out : array<string>; var cmd_skips_out : array<string>;
+                      var non_copyable_out : array<string>) {
     var skip_log : array<string>
     emit_ctors(reg, em, out_dir)
     let owners <- derive_owners(reg, em)
@@ -1602,4 +1619,8 @@ def public emit_boost(reg : VkRegistry; em : EmitModel; out_dir : string;
     struct_skips_out <- skip_log
     delete cmd_skips_out
     cmd_skips_out <- cmd_skip
+    var non_copyable : array<string>
+    collect_non_copyable(views, non_copyable)
+    delete non_copyable_out
+    non_copyable_out <- non_copyable
 }
