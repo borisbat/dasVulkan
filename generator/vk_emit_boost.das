@@ -204,7 +204,7 @@ enum FieldKind {
     arr_scalar      //! count+ptr of scalar/enum -> array<T>
     arr_handle      //! count+ptr of handle -> array<BoostHandle>
     arr_struct      //! count+ptr of mappable struct -> array<BoostStruct> (recursive vk_view)
-    opt_struct_ptr  //! optional single const ptr to mappable struct -> BoostStruct? (caller's addr; cloned into scratch)
+    opt_struct_ptr  //! optional single const ptr to mappable struct -> BoostStruct? (borrowed pointee, raw-viewed into scratch)
     count_independent //! count member whose arrays are ALL optional -> settable boost field
     hard            //! unmappable -> skip the whole struct
 }
